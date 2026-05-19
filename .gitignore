@@ -1,0 +1,24 @@
+# Build output
+bin/
+obj/
+dist/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userprefs
+
+# FFmpeg binaries (downloaded at runtime)
+ffmpeg/
+*.exe
+*.dll
+
+# Temp files
+*.tmp
+~$*
+*.cache
+
+# OS
+Thumbs.db
+.DS_Store

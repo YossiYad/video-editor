@@ -1,0 +1,37 @@
+<UserControl x:Class="VideoEditor.Controls.ResizableBlock"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             MinWidth="20" MinHeight="20">
+    <Grid x:Name="root">
+        <Rectangle x:Name="fill" Fill="Black" Opacity="0.95" Stroke="#7C4DFF" StrokeThickness="2" StrokeDashArray="4,2"/>
+        <Thumb x:Name="dragThumb" Cursor="SizeAll" Background="Transparent" Opacity="0">
+            <Thumb.Template>
+                <ControlTemplate>
+                    <Rectangle Fill="Transparent"/>
+                </ControlTemplate>
+            </Thumb.Template>
+        </Thumb>
+        <Thumb x:Name="tlThumb" Width="12" Height="12" HorizontalAlignment="Left" VerticalAlignment="Top" Cursor="SizeNWSE" Margin="-6">
+            <Thumb.Template>
+                <ControlTemplate>
+                    <Rectangle Fill="#7C4DFF" Stroke="White" StrokeThickness="1"/>
+                </ControlTemplate>
+            </Thumb.Template>
+        </Thumb>
+        <Thumb x:Name="trThumb" Width="12" Height="12" HorizontalAlignment="Right" VerticalAlignment="Top" Cursor="SizeNESW" Margin="-6">
+            <Thumb.Template>
+                <ControlTemplate><Rectangle Fill="#7C4DFF" Stroke="White" StrokeThickness="1"/></ControlTemplate>
+            </Thumb.Template>
+        </Thumb>
+        <Thumb x:Name="blThumb" Width="12" Height="12" HorizontalAlignment="Left" VerticalAlignment="Bottom" Cursor="SizeNESW" Margin="-6">
+            <Thumb.Template>
+                <ControlTemplate><Rectangle Fill="#7C4DFF" Stroke="White" StrokeThickness="1"/></ControlTemplate>
+            </Thumb.Template>
+        </Thumb>
+        <Thumb x:Name="brThumb" Width="12" Height="12" HorizontalAlignment="Right" VerticalAlignment="Bottom" Cursor="SizeNWSE" Margin="-6">
+            <Thumb.Template>
+                <ControlTemplate><Rectangle Fill="#7C4DFF" Stroke="White" StrokeThickness="1"/></ControlTemplate>
+            </Thumb.Template>
+        </Thumb>
+    </Grid>
+</UserControl>

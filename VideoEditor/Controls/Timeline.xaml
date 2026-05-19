@@ -1,0 +1,95 @@
+<UserControl x:Class="VideoEditor.Controls.Timeline"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="#0F0F18" Height="240" MinHeight="200"
+             AllowDrop="True" Drop="Timeline_Drop" DragOver="Timeline_DragOver" DragLeave="Timeline_DragLeave">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Top bar: time display + zoom -->
+        <Border Grid.Row="0" Background="#1B1B2A" Height="36" BorderBrush="#2A2A3E" BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" Margin="12,0">
+                    <TextBlock x:Name="timeLabel" VerticalAlignment="Center" Foreground="#E6E6F0" FontFamily="Consolas" FontSize="13" Text="00:00.000 / 00:00.000"/>
+                    <Border Background="#2A2A3E" CornerRadius="3" Padding="6,2" Margin="12,0,0,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="clipCountLabel" Foreground="#A0A0B0" FontSize="11" Text="0 clips · 0 blocks"/>
+                    </Border>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,8,0">
+                    <Button x:Name="fitBtn" Content="Fit" Width="40" Height="24" Margin="2" ToolTip="Fit to view"/>
+                    <Button x:Name="zoomOutBtn" Content="−" Width="28" Height="24" Margin="2"/>
+                    <TextBlock x:Name="zoomLabel" VerticalAlignment="Center" Foreground="#A0A0B0" Text="100%" Margin="4,0" FontSize="11"/>
+                    <Button x:Name="zoomInBtn" Content="+" Width="28" Height="24" Margin="2"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Tracks + ruler -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="56"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Track headers -->
+            <StackPanel Grid.Column="0" Background="#15151F">
+                <Border Height="22" Background="#1B1B2A" BorderBrush="#2A2A3E" BorderThickness="0,0,1,1"/>
+                <Border Height="64" Background="#1B1B2A" BorderBrush="#2A2A3E" BorderThickness="0,0,1,1">
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock Text="🎬" FontSize="16" HorizontalAlignment="Center"/>
+                        <TextBlock Text="VIDEO" Foreground="#A0A0B0" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+                <Border Height="200" Background="#1B1B2A" BorderBrush="#2A2A3E" BorderThickness="0,0,1,1">
+                    <StackPanel VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,8">
+                        <TextBlock Text="◼" FontSize="14" Foreground="#7C4DFF" HorizontalAlignment="Center"/>
+                        <TextBlock Text="BLOCKS" Foreground="#A0A0B0" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <ScrollViewer Grid.Column="1" x:Name="scroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                <Grid x:Name="content" Background="#0F0F18">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="22"/>
+                        <RowDefinition Height="64"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Canvas x:Name="rulerCanvas" Grid.Row="0" Background="#1B1B2A">
+                        <!-- Playhead drag thumb lives in the ruler area only - keeps the rest of the timeline free for drag-drop -->
+                        <Thumb x:Name="playheadThumb" Width="16" Height="22" Cursor="SizeWE">
+                            <Thumb.Template>
+                                <ControlTemplate>
+                                    <Rectangle Fill="Transparent"/>
+                                </ControlTemplate>
+                            </Thumb.Template>
+                        </Thumb>
+                    </Canvas>
+
+                    <Canvas x:Name="clipCanvas" Grid.Row="1" Background="#181828"
+                            AllowDrop="True" Drop="ClipCanvas_Drop" DragOver="ClipCanvas_DragOver"
+                            DragLeave="ClipCanvas_DragLeave"
+                            MouseLeftButtonDown="ClipCanvas_MouseLeftButtonDown"/>
+
+                    <Canvas x:Name="trackCanvas" Grid.Row="2" Background="#141420"
+                            MouseLeftButtonDown="trackCanvas_MouseLeftButtonDown"/>
+
+                    <!-- Visual-only overlay (line + flag + trim markers + insert indicator). NOT hit-testable so it doesn't block drag/drop. -->
+                    <Canvas x:Name="playheadLayer" Grid.RowSpan="3" Background="{x:Null}" IsHitTestVisible="False">
+                        <Line x:Name="playhead" Y1="0" Y2="300" X1="0" X2="0" Stroke="#FF5252" StrokeThickness="2" IsHitTestVisible="False"/>
+                        <Polygon x:Name="playheadFlag" Fill="#FF5252" Points="0,0 12,0 6,10" IsHitTestVisible="False"/>
+                    </Canvas>
+                </Grid>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</UserControl>
