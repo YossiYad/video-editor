@@ -1,10 +1,23 @@
 # Video Editor (C# / WPF)
 
-אפליקציית עריכת וידאו עם כל הכלים מהתמונה + בלוקי הסתרה עם ציר זמן.
+[![Download Latest](https://img.shields.io/github/v/release/YossiYad/video-editor?label=%E2%AC%87%EF%B8%8F%20Download%20Latest&style=for-the-badge&color=2ea44f)](https://github.com/YossiYad/video-editor/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
+[![Open Source](https://img.shields.io/badge/Open%20Source-%E2%9D%A4-red?style=for-the-badge)](https://github.com/YossiYad/video-editor)
+[![Platform](https://img.shields.io/badge/Platform-Windows-0078d6?style=for-the-badge&logo=windows)](https://github.com/YossiYad/video-editor/releases/latest)
 
-## הפעלה
+אפליקציית עריכת וידאו **קוד פתוח** (Open Source) עם כל הכלים מהתמונה + בלוקי הסתרה עם ציר זמן.
+
+## ⬇️ הורדה
+
+### אפשרות 1: הורדה מהירה (מומלץ למשתמשים)
+👉 **[לחץ כאן להורדת הגרסה האחרונה](https://github.com/YossiYad/video-editor/releases/latest)**
+
+לאחר ההורדה: חלץ את הקובץ ZIP והרץ `VideoEditor.exe`.
+
+### אפשרות 2: שיבוט והפעלה מהמקור (למפתחים)
 ```powershell
-cd C:\Projects\video_editor
+git clone https://github.com/YossiYad/video-editor.git
+cd video-editor
 dotnet run --project VideoEditor
 ```
 
@@ -61,3 +74,22 @@ VideoEditor/
     ├── MergeVideosWindow.cs
     └── ScreenRecorderWindow.cs
 ```
+
+## 🤝 תרומה לפרויקט (Contributing)
+
+זהו פרויקט **קוד פתוח** ואנחנו מזמינים אותך לתרום!
+
+- 🐛 **דיווח על באגים**: [פתח Issue](https://github.com/YossiYad/video-editor/issues/new)
+- 💡 **הצעת פיצ'רים**: [פתח Issue](https://github.com/YossiYad/video-editor/issues/new) עם תגית `enhancement`
+- 🔧 **שליחת קוד**: עשה Fork לפרויקט, צור branch חדש, ושלח Pull Request
+- ⭐ **תמיכה בפרויקט**: תן ⭐ ב-GitHub כדי לתמוך!
+
+## 📄 רישיון (License)
+
+הפרויקט הזה מופץ תחת רישיון **MIT** - ראה את קובץ [LICENSE](LICENSE) לפרטים מלאים.
+
+זה אומר שאתה חופשי:
+- ✅ להשתמש באפליקציה לכל מטרה (אישית או מסחרית)
+- ✅ לשנות את הקוד ולהתאים לצרכים שלך
+- ✅ להפיץ את האפליקציה (גם בגרסה ששינית)
+- ✅ לתרום בחזרה לקהילה
