@@ -3,7 +3,11 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              MinWidth="20" MinHeight="20">
     <Grid x:Name="root">
-        <Rectangle x:Name="fill" Fill="Black" Opacity="0.95" Stroke="#7C4DFF" StrokeThickness="2" StrokeDashArray="4,2"/>
+        <Rectangle x:Name="fill" Fill="Black" Opacity="1.0" Stroke="#7C4DFF" StrokeThickness="2" StrokeDashArray="4,2"/>
+        <Rectangle x:Name="patternFill" IsHitTestVisible="False" Visibility="Collapsed"/>
+        <Border x:Name="modeBadge" Background="#CC000000" CornerRadius="3" Padding="5,1" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4" IsHitTestVisible="False">
+            <TextBlock x:Name="modeBadgeText" Foreground="White" FontSize="9.5" FontWeight="Bold" FontFamily="Consolas" Text="SOLID"/>
+        </Border>
         <Thumb x:Name="dragThumb" Cursor="SizeAll" Background="Transparent" Opacity="0">
             <Thumb.Template>
                 <ControlTemplate>

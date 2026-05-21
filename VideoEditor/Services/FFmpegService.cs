@@ -40,14 +40,21 @@ public class FFmpegService
         return RunAsync(args, dur.TotalSeconds, progress);
     }
 
-    public Task MergeAsync(IEnumerable<string> inputs, string output, IProgress<double>? progress = null)
+    public async Task MergeAsync(IEnumerable<string> inputs, string output, IProgress<double>? progress = null)
     {
         var list = Path.Combine(Path.GetTempPath(), $"merge_{Guid.NewGuid()}.txt");
         var sb = new StringBuilder();
-        foreach (var f in inputs) sb.AppendLine($"file '{f.Replace("'", "'\\''")}'");
+        foreach (var f in inputs) sb.AppendLine($"file '{EscapeConcatPath(f)}'");
         File.WriteAllText(list, sb.ToString());
-        var args = $"-y -f concat -safe 0 -i \"{list}\" -c copy \"{output}\"";
-        return RunAsync(args, 0, progress).ContinueWith(_ => { try { File.Delete(list); } catch { } });
+        try
+        {
+            var args = $"-y -f concat -safe 0 -i \"{list}\" -c copy \"{output}\"";
+            await RunAsync(args, 0, progress);
+        }
+        finally
+        {
+            try { File.Delete(list); } catch { }
+        }
     }
 
     public Task CropAsync(string input, string output, int x, int y, int w, int h, double duration, IProgress<double>? progress = null)
@@ -84,9 +91,11 @@ public class FFmpegService
 
     public Task SpeedAsync(string input, string output, double speed, double duration, IProgress<double>? progress = null)
     {
-        var atempo = BuildAtempoFilter(speed);
-        var args = $"-y -i \"{input}\" -filter_complex \"[0:v]setpts={(1.0/speed).ToString(System.Globalization.CultureInfo.InvariantCulture)}*PTS[v];[0:a]{atempo}[a]\" -map \"[v]\" -map \"[a]\" \"{output}\"";
-        return RunAsync(args, duration / speed, progress);
+        // Guard against div/0 and absurdly slow values that would produce Infinity in the filter.
+        var safeSpeed = Math.Max(0.01, speed);
+        var atempo = BuildAtempoFilter(safeSpeed);
+        var args = $"-y -i \"{input}\" -filter_complex \"[0:v]setpts={(1.0/safeSpeed).ToString(System.Globalization.CultureInfo.InvariantCulture)}*PTS[v];[0:a]{atempo}[a]\" -map \"[v]\" -map \"[a]\" \"{output}\"";
+        return RunAsync(args, duration / safeSpeed, progress);
     }
 
     private static string BuildAtempoFilter(double speed)
@@ -106,15 +115,28 @@ public class FFmpegService
         return RunAsync(args, duration, progress);
     }
 
-    public Task LoopAsync(string input, string output, int times, double duration, IProgress<double>? progress = null)
+    public async Task LoopAsync(string input, string output, int times, double duration, IProgress<double>? progress = null)
     {
         var list = Path.Combine(Path.GetTempPath(), $"loop_{Guid.NewGuid()}.txt");
         var sb = new StringBuilder();
-        for (int i = 0; i < times; i++) sb.AppendLine($"file '{input.Replace("'", "'\\''")}'");
+        var escaped = EscapeConcatPath(input);
+        for (int i = 0; i < times; i++) sb.AppendLine($"file '{escaped}'");
         File.WriteAllText(list, sb.ToString());
-        var args = $"-y -f concat -safe 0 -i \"{list}\" -c copy \"{output}\"";
-        return RunAsync(args, duration * times, progress).ContinueWith(_ => { try { File.Delete(list); } catch { } });
+        try
+        {
+            var args = $"-y -f concat -safe 0 -i \"{list}\" -c copy \"{output}\"";
+            await RunAsync(args, duration * times, progress);
+        }
+        finally
+        {
+            try { File.Delete(list); } catch { }
+        }
     }
+
+    // ffmpeg's concat demuxer treats both ' (string delimiter) and \ (escape char) specially
+    // inside file '...'. Escape \ first, then '.
+    private static string EscapeConcatPath(string path)
+        => path.Replace("\\", "\\\\").Replace("'", "'\\''");
 
     public Task StabilizeAsync(string input, string output, double duration, IProgress<double>? progress = null)
     {
@@ -138,7 +160,7 @@ public class FFmpegService
     public Task ExtractAudioAsync(string input, string output, double startSec, double durSec, string format, IProgress<double>? progress = null)
     {
         var ci = System.Globalization.CultureInfo.InvariantCulture;
-        string codec = format.ToLower() switch
+        string codec = format.ToLowerInvariant() switch
         {
             "mp3" => "-codec:a libmp3lame -qscale:a 2",
             "wav" => "-codec:a pcm_s16le",
@@ -167,7 +189,9 @@ public class FFmpegService
 
     public Task AddTextAsync(string videoIn, string output, string text, int x, int y, int fontSize, string colorHex, double duration, IProgress<double>? progress = null)
     {
-        var safeText = text.Replace("'", "\\'").Replace(":", "\\:").Replace("\\", "\\\\");
+        // drawtext requires \ to be escaped FIRST — if we escape ' and : first, the \ we
+        // added would itself get doubled and the closing quote of text='...' would break.
+        var safeText = text.Replace("\\", "\\\\").Replace("'", "\\'").Replace(":", "\\:");
         var args = $"-y -i \"{videoIn}\" -vf \"drawtext=text='{safeText}':x={x}:y={y}:fontsize={fontSize}:fontcolor={colorHex}\" -c:a copy \"{output}\"";
         return RunAsync(args, duration, progress);
     }
@@ -185,78 +209,84 @@ public class FFmpegService
             return RunAsync($"-y -i \"{videoIn}\" -c copy \"{output}\"", duration, progress);
         }
 
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
         var sx = videoW / canvasW;
         var sy = videoH / canvasH;
-        var sb = new StringBuilder();
-        sb.Append("[0:v]");
 
-        var blurInputs = new List<string>();
-        for (int i = 0; i < blocks.Count; i++)
+        // Pre-process every block once so we don't carry strings of doubles in mixed cultures.
+        var processed = new List<(VideoBlock b, int bx, int by, int bw, int bh)>(blocks.Count);
+        foreach (var b in blocks)
         {
-            var b = blocks[i];
             int bx = (int)(b.X * sx);
             int by = (int)(b.Y * sy);
             int bw = (int)(b.Width * sx);
             int bh = (int)(b.Height * sy);
             if (bw < 2) bw = 2;
             if (bh < 2) bh = 2;
-
-            if (b.Mode == BlockMode.Solid)
-            {
-                string colorHex = $"{b.Color.R:X2}{b.Color.G:X2}{b.Color.B:X2}";
-                string enable = b.CoversWholeVideo ? "" : $":enable='between(t,{b.StartSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)},{b.EndSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)})'";
-                sb.Append($"drawbox=x={bx}:y={by}:w={bw}:h={bh}:color=0x{colorHex}@1.0:t=fill{enable}");
-                if (i < blocks.Count - 1) sb.Append(',');
-            }
-            else if (b.Mode == BlockMode.Blur || b.Mode == BlockMode.Pixelate)
-            {
-                blurInputs.Add($"BLOCK{i}|{bx}|{by}|{bw}|{bh}|{b.Mode}|{b.BlurStrength}|{b.CoversWholeVideo}|{b.StartSeconds}|{b.EndSeconds}");
-            }
+            processed.Add((b, bx, by, bw, bh));
         }
 
-        var solidFilter = sb.ToString();
-        if (solidFilter.EndsWith("[0:v]")) solidFilter = "";
-
-        if (blurInputs.Count == 0)
+        // All solid drawboxes can be joined with commas into a single filter chain.
+        var solidParts = new List<string>();
+        foreach (var (b, bx, by, bw, bh) in processed)
         {
-            var argsSolid = $"-y -i \"{videoIn}\" -vf \"{solidFilter.Substring("[0:v]".Length)}\" -c:a copy \"{output}\"";
+            if (b.Mode != BlockMode.Solid) continue;
+            string colorHex = $"{b.Color.R:X2}{b.Color.G:X2}{b.Color.B:X2}";
+            string enable = b.CoversWholeVideo
+                ? ""
+                : $":enable='between(t,{b.StartSeconds.ToString(ci)},{b.EndSeconds.ToString(ci)})'";
+            solidParts.Add($"drawbox=x={bx}:y={by}:w={bw}:h={bh}:color=0x{colorHex}@1.0:t=fill{enable}");
+        }
+        string solidChain = string.Join(",", solidParts);  // no trailing comma, joined cleanly
+
+        var blurBlocks = processed.Where(p => p.b.Mode == BlockMode.Blur || p.b.Mode == BlockMode.Pixelate).ToList();
+        if (blurBlocks.Count == 0)
+        {
+            var argsSolid = $"-y -i \"{videoIn}\" -vf \"{solidChain}\" -c:a copy \"{output}\"";
             return RunAsync(argsSolid, duration, progress);
         }
 
+        // Build filter_complex. The base stream goes through any solid drawboxes first,
+        // then each blur/pixelate block crops + blurs + overlays back. Because each
+        // intermediate output pad can only be consumed ONCE in filter_complex, we use
+        // `split` to fork the base into (crop_source, overlay_base) for every blur layer.
         var fullFilter = new StringBuilder();
-        string prev = "[0:v]";
-        if (solidFilter.Length > "[0:v]".Length)
+        string prev;
+        if (solidChain.Length > 0)
         {
-            fullFilter.Append(solidFilter).Append("[base];");
+            fullFilter.Append("[0:v]").Append(solidChain).Append("[base];");
             prev = "[base]";
+        }
+        else
+        {
+            prev = "[0:v]";
         }
 
         int idx = 0;
-        foreach (var blk in blurInputs)
+        foreach (var (b, bx, by, bw, bh) in blurBlocks)
         {
-            var parts = blk.Split('|');
-            int bx = int.Parse(parts[1]);
-            int by = int.Parse(parts[2]);
-            int bw = int.Parse(parts[3]);
-            int bh = int.Parse(parts[4]);
-            var mode = parts[5];
-            int strength = int.Parse(parts[6]);
-            bool whole = bool.Parse(parts[7]);
-            double s = double.Parse(parts[8], System.Globalization.CultureInfo.InvariantCulture);
-            double e = double.Parse(parts[9], System.Globalization.CultureInfo.InvariantCulture);
-
             string region = $"[r{idx}]";
-            string blurred = $"[b{idx}]";
+            string blurred = $"[bl{idx}]";
+            string baseFork = $"[fb{idx}]";
+            string cropFork = $"[fc{idx}]";
             string next = $"[o{idx}]";
 
-            fullFilter.Append($"{prev}crop={bw}:{bh}:{bx}:{by}{region};");
-            if (mode == "Blur")
-                fullFilter.Append($"{region}boxblur={strength}:1{blurred};");
-            else
-                fullFilter.Append($"{region}scale=iw/{Math.Max(2, strength / 4)}:ih/{Math.Max(2, strength / 4)},scale={bw}:{bh}:flags=neighbor{blurred};");
+            // split prev into two copies: one to crop+blur, one as overlay base
+            fullFilter.Append($"{prev}split[a{idx}][a{idx}b];");
+            // rename pads for clarity in the chain
+            fullFilter.Append($"[a{idx}]null{baseFork};");
+            fullFilter.Append($"[a{idx}b]null{cropFork};");
 
-            string enable = whole ? "" : $":enable='between(t,{s.ToString(System.Globalization.CultureInfo.InvariantCulture)},{e.ToString(System.Globalization.CultureInfo.InvariantCulture)})'";
-            fullFilter.Append($"{prev}{blurred}overlay={bx}:{by}{enable}{next};");
+            fullFilter.Append($"{cropFork}crop={bw}:{bh}:{bx}:{by}{region};");
+            if (b.Mode == BlockMode.Blur)
+                fullFilter.Append($"{region}boxblur={b.BlurStrength}:1{blurred};");
+            else
+                fullFilter.Append($"{region}scale=iw/{Math.Max(2, b.BlurStrength / 4)}:ih/{Math.Max(2, b.BlurStrength / 4)},scale={bw}:{bh}:flags=neighbor{blurred};");
+
+            string enable = b.CoversWholeVideo
+                ? ""
+                : $":enable='between(t,{b.StartSeconds.ToString(ci)},{b.EndSeconds.ToString(ci)})'";
+            fullFilter.Append($"{baseFork}{blurred}overlay={bx}:{by}{enable}{next};");
             prev = next;
             idx++;
         }
@@ -279,18 +309,36 @@ public class FFmpegService
             if (targetW % 2 != 0) targetW++;
             if (targetH % 2 != 0) targetH++;
 
-            // Pass 1: render each clip with its effects (trim, speed, rotate, flip, volume, loop)
-            for (int i = 0; i < clips.Count; i++)
+            // Only video clips go to the V1 track. Audio-only clips are handled separately (TBD).
+            var videoClips = clips.Where(c => !c.IsAudioOnly).OrderBy(c => c.TimelineStart).ToList();
+            if (videoClips.Count == 0) throw new Exception("No video clips to export.");
+
+            // Pass 1: render each clip + insert black filler for real gaps in the timeline.
+            // Black is only inserted when clips don't abut (gap > 0.1s), so seamless joins stay seamless.
+            const double gapEpsilon = 0.1;
+            var renderQueue = new List<string>();
+            double prevEnd = 0;
+            for (int i = 0; i < videoClips.Count; i++)
             {
-                var c = clips[i];
+                var c = videoClips[i];
+                if (c.TimelineStart > prevEnd + gapEpsilon)
+                {
+                    var gapDur = c.TimelineStart - prevEnd;
+                    var blackTmp = Path.Combine(Path.GetTempPath(), $"ve_black_{Guid.NewGuid():N}.mp4");
+                    temps.Add(blackTmp);
+                    await RenderBlackClipAsync(blackTmp, gapDur, targetW, targetH);
+                    renderQueue.Add(blackTmp);
+                }
                 var tmp = Path.Combine(Path.GetTempPath(), $"ve_clip_{Guid.NewGuid():N}.mp4");
                 temps.Add(tmp);
                 await RenderClipAsync(c, tmp, targetW, targetH);
-                progress?.Report((i + 1) * 0.7 / clips.Count);
+                renderQueue.Add(tmp);
+                prevEnd = c.TimelineStart + c.EffectiveDuration;
+                progress?.Report((i + 1) * 0.7 / videoClips.Count);
             }
 
             string concatList = Path.Combine(Path.GetTempPath(), $"ve_concat_{Guid.NewGuid():N}.txt");
-            File.WriteAllText(concatList, string.Join("\n", temps.Select(t => $"file '{t.Replace("'", "'\\''")}'")));
+            File.WriteAllText(concatList, string.Join("\n", renderQueue.Select(t => $"file '{EscapeConcatPath(t)}'")));
 
             string concatOut = blocks.Count > 0
                 ? Path.Combine(Path.GetTempPath(), $"ve_concat_{Guid.NewGuid():N}.mp4")
@@ -321,6 +369,11 @@ public class FFmpegService
 
     private async Task RenderClipAsync(VideoClip c, string output, int targetW, int targetH)
     {
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        int fps = AppSettings.ExportFps;
+        int crf = AppSettings.ExportCrf;
+        int abps = AppSettings.ExportAudioBitrate;
+
         var vf = new List<string>();
         if (c.RotateDegrees == 90) vf.Add("transpose=1");
         else if (c.RotateDegrees == 180) vf.Add("transpose=1,transpose=1");
@@ -328,32 +381,129 @@ public class FFmpegService
         if (c.FlipH) vf.Add("hflip");
         if (c.FlipV) vf.Add("vflip");
         if (Math.Abs(c.Speed - 1.0) > 0.01)
-            vf.Add($"setpts={(1.0 / c.Speed).ToString(System.Globalization.CultureInfo.InvariantCulture)}*PTS");
+            vf.Add($"setpts={(1.0 / c.Speed).ToString(ci)}*PTS");
         vf.Add($"scale={targetW}:{targetH}:force_original_aspect_ratio=decrease");
         vf.Add($"pad={targetW}:{targetH}:(ow-iw)/2:(oh-ih)/2:black");
         vf.Add("setsar=1");
+        vf.Add($"fps={fps}");
+        vf.Add("setpts=PTS-STARTPTS");
 
         var af = new List<string>();
         if (Math.Abs(c.Speed - 1.0) > 0.01) af.Add(BuildAtempoFilter(c.Speed));
-        if (Math.Abs(c.Volume - 1.0) > 0.01) af.Add($"volume={c.Volume.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        if (Math.Abs(c.Volume - 1.0) > 0.01) af.Add($"volume={c.Volume.ToString(ci)}");
+        af.Add("aresample=async=1:first_pts=0");
+        af.Add("asetpts=PTS-STARTPTS");
 
         var dur = c.OutPoint - c.InPoint;
         var inputArg = c.LoopCount > 1
-            ? $"-stream_loop {c.LoopCount - 1} -ss {c.InPoint.ToString(System.Globalization.CultureInfo.InvariantCulture)} -i \"{c.SourceFile}\" -t {(dur * c.LoopCount).ToString(System.Globalization.CultureInfo.InvariantCulture)}"
-            : $"-ss {c.InPoint.ToString(System.Globalization.CultureInfo.InvariantCulture)} -i \"{c.SourceFile}\" -t {dur.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+            ? $"-stream_loop {c.LoopCount - 1} -ss {c.InPoint.ToString(ci)} -i \"{c.SourceFile}\" -t {(dur * c.LoopCount).ToString(ci)}"
+            : $"-ss {c.InPoint.ToString(ci)} -i \"{c.SourceFile}\" -t {dur.ToString(ci)}";
+
+        // Add loudnorm filter if enabled
+        if (AppSettings.AudioLoudnorm) af.Add("loudnorm=I=-16:TP=-1.5:LRA=11");
 
         var args = $"-y {inputArg} -vf \"{string.Join(",", vf)}\"";
         if (af.Count > 0) args += $" -af \"{string.Join(",", af)}\"";
-        args += " -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2";
+        args += $" {ResolveVideoEncoderArgs(crf)} -pix_fmt yuv420p";
+        args += $" -c:a aac -ar 44100 -ac 2 -b:a {abps}k";
+        args += $" -r {fps} -video_track_timescale {fps * 1000}";
         args += $" \"{output}\"";
 
         await RunAsync(args, c.EffectiveDuration, null);
+    }
+
+    /// <summary>
+    /// Build the video encoder args string based on AppSettings.HardwareAccel + ExportCodec.
+    /// Falls back to libx264 if hardware encoder isn't available.
+    /// </summary>
+    private static string ResolveVideoEncoderArgs(int crf)
+    {
+        var accel = AppSettings.HardwareAccel;
+        var codec = AppSettings.ExportCodec;
+        // Hardware encoders override the codec choice
+        switch (accel)
+        {
+            case "nvenc":
+                if (codec == "libx265") return $"-c:v hevc_nvenc -preset p4 -rc vbr -cq {crf}";
+                return $"-c:v h264_nvenc -preset p4 -rc vbr -cq {crf}";
+            case "qsv":
+                if (codec == "libx265") return $"-c:v hevc_qsv -global_quality {crf}";
+                return $"-c:v h264_qsv -global_quality {crf}";
+            case "amf":
+                if (codec == "libx265") return $"-c:v hevc_amf -quality quality -rc cqp -qp_i {crf} -qp_p {crf}";
+                return $"-c:v h264_amf -quality quality -rc cqp -qp_i {crf} -qp_p {crf}";
+            default: // cpu
+                switch (codec)
+                {
+                    case "libx265": return $"-c:v libx265 -preset veryfast -crf {crf}";
+                    case "libaom-av1": return $"-c:v libaom-av1 -crf {crf} -b:v 0";
+                    case "prores_ks": return "-c:v prores_ks -profile:v 3"; // ProRes 422 HQ - CRF ignored
+                    default: return $"-c:v libx264 -preset veryfast -crf {crf}";
+                }
+        }
+    }
+
+    private async Task RenderBlackClipAsync(string output, double durationSec, int targetW, int targetH)
+    {
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        int fps = AppSettings.ExportFps;
+        int crf = AppSettings.ExportCrf;
+        int abps = AppSettings.ExportAudioBitrate;
+        var args =
+            $"-y -f lavfi -i color=c=black:s={targetW}x{targetH}:r={fps}:d={durationSec.ToString(ci)} " +
+            $"-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 " +
+            $"-shortest {ResolveVideoEncoderArgs(crf)} -pix_fmt yuv420p " +
+            $"-c:a aac -ar 44100 -ac 2 -b:a {abps}k -r {fps} -video_track_timescale {fps * 1000} " +
+            $"\"{output}\"";
+        await RunAsync(args, durationSec, null);
     }
 
     public Task ExtractFrameAsync(string input, string output, double timeSeconds)
     {
         var args = $"-y -ss {timeSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)} -i \"{input}\" -frames:v 1 -q:v 2 \"{output}\"";
         return RunAsync(args, 0, null);
+    }
+
+    public async Task<string?> GenerateWaveformAsync(string sourceFile, int width, int height, string cacheKey)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "video_editor_waveforms");
+        Directory.CreateDirectory(root);
+        var safeKey = string.Concat(cacheKey.Where(ch => char.IsLetterOrDigit(ch) || ch == '_' || ch == '-'));
+        var path = Path.Combine(root, safeKey + ".png");
+        if (File.Exists(path)) return path;
+        try
+        {
+            // showwavespic draws a single still image of the entire audio waveform.
+            // colors=A0B4FF gives the cool blue tone matching the design.
+            var args = $"-y -i \"{sourceFile}\" -filter_complex \"showwavespic=s={width}x{height}:colors=A0B4FF|7AA0FF:split_channels=0\" -frames:v 1 -update 1 \"{path}\"";
+            await RunAsync(args, 0, null);
+        }
+        catch { }
+        return File.Exists(path) ? path : null;
+    }
+
+    public async Task ExtractAudioAsync(string input, string output, double duration, IProgress<double>? progress = null)
+    {
+        // Choose codec based on output extension
+        var ext = Path.GetExtension(output).ToLowerInvariant();
+        string codec = ext switch
+        {
+            ".mp3" => "libmp3lame -q:a 2",
+            ".aac" or ".m4a" => "aac -b:a 192k",
+            ".wav" => "pcm_s16le",
+            ".ogg" => "libvorbis -q:a 4",
+            ".flac" => "flac",
+            _ => "libmp3lame -q:a 2"
+        };
+        var args = $"-y -i \"{input}\" -vn -c:a {codec} \"{output}\"";
+        await RunAsync(args, duration, progress);
+    }
+
+    public async Task RemoveAudioAsync(string input, string output, double duration, IProgress<double>? progress = null)
+    {
+        // -an strips audio entirely. Stream copy video for speed.
+        var args = $"-y -i \"{input}\" -c:v copy -an \"{output}\"";
+        await RunAsync(args, duration, progress);
     }
 
     public async Task<List<string>> ExtractThumbnailStripAsync(string input, double inSec, double outSec, int count, int width, string cacheKey)
@@ -426,8 +576,12 @@ public class FFmpegService
                 }
             }
         };
+        // Drain stdout too — otherwise its OS pipe buffer (~4KB) can fill on filters that
+        // write to stdout (e.g. -f null -, vstats) and the process hangs.
+        p.OutputDataReceived += (_, _) => { /* discard */ };
         p.Start();
         p.BeginErrorReadLine();
+        p.BeginOutputReadLine();
         await p.WaitForExitAsync();
         if (p.ExitCode != 0) throw new Exception($"FFmpeg exited with code {p.ExitCode}. See log for details.");
     }
@@ -443,10 +597,12 @@ public class FFmpegService
             UseShellExecute = false,
             CreateNoWindow = true
         };
-        using var p = Process.Start(psi)!;
-        var output = await p.StandardOutput.ReadToEndAsync();
-        var err = await p.StandardError.ReadToEndAsync();
+        using var p = Process.Start(psi) ?? throw new Exception($"Failed to start {exe}");
+        // Read both streams concurrently — otherwise filling one pipe can block the other.
+        var outputTask = p.StandardOutput.ReadToEndAsync();
+        var errTask = p.StandardError.ReadToEndAsync();
+        await Task.WhenAll(outputTask, errTask);
         await p.WaitForExitAsync();
-        return output + "\n" + err;
+        return outputTask.Result + "\n" + errTask.Result;
     }
 }

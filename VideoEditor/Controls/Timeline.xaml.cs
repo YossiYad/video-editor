@@ -21,7 +21,7 @@ public partial class Timeline : UserControl
 {
     public double TotalSeconds { get; private set; } = 30;
     public double CurrentSeconds { get; private set; }
-    public double PixelsPerSecond { get; private set; } = 60;
+    public double PixelsPerSecond { get; private set; } = VideoEditor.Services.AppSettings.InitialPixelsPerSecond;
 
     public ObservableCollection<VideoBlock> Blocks { get; } = new();
     public ObservableCollection<VideoClip> Clips { get; } = new();
@@ -36,9 +36,17 @@ public partial class Timeline : UserControl
     public event Action? BlocksChanged;
     public event Action<VideoClip, double>? ClipScrubPreview;
     public event Action<VideoClip>? ClipEdgeDragEnded;
+    public event Action<VideoClip>? AudioSelected;
+    public event Action<VideoClip, string>? AudioContextAction;
 
     internal void RaiseClipScrub(VideoClip c, double sourceTime) => ClipScrubPreview?.Invoke(c, sourceTime);
     internal void RaiseClipEdgeDragEnded(VideoClip c) => ClipEdgeDragEnded?.Invoke(c);
+    internal void RaiseAudioSelected(VideoClip c) { _selectedAudio = c; AudioSelected?.Invoke(c); UpdateAudioBarSelection(); ClearClipSelectionVisuals(); ClearBlockSelectionVisuals(); }
+    internal void RaiseAudioContext(VideoClip c, string action) => AudioContextAction?.Invoke(c, action);
+
+    private VideoClip? _selectedAudio;
+    public void SelectAudio(VideoClip? c) { _selectedAudio = c; UpdateAudioBarSelection(); }
+    private void UpdateAudioBarSelection() { foreach (var kv in _audioBars) kv.Value.SetSelected(kv.Key == _selectedAudio); }
 
     private Line? _trimMarker;
     private Border? _trimMarkerLabel;
@@ -166,24 +174,63 @@ public partial class Timeline : UserControl
         if (_insertArrowBottom != null) _insertArrowBottom.Visibility = Visibility.Collapsed;
     }
 
-    // Compute where a clip would land if inserted at the cursor position (in the abutted layout)
+    // Where the indicator should appear: the cursor position, magnetically snapped to nearby clip edges.
     internal double ComputeInsertSlot(VideoClip? excludeTarget, double cursorSec)
     {
-        var others = Clips.Where(c => c != excludeTarget).OrderBy(c => c.TimelineStart).ToList();
-        double pos = 0;
+        double snapThresh = VideoEditor.Services.AppSettings.SnapThreshold;
+        var others = Clips.Where(c => c != excludeTarget && !c.IsAudioOnly).ToList();
+        double best = Math.Max(0, cursorSec);
         foreach (var c in others)
         {
-            var mid = pos + c.EffectiveDuration / 2;
-            if (cursorSec < mid) return pos;
-            pos += c.EffectiveDuration;
+            var endTime = c.TimelineStart + c.EffectiveDuration;
+            if (Math.Abs(cursorSec - endTime) < snapThresh) return endTime;
+            if (Math.Abs(cursorSec - c.TimelineStart) < snapThresh) return c.TimelineStart;
         }
-        return pos;
+        return best;
     }
 
-    // Insert/reorder a clip into the abutted timeline at the given cursor seconds
+    // When a clip is added with a deliberate position, this flag prevents ClipsOnChanged
+    // from auto-relocating it to the end-of-timeline (which would defeat the explicit drop position).
+    private readonly HashSet<VideoClip> _explicitlyPositioned = new();
+
+    // Place a clip at cursorSec on the timeline.
+    // Behavior depends on AppSettings.RippleMode:
+    //  - Free (default): clip stays at cursor, magnetic snap to nearby edges, overlap resolved by push-right.
+    //  - Ripple: clips abut sequentially; the dropped clip inserts at the appropriate position and others ripple.
     internal void ReorderClipToPosition(VideoClip target, double cursorSec)
     {
-        var others = Clips.Where(c => c != target).OrderBy(c => c.TimelineStart).ToList();
+        if (target.IsAudioOnly)
+        {
+            target.TimelineStart = Math.Max(0, cursorSec);
+            AddWithExplicitPosition(target);
+        }
+        else if (VideoEditor.Services.AppSettings.RippleMode)
+        {
+            RippleAbutPlacement(target, cursorSec);
+        }
+        else
+        {
+            target.TimelineStart = Math.Max(0, cursorSec);
+            AddWithExplicitPosition(target);
+            MagneticSnap(target);
+            ResolveOverlaps(target);
+        }
+        RecomputeTotal();
+        UpdateCanvasSize();
+        UpdateAllClipPositions();
+    }
+
+    private void AddWithExplicitPosition(VideoClip target)
+    {
+        if (Clips.Contains(target)) return;
+        _explicitlyPositioned.Add(target);
+        Clips.Add(target);
+    }
+
+    private void RippleAbutPlacement(VideoClip target, double cursorSec)
+    {
+        // The "old" abut-everything behavior - kept under Ripple Mode toggle.
+        var others = Clips.Where(c => c != target && !c.IsAudioOnly).OrderBy(c => c.TimelineStart).ToList();
         int insertIdx = others.Count;
         double pos = 0;
         for (int i = 0; i < others.Count; i++)
@@ -193,36 +240,64 @@ public partial class Timeline : UserControl
             if (cursorSec < mid) { insertIdx = i; break; }
             pos += c.EffectiveDuration;
         }
-
-        // Calculate the target's final position
         double targetFinalPos = 0;
         for (int i = 0; i < insertIdx; i++) targetFinalPos += others[i].EffectiveDuration;
-
-        // Set target position BEFORE adding (avoids auto-assign overwriting)
         target.TimelineStart = targetFinalPos > 0.0001 ? targetFinalPos : 0.0002;
-
-        if (!Clips.Contains(target))
-        {
-            Clips.Add(target);
-        }
-
-        // Now abut everything
+        AddWithExplicitPosition(target);
         others.Insert(insertIdx, target);
         double p = 0;
+        foreach (var c in others) { c.TimelineStart = p; p += c.EffectiveDuration; }
+    }
+
+    private void MagneticSnap(VideoClip target)
+    {
+        double snapThresh = VideoEditor.Services.AppSettings.SnapThreshold;
+        var others = Clips.Where(c => c != target && !c.IsAudioOnly).ToList();
+        var ts = target.TimelineStart;
+        var te = ts + target.EffectiveDuration;
         foreach (var c in others)
         {
-            c.TimelineStart = p;
-            p += c.EffectiveDuration;
+            var cs = c.TimelineStart;
+            var ce = cs + c.EffectiveDuration;
+            // Snap target's left edge to c's right edge
+            if (Math.Abs(ts - ce) < snapThresh) { target.TimelineStart = ce; return; }
+            // Snap target's left edge to c's left edge
+            if (Math.Abs(ts - cs) < snapThresh) { target.TimelineStart = cs; return; }
+            // Snap target's right edge to c's left edge (place clip ending exactly where c starts)
+            if (Math.Abs(te - cs) < snapThresh) { target.TimelineStart = cs - target.EffectiveDuration; return; }
         }
-        RecomputeTotal();
-        UpdateCanvasSize();
-        UpdateAllClipPositions();
+    }
+
+    private void ResolveOverlaps(VideoClip target)
+    {
+        var others = Clips.Where(c => c != target && !c.IsAudioOnly).OrderBy(c => c.TimelineStart).ToList();
+        int guard = 0;
+        bool keepGoing = true;
+        while (keepGoing && guard++ < 200)
+        {
+            keepGoing = false;
+            var ts = target.TimelineStart;
+            var te = ts + target.EffectiveDuration;
+            foreach (var c in others)
+            {
+                var cs = c.TimelineStart;
+                var ce = cs + c.EffectiveDuration;
+                if (ts < ce - 0.001 && te > cs + 0.001)
+                {
+                    // Overlap - push past the end of this clip
+                    target.TimelineStart = ce;
+                    keepGoing = true;
+                    break;
+                }
+            }
+        }
     }
 
     private VideoBlock? _selectedBlock;
     private VideoClip? _selectedClip;
 
     private readonly Dictionary<VideoClip, ClipBar> _clipBars = new();
+    private readonly Dictionary<VideoClip, AudioBar> _audioBars = new();
     private readonly Dictionary<VideoBlock, BlockBar> _blockBars = new();
 
     private bool _isDragging;
@@ -243,34 +318,44 @@ public partial class Timeline : UserControl
         SizeChanged += (_, _) => FullRefresh();
         Loaded += (_, _) => FullRefresh();
 
-        // Playhead dragging - direct mouse handling, 1:1 with cursor (uses rulerCanvas coords)
+        // Playhead dragging - direct mouse handling, 1:1 with cursor
+        // Works from either the invisible Thumb (anywhere along the yellow line) or the visible yellow flag at top.
         double playheadDragStartSec = 0;
         Point playheadDragStartMouse = default;
-        playheadThumb.PreviewMouseLeftButtonDown += (s, e) =>
+
+        void StartPlayheadDrag(IInputElement target, MouseButtonEventArgs e)
         {
             playheadDragStartSec = CurrentSeconds;
-            playheadDragStartMouse = e.GetPosition(rulerCanvas);
-            playheadThumb.CaptureMouse();
+            playheadDragStartMouse = e.GetPosition(playheadThumbLayer);
+            target.CaptureMouse();
             e.Handled = true;
-        };
-        playheadThumb.PreviewMouseMove += (s, e) =>
+        }
+        void PlayheadDragMove(IInputElement target, MouseEventArgs e)
         {
-            if (playheadThumb.IsMouseCaptured)
+            if (target.IsMouseCaptured)
             {
-                var p = e.GetPosition(rulerCanvas);
+                var p = e.GetPosition(playheadThumbLayer);
                 var dxPx = p.X - playheadDragStartMouse.X;
                 SetCurrent(playheadDragStartSec + dxPx / PixelsPerSecond);
                 Seek?.Invoke(CurrentSeconds);
             }
-        };
-        playheadThumb.PreviewMouseLeftButtonUp += (s, e) =>
+        }
+        void EndPlayheadDrag(IInputElement target, MouseButtonEventArgs e)
         {
-            if (playheadThumb.IsMouseCaptured)
+            if (target.IsMouseCaptured)
             {
-                playheadThumb.ReleaseMouseCapture();
+                target.ReleaseMouseCapture();
                 e.Handled = true;
             }
-        };
+        }
+
+        playheadThumb.PreviewMouseLeftButtonDown += (s, e) => StartPlayheadDrag(playheadThumb, e);
+        playheadThumb.PreviewMouseMove += (s, e) => PlayheadDragMove(playheadThumb, e);
+        playheadThumb.PreviewMouseLeftButtonUp += (s, e) => EndPlayheadDrag(playheadThumb, e);
+
+        playheadFlagBorder.PreviewMouseLeftButtonDown += (s, e) => StartPlayheadDrag(playheadFlagBorder, e);
+        playheadFlagBorder.PreviewMouseMove += (s, e) => PlayheadDragMove(playheadFlagBorder, e);
+        playheadFlagBorder.PreviewMouseLeftButtonUp += (s, e) => EndPlayheadDrag(playheadFlagBorder, e);
 
         // Click on ruler to seek + drag from ruler to scrub
         rulerCanvas.MouseLeftButtonDown += Ruler_MouseDown;
@@ -315,13 +400,20 @@ public partial class Timeline : UserControl
         if (playhead != null)
         {
             var x = CurrentSeconds * PixelsPerSecond;
+            var h = Math.Max(80, content.ActualHeight);
             Canvas.SetLeft(playhead, x);
             Canvas.SetTop(playhead, 0);
-            Canvas.SetLeft(playheadFlag, x - 6);
-            Canvas.SetTop(playheadFlag, 0);
-            Canvas.SetLeft(playheadThumb, x - 8);
+            playhead.Y2 = h;
+            // Thumb runs the full height so the line is draggable from anywhere
+            Canvas.SetLeft(playheadThumb, x - 7);
             Canvas.SetTop(playheadThumb, 0);
-            playhead.Y2 = Math.Max(80, content.ActualHeight);
+            playheadThumb.Height = h;
+            playheadFlagText.Text = FormatTime(CurrentSeconds);
+            playheadFlagBorder.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            var flagW = Math.Max(playheadFlagBorder.DesiredSize.Width, playheadFlagBorder.ActualWidth);
+            if (flagW < 30) flagW = 68;
+            Canvas.SetLeft(playheadFlagBorder, x - flagW / 2);
+            Canvas.SetTop(playheadFlagBorder, 0);
         }
         if (timeLabel != null) timeLabel.Text = $"{FormatTime(CurrentSeconds)} / {FormatTime(TotalSeconds)}";
     }
@@ -330,7 +422,7 @@ public partial class Timeline : UserControl
     {
         var prev = _selectedBlock;
         _selectedBlock = b;
-        if (b != null) _selectedClip = null;
+        if (b != null) { _selectedClip = null; _selectedAudio = null; UpdateAudioBarSelection(); }
         if (prev != null && _blockBars.TryGetValue(prev, out var pb)) pb.SetSelected(false);
         if (b != null && _blockBars.TryGetValue(b, out var nb)) nb.SetSelected(true);
         if (_selectedClip == null) ClearClipSelectionVisuals();
@@ -339,7 +431,7 @@ public partial class Timeline : UserControl
     {
         var prev = _selectedClip;
         _selectedClip = c;
-        if (c != null) _selectedBlock = null;
+        if (c != null) { _selectedBlock = null; _selectedAudio = null; UpdateAudioBarSelection(); }
         if (prev != null && _clipBars.TryGetValue(prev, out var pb)) pb.SetSelected(false);
         if (c != null && _clipBars.TryGetValue(c, out var nb)) nb.SetSelected(true);
         if (_selectedBlock == null) ClearBlockSelectionVisuals();
@@ -420,7 +512,9 @@ public partial class Timeline : UserControl
         if (e.NewItems != null)
             foreach (VideoClip c in e.NewItems)
             {
-                if (c.TimelineStart <= 0.0001 && c.OriginalDuration > 0)
+                // Only auto-append-to-end when the caller didn't supply a deliberate position.
+                bool wasExplicit = _explicitlyPositioned.Remove(c);
+                if (!wasExplicit && c.TimelineStart <= 0.0001 && c.OriginalDuration > 0)
                 {
                     double maxEnd = 0;
                     foreach (var other in Clips)
@@ -432,6 +526,7 @@ public partial class Timeline : UserControl
                 }
                 c.PropertyChanged += (_, _) => OnClipPropChanged(c);
                 AddClipBar(c);
+                AddAudioBar(c);
             }
         if (e.OldItems != null)
             foreach (VideoClip c in e.OldItems)
@@ -441,11 +536,18 @@ public partial class Timeline : UserControl
                     clipCanvas.Children.Remove(bar.Root);
                     _clipBars.Remove(c);
                 }
+                if (_audioBars.TryGetValue(c, out var ab))
+                {
+                    audioCanvas.Children.Remove(ab.Root);
+                    _audioBars.Remove(c);
+                }
             }
         if (e.Action == NotifyCollectionChangedAction.Reset)
         {
             clipCanvas.Children.Clear();
+            audioCanvas.Children.Clear();
             _clipBars.Clear();
+            _audioBars.Clear();
         }
         RecomputeTotal();
         UpdateCanvasSize();
@@ -464,6 +566,10 @@ public partial class Timeline : UserControl
             bar.UpdatePosition(PixelsPerSecond);
             bar.UpdateLabels();
         }
+        if (_audioBars.TryGetValue(c, out var ab))
+        {
+            ab.UpdatePosition(PixelsPerSecond);
+        }
         UpdateCanvasSize();
         UpdateInfoLabels();
         if (!_isDragging) SetCurrent(CurrentSeconds);
@@ -480,7 +586,11 @@ public partial class Timeline : UserControl
         if (!_isDragging) SetCurrent(CurrentSeconds);
     }
 
-    private void UpdateAllClipPositions() { foreach (var bar in _clipBars.Values) bar.UpdatePosition(PixelsPerSecond); }
+    private void UpdateAllClipPositions()
+    {
+        foreach (var bar in _clipBars.Values) bar.UpdatePosition(PixelsPerSecond);
+        foreach (var ab in _audioBars.Values) ab.UpdatePosition(PixelsPerSecond);
+    }
     private void UpdateAllBlockPositions() { foreach (var bar in _blockBars.Values) bar.UpdatePosition(PixelsPerSecond, TotalSeconds); }
 
     private void UpdateCanvasSize()
@@ -489,15 +599,18 @@ public partial class Timeline : UserControl
         content.Width = width;
         rulerCanvas.Width = width;
         clipCanvas.Width = width;
+        audioCanvas.Width = width;
         trackCanvas.Width = width;
-        trackCanvas.Height = Math.Max(140, _blockBars.Count * 30 + 12);
+        trackCanvas.Height = Math.Max(60, _blockBars.Count * 30 + 12);
         playheadLayer.Width = width;
+        playheadThumbLayer.Width = width;
     }
 
     private void UpdateInfoLabels()
     {
-        if (clipCountLabel != null) clipCountLabel.Text = $"{Clips.Count} clips · {Blocks.Count} blocks";
+        if (clipCountLabel != null) clipCountLabel.Text = $"{Clips.Count} clips · {Blocks.Count} blocks · {FormatTime(TotalSeconds)}";
         if (zoomLabel != null) zoomLabel.Text = $"{(int)(PixelsPerSecond / 60.0 * 100)}%";
+        if (blockTrackCountLabel != null) blockTrackCountLabel.Text = $"{_blockBars.Count} tracks";
     }
 
     private Border? _dropHint;
@@ -576,9 +689,19 @@ public partial class Timeline : UserControl
 
     private void AddClipBar(VideoClip clip)
     {
+        // Audio-only clips appear only in A1 lane, not in V1.
+        if (clip.IsAudioOnly) return;
         var bar = new ClipBar(clip, this);
         _clipBars[clip] = bar;
         clipCanvas.Children.Add(bar.Root);
+        bar.UpdatePosition(PixelsPerSecond);
+    }
+
+    private void AddAudioBar(VideoClip clip)
+    {
+        var bar = new AudioBar(clip, this);
+        _audioBars[clip] = bar;
+        audioCanvas.Children.Add(bar.Root);
         bar.UpdatePosition(PixelsPerSecond);
     }
 
@@ -720,6 +843,9 @@ public partial class Timeline : UserControl
     {
         if (double.IsNaN(sec) || sec < 0) sec = 0;
         var ts = TimeSpan.FromSeconds(sec);
+        // For videos ≥ 1 hour, include hours so 1h 43m 50s shows as "01:43:50.008", not "43:50.008"
+        if (ts.TotalHours >= 1)
+            return $"{(int)ts.TotalHours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}.{ts.Milliseconds:D3}";
         return $"{ts.Minutes:D2}:{ts.Seconds:D2}.{ts.Milliseconds:D3}";
     }
 }
@@ -845,7 +971,8 @@ internal class ClipBar
             e.Handled = true;
         };
 
-        // === Body drag - moves the clip; on release, snap to slot + ripple-abut others ===
+        // === Body drag - FREE positioning. Clip follows cursor, gaps are allowed.
+        // On release: magnetic snap to nearby edges + overlap resolution if any. ===
         _dragThumb.DragStarted += (_, _) =>
         {
             _owner.RaiseClipSelected(Clip);
@@ -858,18 +985,15 @@ internal class ClipBar
         {
             var totalDxSec = e.HorizontalChange / _owner.PixelsPerSecond;
             Clip.TimelineStart = Math.Max(0, _dragStartTimelineStart + totalDxSec);
-            var centerSec = Clip.TimelineStart + Clip.EffectiveDuration / 2;
-            var slotSec = _owner.ComputeInsertSlot(Clip, centerSec);
-            _owner.ShowInsertIndicator(slotSec * _owner.PixelsPerSecond);
+            // No insert indicator during free drag - the clip itself shows you where it's going.
         };
         _dragThumb.DragCompleted += (_, _) =>
         {
             _bg.Opacity = 1.0;
             Panel.SetZIndex(Root, 0);
             _owner.HideInsertIndicator();
-            // Snap to slot and abut
-            var centerSec = Clip.TimelineStart + Clip.EffectiveDuration / 2;
-            _owner.ReorderClipToPosition(Clip, centerSec);
+            // Apply magnetic snap + overlap resolution at the current free position
+            _owner.ReorderClipToPosition(Clip, Clip.TimelineStart);
             _owner.EndDrag();
         };
 
@@ -983,7 +1107,7 @@ internal class ClipBar
                 if (!System.IO.File.Exists(sourceFile)) return;
                 long stamp = 0;
                 try { stamp = new System.IO.FileInfo(sourceFile).LastWriteTimeUtc.Ticks; } catch { }
-                int count = 8;
+                int count = VideoEditor.Services.AppSettings.ThumbnailsPerClip;
                 var key = $"{System.IO.Path.GetFileNameWithoutExtension(sourceFile)}_{stamp}_{(int)(inSec * 1000)}_{(int)(outSec * 1000)}_{count}";
                 var paths = await ff.ExtractThumbnailStripAsync(sourceFile, inSec, outSec, count, 160, key);
                 if (token.IsCancellationRequested) return;
@@ -1169,9 +1293,11 @@ internal class BlockBar
         };
         _dragThumb.DragDelta += (_, e) =>
         {
+            // Free positioning - block can be dragged anywhere on the timeline, even past current end.
+            // The timeline auto-expands via RecomputeTotal (which considers block.EndSeconds).
             var totalDxSec = e.HorizontalChange / _owner.PixelsPerSecond;
             var len = _dragStartEnd - _dragStartStart;
-            var newStart = Math.Max(0, Math.Min(Math.Max(1, _owner.TotalSeconds) - len, _dragStartStart + totalDxSec));
+            var newStart = Math.Max(0, _dragStartStart + totalDxSec);
             Block.StartSeconds = newStart;
             Block.EndSeconds = newStart + len;
         };
@@ -1228,5 +1354,305 @@ internal class BlockBar
         _bg.Opacity = sel ? 1.0 : 0.85;
         _bg.Stroke = new SolidColorBrush(sel ? Color.FromRgb(0xFF, 0xD7, 0x00) : Color.FromArgb(0x80, 0xFF, 0xFF, 0xFF));
         _bg.StrokeThickness = sel ? 2 : 1;
+    }
+}
+
+// ============================ AudioBar control ============================
+// Permanent waveform bar for each clip's audio - matches the A1 lane design.
+internal class AudioBar
+{
+    public Grid Root { get; }
+    public VideoClip Clip { get; }
+    private readonly Timeline _owner;
+    private readonly Rectangle _bg;
+    private readonly Image _waveImg;
+    private readonly Border _label;
+    private readonly TextBlock _labelText;
+    private readonly Rectangle _mutedStripes;
+    private CancellationTokenSource? _waveCts;
+
+    public AudioBar(VideoClip clip, Timeline owner)
+    {
+        Clip = clip; _owner = owner;
+        Root = new Grid { Height = 52, ClipToBounds = true };
+
+        // Audio-only clips get a purple gradient to visually distinguish them as their own entity.
+        // Regular (clip-attached) audio bars get the design's blue gradient.
+        var (top, bot, stroke) = clip.IsAudioOnly
+            ? (Color.FromRgb(0x6E, 0x44, 0xD6), Color.FromRgb(0x3A, 0x22, 0x6E), Color.FromArgb(0x80, 0xC0, 0xA0, 0xFF))
+            : (Color.FromRgb(0x1D, 0x3A, 0x6E), Color.FromRgb(0x12, 0x22, 0x44), Color.FromArgb(0x40, 0xA0, 0xB4, 0xFF));
+        _bg = new Rectangle
+        {
+            RadiusX = 5, RadiusY = 5,
+            Fill = new LinearGradientBrush(top, bot, 90),
+            Stroke = new SolidColorBrush(stroke),
+            StrokeThickness = 1
+        };
+        Root.Children.Add(_bg);
+
+        _waveImg = new Image
+        {
+            Stretch = Stretch.Fill,
+            IsHitTestVisible = false,
+            Margin = new Thickness(2)
+        };
+        Root.Children.Add(_waveImg);
+
+        // Diagonal red stripes when muted
+        _mutedStripes = new Rectangle
+        {
+            RadiusX = 5, RadiusY = 5,
+            IsHitTestVisible = false,
+            Visibility = Visibility.Collapsed,
+            Fill = new DrawingBrush
+            {
+                TileMode = TileMode.Tile,
+                Viewport = new Rect(0, 0, 8, 8),
+                ViewportUnits = BrushMappingMode.Absolute,
+                Drawing = new GeometryDrawing
+                {
+                    Brush = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0x6B, 0x6B)),
+                    Geometry = Geometry.Parse("M0,8 L8,0 L8,4 L4,8 Z")
+                }
+            }
+        };
+        Root.Children.Add(_mutedStripes);
+
+        _label = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(0x80, 0, 0, 0)),
+            CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(5, 1, 5, 1),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(6, 4, 0, 0),
+            IsHitTestVisible = false
+        };
+        _labelText = new TextBlock
+        {
+            Foreground = new SolidColorBrush(Color.FromArgb(0xE0, 0xFF, 0xFF, 0xFF)),
+            FontSize = 9.5,
+            FontFamily = new FontFamily("Consolas"),
+            FontWeight = FontWeights.SemiBold
+        };
+        _label.Child = _labelText;
+        Root.Children.Add(_label);
+
+        Canvas.SetTop(Root, 6);
+        UpdateLabel();
+
+        Root.Cursor = Cursors.Hand;
+        Root.MouseLeftButtonDown += (s, e) =>
+        {
+            _owner.RaiseAudioSelected(Clip);
+            e.Handled = true;
+        };
+        Root.MouseRightButtonUp += (s, e) =>
+        {
+            _owner.RaiseAudioSelected(Clip);
+            ShowAudioContextMenu();
+            e.Handled = true;
+        };
+
+        // Audio-only clips are first-class timeline entities - independently draggable, trimmable,
+        // splittable, and selectable. The body drag moves the clip; left/right edge handles trim.
+        if (Clip.IsAudioOnly)
+        {
+            double dragStartTL = 0;
+            Point dragStartMouse = default;
+            Root.Cursor = Cursors.SizeAll;
+            Root.MouseLeftButtonDown += (s, e) =>
+            {
+                // Don't start a drag when the user is Shift-clicking to split (handled by the preview handler).
+                if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0) return;
+                if (e.ClickCount == 1)
+                {
+                    dragStartTL = Clip.TimelineStart;
+                    dragStartMouse = e.GetPosition(_owner);
+                    Root.CaptureMouse();
+                }
+            };
+            Root.MouseMove += (s, e) =>
+            {
+                if (Root.IsMouseCaptured)
+                {
+                    var p = e.GetPosition(_owner);
+                    var dxPx = p.X - dragStartMouse.X;
+                    Clip.TimelineStart = Math.Max(0, dragStartTL + dxPx / _owner.PixelsPerSecond);
+                }
+            };
+            Root.MouseLeftButtonUp += (s, e) =>
+            {
+                if (Root.IsMouseCaptured) Root.ReleaseMouseCapture();
+            };
+
+            // Shift+Click → split at clicked position (same as ClipBar)
+            Root.PreviewMouseLeftButtonDown += (s, e) =>
+            {
+                if (e.ClickCount == 1 && (Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+                {
+                    var p = e.GetPosition(Root);
+                    var w = Root.Width > 0 ? Root.Width : 1;
+                    var fraction = Math.Max(0.05, Math.Min(0.95, p.X / w));
+                    _owner.LastRequestedSplitSourceSec = Clip.InPoint + fraction * (Clip.OutPoint - Clip.InPoint);
+                    _owner.RaiseAudioSelected(Clip);
+                    _owner.RaiseClipContext(Clip, "splitHere");
+                    e.Handled = true;
+                }
+            };
+
+            // Left trim handle
+            var leftHandle = new Thumb { Width = 6, HorizontalAlignment = HorizontalAlignment.Left, Cursor = Cursors.SizeWE };
+            leftHandle.Template = ClipBar.HandleTemplate();
+            Root.Children.Add(leftHandle);
+            // Right trim handle
+            var rightHandle = new Thumb { Width = 6, HorizontalAlignment = HorizontalAlignment.Right, Cursor = Cursors.SizeWE };
+            rightHandle.Template = ClipBar.HandleTemplate();
+            Root.Children.Add(rightHandle);
+
+            double tIn = 0, tOut = 0, tTL = 0;
+            leftHandle.DragStarted += (_, _) =>
+            {
+                _owner.RaiseAudioSelected(Clip);
+                tIn = Clip.InPoint; tOut = Clip.OutPoint; tTL = Clip.TimelineStart;
+            };
+            leftHandle.DragDelta += (_, e) =>
+            {
+                var totalDxSec = e.HorizontalChange / _owner.PixelsPerSecond;
+                var speed = Math.Max(0.01, Clip.Speed);
+                var dxSource = totalDxSec * speed;
+                var newIn = Math.Max(0, Math.Min(tOut - 0.1, tIn + dxSource));
+                var actualDxSource = newIn - tIn;
+                var actualDxTimeline = actualDxSource / speed;
+                Clip.InPoint = newIn;
+                Clip.TimelineStart = Math.Max(0, tTL + actualDxTimeline);
+            };
+            rightHandle.DragStarted += (_, _) =>
+            {
+                _owner.RaiseAudioSelected(Clip);
+                tIn = Clip.InPoint; tOut = Clip.OutPoint;
+            };
+            rightHandle.DragDelta += (_, e) =>
+            {
+                var totalDxSec = e.HorizontalChange / _owner.PixelsPerSecond;
+                var speed = Math.Max(0.01, Clip.Speed);
+                var dxSource = totalDxSec * speed;
+                Clip.OutPoint = Math.Min(Clip.OriginalDuration, Math.Max(tIn + 0.1, tOut + dxSource));
+            };
+        }
+
+        // Trigger waveform generation
+        ScheduleWaveformLoad();
+    }
+
+    private void ShowAudioContextMenu()
+    {
+        var menu = new ContextMenu();
+        void Add(string h, string a)
+        {
+            var mi = new MenuItem { Header = h };
+            mi.Click += (_, _) => _owner.RaiseAudioContext(Clip, a);
+            menu.Items.Add(mi);
+        }
+        bool muted = Clip.Volume <= 0.001;
+        if (!Clip.IsAudioOnly)
+        {
+            // Detach is the headline action - styled to stand out
+            var detachMi = new MenuItem
+            {
+                Header = "🔗➜ Detach Audio (split into its own track)",
+                FontWeight = FontWeights.Bold,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x8B, 0x5C, 0xFF))
+            };
+            detachMi.Click += (_, _) => _owner.RaiseAudioContext(Clip, "detachAudio");
+            menu.Items.Add(detachMi);
+            menu.Items.Add(new Separator());
+        }
+        Add("🔊 Change Volume…", "volume");
+        if (muted) Add("🔊 Restore Audio", "unmute");
+        else Add("🔇 Mute Audio", "mute");
+        Add("🚫 Remove Audio Track (re-encode)", "removeAudioTrack");
+        menu.Items.Add(new Separator());
+        Add("↗ Extract Audio…", "extractAudio");
+        Add("🎵 Add External Audio…", "addAudio");
+        if (Clip.IsAudioOnly)
+        {
+            menu.Items.Add(new Separator());
+            Add("🗑 Delete Audio Clip", "deleteAudioClip");
+        }
+        menu.PlacementTarget = Root;
+        menu.IsOpen = true;
+    }
+
+    public void SetSelected(bool sel)
+    {
+        _bg.Stroke = new SolidColorBrush(sel
+            ? Color.FromRgb(0xFF, 0xD7, 0x00)
+            : Color.FromArgb(0x40, 0xA0, 0xB4, 0xFF));
+        _bg.StrokeThickness = sel ? 2.5 : 1;
+    }
+
+    public void UpdatePosition(double pps)
+    {
+        Canvas.SetLeft(Root, Clip.TimelineStart * pps);
+        Root.Width = Math.Max(20, Clip.EffectiveDuration * pps);
+        UpdateLabel();
+    }
+
+    private void UpdateLabel()
+    {
+        bool muted = Clip.Volume <= 0.001;
+        _mutedStripes.Visibility = muted ? Visibility.Visible : Visibility.Collapsed;
+        _bg.Opacity = muted ? 0.4 : 1.0;
+        _waveImg.Opacity = muted ? 0.3 : 0.85;
+        if (Clip.IsAudioOnly)
+            _labelText.Text = muted ? "🔇 Detached · Muted" : $"🔗➜ Detached · Vol {(int)(Clip.Volume * 100)}%";
+        else
+            _labelText.Text = muted ? "🔇 Muted" : $"♫ Vol {(int)(Clip.Volume * 100)}%";
+    }
+
+    private void ScheduleWaveformLoad()
+    {
+        if (_owner.FFmpeg == null) return;
+        if (!VideoEditor.Services.AppSettings.ShowWaveformPerClip) return;
+        _waveCts?.Cancel();
+        _waveCts = new CancellationTokenSource();
+        var token = _waveCts.Token;
+        var dispatcher = Root.Dispatcher;
+        var ff = _owner.FFmpeg;
+        var sourceFile = Clip.SourceFile;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(200, token);
+                if (token.IsCancellationRequested) return;
+                if (!System.IO.File.Exists(sourceFile)) return;
+                long stamp = 0;
+                try { stamp = new System.IO.FileInfo(sourceFile).LastWriteTimeUtc.Ticks; } catch { }
+                var key = $"{System.IO.Path.GetFileNameWithoutExtension(sourceFile)}_{stamp}_wave";
+                var path = await ff.GenerateWaveformAsync(sourceFile, 1024, 56, key);
+                if (token.IsCancellationRequested || path == null) return;
+                dispatcher.Invoke(() => ApplyWaveform(path));
+            }
+            catch { }
+        });
+    }
+
+    private void ApplyWaveform(string path)
+    {
+        try
+        {
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
+            bmp.UriSource = new Uri(path);
+            bmp.EndInit();
+            bmp.Freeze();
+            _waveImg.Source = bmp;
+        }
+        catch { }
     }
 }

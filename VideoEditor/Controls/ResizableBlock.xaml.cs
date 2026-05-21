@@ -71,9 +71,60 @@ public partial class ResizableBlock : UserControl
         Canvas.SetTop(this, Model.Y);
         Width = Model.Width;
         Height = Model.Height;
-        var brush = new SolidColorBrush(Model.Color);
-        fill.Fill = brush;
-        fill.Opacity = Model.Mode == BlockMode.Solid ? 0.95 : 0.5;
+
+        // All modes are now FULLY OPAQUE in preview to match the exported result.
+        // Each mode also gets a distinct visual pattern + badge so the user knows what will be applied.
+        switch (Model.Mode)
+        {
+            case BlockMode.Solid:
+                fill.Fill = new SolidColorBrush(Model.Color);
+                fill.Opacity = 1.0;
+                patternFill.Visibility = Visibility.Collapsed;
+                modeBadgeText.Text = "SOLID";
+                break;
+
+            case BlockMode.Blur:
+                // Dark frosted-glass look (we can't actually blur the underlying video in WPF preview,
+                // so we show a stylized indicator that conveys "this region will be blurred on export").
+                fill.Fill = new LinearGradientBrush(
+                    Color.FromArgb(0xE6, 0x1A, 0x1F, 0x2C),
+                    Color.FromArgb(0xE6, 0x0B, 0x10, 0x1A),
+                    90);
+                fill.Opacity = 1.0;
+                patternFill.Fill = new DrawingBrush
+                {
+                    TileMode = TileMode.Tile,
+                    Viewport = new Rect(0, 0, 24, 24),
+                    ViewportUnits = BrushMappingMode.Absolute,
+                    Drawing = new GeometryDrawing
+                    {
+                        Brush = new SolidColorBrush(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)),
+                        Geometry = Geometry.Parse("M0,0 m6,6 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0")
+                    }
+                };
+                patternFill.Visibility = Visibility.Visible;
+                modeBadgeText.Text = "BLUR";
+                break;
+
+            case BlockMode.Pixelate:
+                // Checkered pattern indicating pixelation
+                fill.Fill = new SolidColorBrush(Color.FromArgb(0xE6, 0x2A, 0x20, 0x18));
+                fill.Opacity = 1.0;
+                patternFill.Fill = new DrawingBrush
+                {
+                    TileMode = TileMode.Tile,
+                    Viewport = new Rect(0, 0, 14, 14),
+                    ViewportUnits = BrushMappingMode.Absolute,
+                    Drawing = new GeometryDrawing
+                    {
+                        Brush = new SolidColorBrush(Color.FromArgb(0x90, 0xFF, 0xFF, 0xFF)),
+                        Geometry = Geometry.Parse("M0,0 L7,0 L7,7 L0,7 Z M7,7 L14,7 L14,14 L7,14 Z")
+                    }
+                };
+                patternFill.Visibility = Visibility.Visible;
+                modeBadgeText.Text = "PIXELATE";
+                break;
+        }
     }
 
     private void OnDrag(object sender, DragDeltaEventArgs e)

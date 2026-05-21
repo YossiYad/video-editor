@@ -22,7 +22,14 @@ public class VideoClip : INotifyPropertyChanged
     private int _videoHeight;
     private int _loopCount = 1;
     private double _timelineStart;
+    private bool _isAudioOnly;
 
+    /// <summary>
+    /// When true, this clip carries only audio (no video). Used for "detached" audio that the user
+    /// has split off from a video clip. Audio-only clips appear in the A1 lane only and don't
+    /// participate in V1 ripple-abut.
+    /// </summary>
+    public bool IsAudioOnly { get => _isAudioOnly; set => Set(ref _isAudioOnly, value); }
     public double TimelineStart { get => _timelineStart; set => Set(ref _timelineStart, value); }
     public string SourceFile { get => _sourceFile; set => Set(ref _sourceFile, value); }
     public double OriginalDuration { get => _originalDuration; set => Set(ref _originalDuration, value); }

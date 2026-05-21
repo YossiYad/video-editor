@@ -43,9 +43,14 @@ public class ScreenRecorderWindow : Window
         {
             try
             {
+                if (!int.TryParse(fps.Text, out var fpsValue) || fpsValue < 1 || fpsValue > 120)
+                {
+                    MessageBox.Show("FPS must be between 1 and 120.");
+                    return;
+                }
                 var args = webcam
-                    ? $"-y -f dshow -framerate {fps.Text} -i video=\"USB Video Device\" \"{path.Text}\""
-                    : $"-y -f gdigrab -framerate {fps.Text} -i desktop -c:v libx264 -preset ultrafast -pix_fmt yuv420p \"{path.Text}\"";
+                    ? $"-y -f dshow -framerate {fpsValue} -i video=\"USB Video Device\" \"{path.Text}\""
+                    : $"-y -f gdigrab -framerate {fpsValue} -i desktop -c:v libx264 -preset ultrafast -pix_fmt yuv420p \"{path.Text}\"";
                 _proc = new Process
                 {
                     StartInfo = new ProcessStartInfo
@@ -55,10 +60,17 @@ public class ScreenRecorderWindow : Window
                         UseShellExecute = false,
                         CreateNoWindow = true,
                         RedirectStandardInput = true,
-                        RedirectStandardError = true
-                    }
+                        RedirectStandardError = true,
+                        RedirectStandardOutput = true
+                    },
+                    EnableRaisingEvents = true
                 };
                 _proc.Start();
+                // Drain both pipes — otherwise long recordings can hang when the buffer fills.
+                _proc.BeginErrorReadLine();
+                _proc.BeginOutputReadLine();
+                _proc.ErrorDataReceived += (_, _) => { /* discard */ };
+                _proc.OutputDataReceived += (_, _) => { /* discard */ };
                 startBtn.IsEnabled = false; stopBtn.IsEnabled = true;
             }
             catch (Exception ex) { MessageBox.Show(ex.Message); }
@@ -67,12 +79,7 @@ public class ScreenRecorderWindow : Window
         {
             try
             {
-                if (_proc != null && !_proc.HasExited)
-                {
-                    _proc.StandardInput.WriteLine("q");
-                    _proc.WaitForExit(4000);
-                    if (!_proc.HasExited) _proc.Kill();
-                }
+                StopRecording();
                 MessageBox.Show("Saved: " + path.Text);
                 startBtn.IsEnabled = true; stopBtn.IsEnabled = false;
             }
@@ -81,5 +88,21 @@ public class ScreenRecorderWindow : Window
 
         Content = g;
         WindowBuilder.OkCancel(this, footer);
+
+        // If the user closes the window without pressing Stop, don't leave ffmpeg running.
+        Closed += (_, _) => { try { StopRecording(); } catch { } };
+    }
+
+    private void StopRecording()
+    {
+        if (_proc == null || _proc.HasExited) return;
+        try { _proc.StandardInput.WriteLine("q"); } catch { }
+        if (!_proc.WaitForExit(4000))
+        {
+            try { _proc.Kill(); } catch { }
+            _proc.WaitForExit(2000);
+        }
+        try { _proc.Dispose(); } catch { }
+        _proc = null;
     }
 }

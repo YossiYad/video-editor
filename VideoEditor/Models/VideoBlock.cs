@@ -16,6 +16,7 @@ public class VideoBlock : INotifyPropertyChanged
     private Color _color = Colors.Black;
     private BlockMode _mode = BlockMode.Solid;
     private int _blurStrength = 25;
+    private string _label = "Block";
 
     public double X { get => _x; set => Set(ref _x, value); }
     public double Y { get => _y; set => Set(ref _y, value); }
@@ -28,7 +29,7 @@ public class VideoBlock : INotifyPropertyChanged
     public BlockMode Mode { get => _mode; set => Set(ref _mode, value); }
     public int BlurStrength { get => _blurStrength; set => Set(ref _blurStrength, value); }
 
-    public string Label { get; set; } = "Block";
+    public string Label { get => _label; set => Set(ref _label, value); }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

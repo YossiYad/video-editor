@@ -32,12 +32,33 @@ public partial class MainWindow : Window
     // Clipboard for Ctrl+C / Ctrl+V
     private VideoClip? _clipboardClip;
     private VideoBlock? _clipboardBlock;
+    private double? _clipboardAudioVolume;
+
+    // The audio bar of a clip currently selected on the timeline (separate from clip body selection)
+    private VideoClip? _selectedAudio;
 
     public MainWindow()
     {
         InitializeComponent();
+
+        // Apply Language preference (RTL for Hebrew)
+        ApplyLanguage();
+        // Apply default master volume from settings
+        _masterVolume = AppSettings.DefaultMasterVolume / 100.0;
+        volumeSlider.Value = AppSettings.DefaultMasterVolume;
         videoView.Volume = _masterVolume;
+        videoView.ScrubbingEnabled = AppSettings.ScrubbingQuality != "smooth";
         timeline.FFmpeg = _ff;
+        // Re-apply on settings change at runtime
+        AppSettings.Changed += () =>
+        {
+            Dispatcher.Invoke(() =>
+            {
+                ApplyLanguage();
+                if (_playingClip == null) volumeSlider.Value = AppSettings.DefaultMasterVolume;
+                videoView.ScrubbingEnabled = AppSettings.ScrubbingQuality != "smooth";
+            });
+        };
 
         _tick.Tick += Tick_OnTick;
         _tick.Start();
@@ -52,10 +73,15 @@ public partial class MainWindow : Window
         timeline.FilesDropped += (files, sec) => AddFiles(files, sec);
         timeline.ClipScrubPreview += ScrubToClipFrame;
         timeline.ClipEdgeDragEnded += c => { /* leave preview at the trim point */ };
+        timeline.AudioSelected += OnAudioSelected;
+        timeline.AudioContextAction += OnAudioContextAction;
         timeline.ClipsChanged += () =>
         {
             if (timeline.Clips.Count > 0 && _playingClip == null) LoadClipForPreview(timeline.Clips[0], 0);
+            UpdateStats();
+            UpdateTimeDisplays();
         };
+        timeline.BlocksChanged += () => UpdateStats();
 
         overlayCanvas.SizeChanged += (_, _) => RepositionOverlay();
         overlayCanvas.MouseLeftButtonDown += OverlayCanvas_BackgroundClick;
@@ -91,7 +117,7 @@ public partial class MainWindow : Window
         foreach (var f in files)
         {
             if (!File.Exists(f)) continue;
-            if (!exts.Contains(Path.GetExtension(f).ToLower())) continue;
+            if (!exts.Contains(Path.GetExtension(f).ToLowerInvariant())) continue;
             await AddClipAsync(f, insertAtSec);
             if (insertAtSec.HasValue) insertAtSec = insertAtSec.Value + 0.001; // next file goes after this one
         }
@@ -121,7 +147,10 @@ public partial class MainWindow : Window
             {
                 timeline.Clips.Add(clip);
             }
-            status.Text = $"Added: {Path.GetFileName(path)} ({Timeline.FormatTime(d)})";
+            status.Text = $"Added: {Path.GetFileName(path)} · {w}×{h} · {Timeline.FormatTime(d)}";
+            projectName.Text = Path.GetFileNameWithoutExtension(path);
+            projDims.Text = $"{w}×{h}";
+            UpdateStats();
             if (timeline.Clips.Count == 1)
             {
                 LoadClipForPreview(clip, 0);
@@ -132,6 +161,14 @@ public partial class MainWindow : Window
         {
             status.Text = "Failed to add: " + ex.Message;
         }
+    }
+
+    private void UpdateStats()
+    {
+        statClips.Text = timeline.Clips.Count.ToString();
+        statBlocks.Text = timeline.Blocks.Count.ToString();
+        statusCache.Text = $"Cache: {timeline.Clips.Count * 8} thumbnails";
+        hudBlocks.Text = $"{timeline.Blocks.Count} blocks";
     }
 
     private async void OpenBtn_Click(object sender, RoutedEventArgs e)
@@ -268,8 +305,19 @@ public partial class MainWindow : Window
                 }
                 else
                 {
-                    _isPlaying = false;
-                    videoView.Pause();
+                    if (AppSettings.LoopOnEnd && timeline.Clips.Count > 0)
+                    {
+                        // Loop: restart from beginning
+                        var first = timeline.Clips.OrderBy(c => c.TimelineStart).First();
+                        timeline.SetCurrent(first.TimelineStart);
+                        LoadClipForPreview(first, 0);
+                        if (_isPlaying) videoView.Play();
+                    }
+                    else
+                    {
+                        _isPlaying = false;
+                        videoView.Pause();
+                    }
                 }
                 return;
             }
@@ -277,8 +325,32 @@ public partial class MainWindow : Window
             var withinClip = (mediaPos - _playingClip.InPoint) / Math.Max(0.01, _playingClip.Speed);
             timeline.SetCurrent(clipStart + withinClip);
             UpdateBlockVisibility();
+            UpdateTimeDisplays();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // The tick fires 12×/sec; surface any unexpected failure in the debugger and the
+            // status bar so problems don't silently snowball.
+            System.Diagnostics.Debug.WriteLine($"Tick error: {ex}");
+            status.Text = "Playback tick error: " + ex.Message;
+        }
+    }
+
+    private void UpdateTimeDisplays()
+    {
+        curTimeText.Text = Timeline.FormatTime(timeline.CurrentSeconds);
+        totTimeText.Text = Timeline.FormatTime(timeline.TotalSeconds);
+        if (_playingClip != null)
+        {
+            hudClipName.Text = Path.GetFileName(_playingClip.SourceFile);
+            var pos = videoView.Position.TotalSeconds;
+            hudTimeWithin.Text = Timeline.FormatTime(pos) + " in source";
+        }
+        else
+        {
+            hudClipName.Text = "No clip loaded";
+            hudTimeWithin.Text = "--:--";
+        }
     }
 
     private void VideoView_MediaOpened(object sender, RoutedEventArgs e) { }
@@ -317,8 +389,8 @@ public partial class MainWindow : Window
         }
         UpdateBlockVisibility();
     }
-    private void Back5_Click(object sender, RoutedEventArgs e) => SeekTo(Math.Max(0, timeline.CurrentSeconds - 5));
-    private void Fwd5_Click(object sender, RoutedEventArgs e) => SeekTo(Math.Min(timeline.TotalSeconds, timeline.CurrentSeconds + 5));
+    private void Back5_Click(object sender, RoutedEventArgs e) => SeekTo(Math.Max(0, timeline.CurrentSeconds - AppSettings.BackForwardSeconds));
+    private void Fwd5_Click(object sender, RoutedEventArgs e) => SeekTo(Math.Min(timeline.TotalSeconds, timeline.CurrentSeconds + AppSettings.BackForwardSeconds));
     private void PrevClip_Click(object sender, RoutedEventArgs e)
     {
         if (_playingClip == null) return;
@@ -334,8 +406,58 @@ public partial class MainWindow : Window
     private void Volume_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         _masterVolume = e.NewValue / 100.0;
-        if (_playingClip != null) videoView.Volume = _masterVolume * _playingClip.Volume;
-        else videoView.Volume = _masterVolume;
+        if (videoView != null)
+        {
+            if (_playingClip != null) videoView.Volume = _masterVolume * _playingClip.Volume;
+            else videoView.Volume = _masterVolume;
+        }
+        if (volText != null) volText.Text = ((int)Math.Round(e.NewValue)).ToString();
+    }
+
+    private async void ExtractAudio_Click(object s, RoutedEventArgs e)
+    {
+        var c = CurrentClip();
+        if (c == null) { MessageBox.Show("Select a clip first."); return; }
+        var sfd = new SaveFileDialog
+        {
+            FileName = Path.GetFileNameWithoutExtension(c.SourceFile) + "_audio.mp3",
+            Filter = "MP3|*.mp3|AAC|*.aac|WAV|*.wav|OGG|*.ogg|FLAC|*.flac"
+        };
+        if (sfd.ShowDialog() != true) return;
+        status.Text = "Extracting audio...";
+        progress.Value = 0;
+        var prog = new Progress<double>(v => Dispatcher.Invoke(() => progress.Value = v));
+        try
+        {
+            await _ff.ExtractAudioAsync(c.SourceFile, sfd.FileName, c.OriginalDuration, prog);
+            status.Text = "Audio extracted: " + Path.GetFileName(sfd.FileName);
+            progress.Value = 1;
+        }
+        catch (Exception ex)
+        {
+            status.Text = "Extract failed: " + ex.Message;
+            MessageBox.Show(ex.Message, "Error");
+        }
+    }
+
+    private async void MuteAudio_Click(object s, RoutedEventArgs e)
+    {
+        var c = CurrentClip();
+        if (c == null) { MessageBox.Show("Select a clip first."); return; }
+        var result = MessageBox.Show(
+            "Mute audio on this clip (live, no re-encode), or remove the audio track entirely (re-encode)?\n\nYes = Mute  |  No = Remove track  |  Cancel = nothing",
+            "Mute / Remove Audio", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+        if (result == MessageBoxResult.Cancel) return;
+        if (result == MessageBoxResult.Yes)
+        {
+            c.Volume = 0;
+            status.Text = "Clip muted (export will silence it).";
+            return;
+        }
+        // Remove audio track via FFmpeg
+        await ApplyDestructiveOpAsync(c, async (input, output, prog) =>
+            await _ff.RemoveAudioAsync(input, output, c.OriginalDuration, prog));
+        status.Text = "Audio track removed from clip.";
     }
 
     // ===== Block management =====
@@ -389,6 +511,7 @@ public partial class MainWindow : Window
         timeline.SelectBlock(b);
         blockPanel.Visibility = b != null ? Visibility.Visible : Visibility.Collapsed;
         clipPanel.Visibility = Visibility.Collapsed;
+        emptyInspector.Visibility = (b == null && _selectedClip == null) ? Visibility.Visible : Visibility.Collapsed;
         if (b == null) return;
         _suppress = true;
         lblBox.Text = b.Label;
@@ -407,6 +530,7 @@ public partial class MainWindow : Window
         timeline.SelectClip(c);
         clipPanel.Visibility = c != null ? Visibility.Visible : Visibility.Collapsed;
         blockPanel.Visibility = Visibility.Collapsed;
+        emptyInspector.Visibility = (c == null && _selectedBlock == null) ? Visibility.Visible : Visibility.Collapsed;
         if (c == null) return;
         _suppress = true;
         clipNameText.Text = Path.GetFileName(c.SourceFile);
@@ -467,10 +591,17 @@ public partial class MainWindow : Window
     private void ClipInOut_Changed(object sender, TextChangedEventArgs e)
     {
         if (_suppress || _selectedClip == null) return;
-        if (double.TryParse(clipInBox.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var i))
-            _selectedClip.InPoint = Math.Max(0, Math.Min(_selectedClip.OutPoint - 0.1, i));
-        if (double.TryParse(clipOutBox.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var o))
-            _selectedClip.OutPoint = Math.Min(_selectedClip.OriginalDuration, Math.Max(_selectedClip.InPoint + 0.1, o));
+        // Parse both first, then clamp against each other — otherwise we'd clamp In against
+        // an outdated Out (or vice versa) when the user is editing the second field.
+        var inOk = double.TryParse(clipInBox.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var newIn);
+        var outOk = double.TryParse(clipOutBox.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var newOut);
+        if (!inOk) newIn = _selectedClip.InPoint;
+        if (!outOk) newOut = _selectedClip.OutPoint;
+        newIn = Math.Max(0, newIn);
+        newOut = Math.Min(_selectedClip.OriginalDuration, newOut);
+        if (newOut < newIn + 0.1) newOut = newIn + 0.1;
+        _selectedClip.InPoint = newIn;
+        _selectedClip.OutPoint = newOut;
     }
     private void ClipSpeed_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
@@ -548,6 +679,36 @@ public partial class MainWindow : Window
         // Skip shortcuts if a text box has focus (so typing works normally)
         if (Keyboard.FocusedElement is TextBoxBase) return;
 
+        if (e.Key == Key.F1 || (e.Key == Key.OemQuestion && Keyboard.Modifiers == ModifierKeys.None))
+        {
+            Help_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.OemComma && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            Settings_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.U && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            DownloadUrl_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.E && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            SaveBtn_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.O && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            OpenBtn_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+            return;
+        }
         if (e.Key == Key.C && Keyboard.Modifiers == ModifierKeys.Control)
         {
             HandleCopy();
@@ -571,7 +732,24 @@ public partial class MainWindow : Window
         }
         else if (e.Key == Key.Delete || e.Key == Key.Back)
         {
-            if (_selectedClip != null)
+            if (_selectedAudio != null && _selectedAudio.IsAudioOnly)
+            {
+                // Audio-only clip: full delete - it's an independent entity, not just a mute target.
+                var ac = _selectedAudio;
+                timeline.Clips.Remove(ac);
+                _selectedAudio = null;
+                _selectedClip = null;
+                status.Text = $"Deleted audio clip: {ac.DisplayName}";
+                e.Handled = true;
+            }
+            else if (_selectedAudio != null)
+            {
+                // Attached audio (sub-bar of a video clip): mute, don't destroy the clip.
+                _selectedAudio.Volume = 0;
+                status.Text = $"Muted: {_selectedAudio.DisplayName}. Right-click for Remove track / Restore.";
+                e.Handled = true;
+            }
+            else if (_selectedClip != null)
             {
                 ClipDelete_Click(this, new RoutedEventArgs());
                 e.Handled = true;
@@ -584,28 +762,149 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnAudioSelected(VideoClip c)
+    {
+        _selectedAudio = c;
+        _selectedBlock = null;
+        // For audio-only clips: treat as a full clip selection so every timeline shortcut works.
+        // For attached audio (sub-bar of a video clip): keep selection focused on the audio,
+        // not the clip itself.
+        SelectClip(c);
+        _selectedAudio = c; // SelectClip clears it; restore
+        if (!c.IsAudioOnly) _selectedClip = null; // attached audio: don't claim the clip
+        timeline.SelectAudio(c);
+        if (c.IsAudioOnly)
+            status.Text = $"Audio clip: {c.DisplayName} · S = Split · Backspace = Delete · Ctrl+C/V · drag edges to trim · drag body to move";
+        else
+            status.Text = $"Audio: {c.DisplayName} · Vol {(int)(c.Volume * 100)}% · Backspace = Mute · Ctrl+C/V = copy/paste volume";
+    }
+
+    private async void OnAudioContextAction(VideoClip c, string action)
+    {
+        _selectedClip = c;
+        _selectedAudio = c;
+        switch (action)
+        {
+            case "volume":
+                {
+                    var dlg = new VolumeWindow() { Owner = this };
+                    if (dlg.ShowDialog() == true) { c.Volume = dlg.Volume; status.Text = $"Volume → {(int)(dlg.Volume * 100)}%"; }
+                }
+                break;
+            case "mute":
+                c.Volume = 0;
+                status.Text = "Audio muted (export will silence).";
+                break;
+            case "unmute":
+                c.Volume = 1;
+                status.Text = "Audio restored.";
+                break;
+            case "removeAudioTrack":
+                await ApplyDestructiveOpAsync(c, async (input, output, prog) =>
+                    await _ff.RemoveAudioAsync(input, output, c.OriginalDuration, prog));
+                status.Text = "Audio track removed from clip.";
+                break;
+            case "extractAudio":
+                ExtractAudio_Click(this, new RoutedEventArgs());
+                break;
+            case "addAudio":
+                AddAudio_Click(this, new RoutedEventArgs());
+                break;
+            case "detachAudio":
+                await DetachAudioFromClipAsync(c);
+                break;
+            case "deleteAudioClip":
+                timeline.Clips.Remove(c);
+                _selectedAudio = null;
+                status.Text = "Detached audio clip deleted.";
+                break;
+        }
+    }
+
+    private async System.Threading.Tasks.Task DetachAudioFromClipAsync(VideoClip parent)
+    {
+        if (parent.IsAudioOnly) { status.Text = "Already an audio-only clip."; return; }
+
+        status.Text = "Detaching audio from " + parent.DisplayName + "...";
+        progress.Value = 0;
+        var prog = new Progress<double>(v => Dispatcher.Invoke(() => progress.Value = v));
+
+        try
+        {
+            // Extract to a stable cache folder next to the EXE
+            var detachedDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "detached_audio");
+            Directory.CreateDirectory(detachedDir);
+            var outputPath = Path.Combine(detachedDir,
+                $"{Path.GetFileNameWithoutExtension(parent.SourceFile)}_{Guid.NewGuid():N}.m4a");
+
+            await _ff.ExtractAudioAsync(parent.SourceFile, outputPath, parent.OriginalDuration, prog);
+            var (w, h, d) = await _ff.ProbeAsync(outputPath);
+
+            // Create a new audio-only clip with the same in/out points as the parent.
+            var audioClip = new VideoClip
+            {
+                SourceFile = outputPath,
+                OriginalDuration = d > 0 ? d : parent.OriginalDuration,
+                InPoint = parent.InPoint,
+                OutPoint = Math.Min(parent.OutPoint, d > 0 ? d : parent.OutPoint),
+                Speed = parent.Speed,
+                Volume = parent.Volume,
+                VideoWidth = 0, VideoHeight = 0,
+                AccentColor = System.Windows.Media.Color.FromRgb(0x6E, 0x44, 0xD6),
+                IsAudioOnly = true,
+                TimelineStart = parent.TimelineStart
+            };
+            timeline.Clips.Add(audioClip);
+
+            progress.Value = 1;
+            status.Text = $"✓ Audio detached as independent clip. Drag the purple bar in A1, trim its edges, split with S, copy with Ctrl+C, delete with Backspace.";
+            // Select the new audio clip so the user can immediately work with it.
+            timeline.SelectAudio(audioClip);
+        }
+        catch (Exception ex)
+        {
+            status.Text = "Detach failed: " + ex.Message;
+            MessageBox.Show("Failed to detach audio:\n" + ex.Message, "Detach Audio");
+        }
+    }
+
     private void HandleCopy()
     {
-        if (_selectedClip != null)
+        if (_selectedAudio != null)
+        {
+            _clipboardAudioVolume = _selectedAudio.Volume;
+            _clipboardClip = null;
+            _clipboardBlock = null;
+            status.Text = $"Copied audio (volume {(int)(_selectedAudio.Volume * 100)}%). Select another clip's audio and Ctrl+V to paste.";
+        }
+        else if (_selectedClip != null)
         {
             _clipboardClip = _selectedClip;
             _clipboardBlock = null;
+            _clipboardAudioVolume = null;
             status.Text = "Copied clip: " + _selectedClip.DisplayName;
         }
         else if (_selectedBlock != null)
         {
             _clipboardBlock = _selectedBlock;
             _clipboardClip = null;
+            _clipboardAudioVolume = null;
             status.Text = "Copied block: " + _selectedBlock.Label;
         }
         else
         {
-            status.Text = "Nothing selected to copy. Click a clip or block first.";
+            status.Text = "Nothing selected to copy. Click a clip / audio bar / block first.";
         }
     }
 
     private void HandlePaste()
     {
+        if (_clipboardAudioVolume.HasValue && _selectedAudio != null)
+        {
+            _selectedAudio.Volume = _clipboardAudioVolume.Value;
+            status.Text = $"Pasted audio volume ({(int)(_clipboardAudioVolume.Value * 100)}%) to {_selectedAudio.DisplayName}";
+            return;
+        }
         if (_clipboardClip != null)
         {
             var c = _clipboardClip;
@@ -622,12 +921,13 @@ public partial class MainWindow : Window
                 FlipV = c.FlipV,
                 VideoWidth = c.VideoWidth,
                 VideoHeight = c.VideoHeight,
-                AccentColor = VideoClip.NextColor(),
-                LoopCount = c.LoopCount
+                AccentColor = c.IsAudioOnly ? c.AccentColor : VideoClip.NextColor(),
+                LoopCount = c.LoopCount,
+                IsAudioOnly = c.IsAudioOnly
             };
-            // Insert right after the source clip
+            // Insert right after the source clip (audio-only: free position; video: ripple-abut)
             timeline.ReorderClipToPosition(newClip, c.TimelineStart + c.EffectiveDuration + 0.001);
-            status.Text = "Pasted clip after original.";
+            status.Text = c.IsAudioOnly ? "Pasted audio clip." : "Pasted clip after original.";
         }
         else if (_clipboardBlock != null)
         {
@@ -723,7 +1023,11 @@ public partial class MainWindow : Window
             status.Text = "Split point too close to clip edge - try further inside.";
             return;
         }
-        var leftDur = (splitAt - clip.InPoint) / Math.Max(0.01, clip.Speed) * clip.LoopCount;
+        // When the clip is looped, both halves should also loop the same number of times so
+        // the total timeline length stays consistent (the previous code only kept LoopCount on
+        // the left, producing a left half that loops and a right half that doesn't).
+        var loopCount = Math.Max(1, clip.LoopCount);
+        var leftDur = (splitAt - clip.InPoint) / Math.Max(0.01, clip.Speed) * loopCount;
         var newClip = new VideoClip
         {
             SourceFile = clip.SourceFile,
@@ -737,8 +1041,9 @@ public partial class MainWindow : Window
             FlipV = clip.FlipV,
             VideoWidth = clip.VideoWidth,
             VideoHeight = clip.VideoHeight,
-            AccentColor = VideoClip.NextColor(),
-            LoopCount = 1,
+            AccentColor = clip.IsAudioOnly ? clip.AccentColor : VideoClip.NextColor(),
+            LoopCount = loopCount,
+            IsAudioOnly = clip.IsAudioOnly,  // Preserve type when splitting audio-only clips
             TimelineStart = clip.TimelineStart + leftDur
         };
         clip.OutPoint = splitAt;
@@ -802,8 +1107,9 @@ public partial class MainWindow : Window
             FlipV = clip.FlipV,
             VideoWidth = clip.VideoWidth,
             VideoHeight = clip.VideoHeight,
-            AccentColor = VideoClip.NextColor(),
+            AccentColor = clip.IsAudioOnly ? clip.AccentColor : VideoClip.NextColor(),
             LoopCount = clip.LoopCount,
+            IsAudioOnly = clip.IsAudioOnly,
             TimelineStart = clip.TimelineStart + clip.EffectiveDuration
         };
         timeline.Clips.Add(d);
@@ -814,7 +1120,19 @@ public partial class MainWindow : Window
     private async void SaveBtn_Click(object sender, RoutedEventArgs e)
     {
         if (timeline.Clips.Count == 0) { MessageBox.Show("Add at least one video clip."); return; }
-        var sfd = new SaveFileDialog { FileName = "project_export.mp4", Filter = "MP4|*.mp4|MOV|*.mov|MKV|*.mkv" };
+        var ext = AppSettings.ExportContainer;
+        var sfd = new SaveFileDialog
+        {
+            FileName = "project_export." + ext,
+            DefaultExt = ext,
+            Filter = ext switch
+            {
+                "mov" => "MOV|*.mov|MP4|*.mp4|MKV|*.mkv|WebM|*.webm",
+                "mkv" => "MKV|*.mkv|MP4|*.mp4|MOV|*.mov|WebM|*.webm",
+                "webm" => "WebM|*.webm|MP4|*.mp4|MOV|*.mov|MKV|*.mkv",
+                _ => "MP4|*.mp4|MOV|*.mov|MKV|*.mkv|WebM|*.webm"
+            }
+        };
         if (sfd.ShowDialog() != true) return;
 
         status.Text = "Exporting...";
@@ -832,7 +1150,7 @@ public partial class MainWindow : Window
             status.Text = "Exported: " + sfd.FileName;
             progress.Value = 1;
             if (MessageBox.Show("Open output folder?", "Done", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
-                System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + sfd.FileName + "\"");
+                RevealInExplorer(sfd.FileName);
         }
         catch (Exception ex)
         {
@@ -854,6 +1172,86 @@ public partial class MainWindow : Window
         await System.Threading.Tasks.Task.CompletedTask;
     }
     private void Record_Click(object s, RoutedEventArgs e) => new ScreenRecorderWindow(_ff, true) { Owner = this }.ShowDialog();
+
+    private void Settings_Click(object s, RoutedEventArgs e) => new SettingsWindow() { Owner = this }.ShowDialog();
+
+    private void ApplyLanguage()
+    {
+        var lang = AppSettings.Language;
+        bool isHe = lang == "he"
+            || (lang == "auto" && System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "he");
+        FlowDirection = isHe ? System.Windows.FlowDirection.RightToLeft : System.Windows.FlowDirection.LeftToRight;
+        if (isHe)
+        {
+            // Translate top-bar text labels and a few key strings
+            openBtn.ToolTip = "פתח קבצי וידאו";
+            saveBtn.ToolTip = "ייצוא הפרויקט";
+            settingsBtn.ToolTip = "הגדרות · ,";
+            helpBtn.ToolTip = "מדריך למשתמש · ?";
+            status.Text = "מוכן · גרור קבצי וידאו כדי להוסיף";
+        }
+        else
+        {
+            openBtn.ToolTip = "Open video files";
+            saveBtn.ToolTip = "Export project";
+            settingsBtn.ToolTip = "Settings · ,";
+            helpBtn.ToolTip = "User Guide · ?";
+            // Don't overwrite the status if there's already a message.
+        }
+    }
+    private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { Owner = this }.ShowDialog();
+
+    private async void DownloadUrl_Click(object s, RoutedEventArgs e)
+    {
+        var defaultFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "VideoEditorDownloads");
+        var dlg = new DownloadUrlWindow(defaultFolder) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+        var url = dlg.Url;
+        var folder = dlg.OutputFolder;
+        bool useStreaming = dlg.UseStreamingDownloader;
+        try
+        {
+            Directory.CreateDirectory(folder);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Cannot create destination folder: " + ex.Message);
+            return;
+        }
+
+        var dl = new DownloadService();
+        dl.Log += msg => Dispatcher.Invoke(() => status.Text = msg.Length > 80 ? msg[..80] + "…" : msg);
+        var prog = new Progress<double>(v => Dispatcher.Invoke(() => progress.Value = v));
+
+        status.Text = "Starting download...";
+        progress.Value = 0;
+        try
+        {
+            string finalPath;
+            if (useStreaming)
+            {
+                finalPath = await dl.DownloadViaYtDlpAsync(url, folder, App.FFmpegPath, prog);
+            }
+            else
+            {
+                var uri = new Uri(url);
+                var fileName = Path.GetFileName(uri.LocalPath);
+                if (string.IsNullOrWhiteSpace(fileName) || !fileName.Contains('.')) fileName = "downloaded.mp4";
+                var outputPath = Path.Combine(folder, fileName);
+                finalPath = await dl.DownloadDirectAsync(url, outputPath, prog);
+            }
+            status.Text = $"Downloaded → adding to timeline: {Path.GetFileName(finalPath)}";
+            await AddClipAsync(finalPath);
+            progress.Value = 1;
+            status.Text = $"Added downloaded clip: {Path.GetFileName(finalPath)}";
+        }
+        catch (Exception ex)
+        {
+            status.Text = "Download failed: " + ex.Message;
+            MessageBox.Show("Failed to download:\n\n" + ex.Message, "Download Error",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
 
     private void Trim_Click(object s, RoutedEventArgs e)
     {
@@ -1031,7 +1429,7 @@ public partial class MainWindow : Window
             Filter = "MP3|*.mp3|WAV|*.wav|M4A|*.m4a|AAC|*.aac|OGG|*.ogg|FLAC|*.flac"
         };
         if (sfd.ShowDialog() != true) return;
-        var fmt = Path.GetExtension(sfd.FileName).TrimStart('.').ToLower();
+        var fmt = Path.GetExtension(sfd.FileName).TrimStart('.').ToLowerInvariant();
         var dur = c.OutPoint - c.InPoint;
         status.Text = "Extracting audio...";
         progress.Value = 0;
@@ -1042,7 +1440,7 @@ public partial class MainWindow : Window
             status.Text = "Audio saved: " + sfd.FileName;
             progress.Value = 1;
             if (MessageBox.Show("Open output folder?", "Done", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
-                System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + sfd.FileName + "\"");
+                RevealInExplorer(sfd.FileName);
         }
         catch (Exception ex)
         {
@@ -1062,7 +1460,7 @@ public partial class MainWindow : Window
         if (sfd.ShowDialog() != true) return;
 
         var tempVideo = Path.Combine(Path.GetTempPath(), $"ve_audio_export_{Guid.NewGuid():N}.mp4");
-        var fmt = Path.GetExtension(sfd.FileName).TrimStart('.').ToLower();
+        var fmt = Path.GetExtension(sfd.FileName).TrimStart('.').ToLowerInvariant();
         status.Text = "Rendering project for audio extraction...";
         progress.Value = 0;
         try
@@ -1083,7 +1481,7 @@ public partial class MainWindow : Window
             status.Text = "Audio saved: " + sfd.FileName;
             progress.Value = 1;
             if (MessageBox.Show("Open output folder?", "Done", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
-                System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + sfd.FileName + "\"");
+                RevealInExplorer(sfd.FileName);
         }
         catch (Exception ex)
         {
@@ -1129,27 +1527,87 @@ public partial class MainWindow : Window
 
     private async System.Threading.Tasks.Task ApplyDestructiveOpAsync(VideoClip clip, Func<string, string, IProgress<double>, System.Threading.Tasks.Task> op)
     {
+        if (AppSettings.ConfirmDestructive)
+        {
+            var ok = MessageBox.Show(
+                "This operation re-encodes the clip and replaces its source file. Continue?",
+                "Confirm destructive operation",
+                MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+            if (ok != MessageBoxResult.OK) return;
+        }
         var tempOut = Path.Combine(Path.GetTempPath(), $"ve_{Guid.NewGuid()}.mp4");
         status.Text = "Processing clip...";
         progress.Value = 0;
         var prog = new Progress<double>(v => Dispatcher.Invoke(() => progress.Value = v));
+        var previousSource = clip.SourceFile;
+        bool succeeded = false;
         try
         {
-            await op(clip.SourceFile, tempOut, prog);
+            await op(previousSource, tempOut, prog);
             var (w, h, d) = await _ff.ProbeAsync(tempOut);
+            // Release the previous file from the MediaElement before we swap and try to delete it.
+            if (_playingClip == clip) { try { videoView.Stop(); videoView.Close(); } catch { } _playingClip = null; }
             clip.SourceFile = tempOut;
             clip.VideoWidth = w; clip.VideoHeight = h;
             clip.OriginalDuration = d;
             if (clip.OutPoint > d) clip.OutPoint = d;
             if (clip.InPoint >= d) clip.InPoint = 0;
             status.Text = "Clip updated.";
-            if (_playingClip == clip) LoadClipForPreview(clip, 0);
+            LoadClipForPreview(clip, 0);
             SelectClip(clip);
+            succeeded = true;
         }
         catch (Exception ex)
         {
             status.Text = "Op failed: " + ex.Message;
             MessageBox.Show(ex.Message, "Error");
         }
+        finally
+        {
+            if (succeeded)
+            {
+                // Replace the prior temp output (if any) — first destructive op uses the user's
+                // original file (don't touch), subsequent ones supersede our own temp files.
+                if (IsAppTempFile(previousSource))
+                {
+                    try { File.Delete(previousSource); } catch { }
+                }
+            }
+            else
+            {
+                // Operation failed — clean up the half-written temp if it exists.
+                try { if (File.Exists(tempOut)) File.Delete(tempOut); } catch { }
+            }
+        }
+    }
+
+    // Use the ProcessStartInfo argument list so the path is quoted by the runtime — avoids
+    // breaking when the file name contains characters that interact with the shell parser.
+    private static void RevealInExplorer(string filePath)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("explorer.exe")
+            {
+                UseShellExecute = true
+            };
+            psi.ArgumentList.Add("/select,");
+            psi.ArgumentList.Add(filePath);
+            System.Diagnostics.Process.Start(psi);
+        }
+        catch { }
+    }
+
+    private static bool IsAppTempFile(string path)
+    {
+        try
+        {
+            var tempDir = Path.GetFullPath(Path.GetTempPath());
+            var full = Path.GetFullPath(path);
+            var name = Path.GetFileName(full);
+            return full.StartsWith(tempDir, StringComparison.OrdinalIgnoreCase)
+                   && name.StartsWith("ve_", StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
     }
 }
