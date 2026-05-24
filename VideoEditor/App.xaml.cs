@@ -16,27 +16,20 @@ public partial class App : Application
     {
         if (VideoEditor.Services.Theming.IsLight()) ApplyLightTheme();
         else ApplyDarkTheme();
+
+        foreach (Window w in Windows)
+        {
+            w.InvalidateVisual();
+        }
     }
 
     private void SetBrush(string key, Color color)
     {
-        if (Resources[key] is SolidColorBrush brush && !brush.IsFrozen)
-        {
-            brush.Color = color;
-            return;
-        }
         Resources[key] = new SolidColorBrush(color);
     }
 
     private void SetLinear(string key, Color top, Color bottom)
     {
-        if (Resources[key] is LinearGradientBrush brush && !brush.IsFrozen && brush.GradientStops.Count >= 2)
-        {
-            brush.GradientStops[0].Color = top;
-            brush.GradientStops[1].Color = bottom;
-            return;
-        }
-
         var created = new LinearGradientBrush();
         created.StartPoint = new Point(0, 0);
         created.EndPoint = new Point(0, 1);
@@ -47,13 +40,6 @@ public partial class App : Application
 
     private void SetRadial(string key, Color center, Color edge)
     {
-        if (Resources[key] is RadialGradientBrush brush && !brush.IsFrozen && brush.GradientStops.Count >= 2)
-        {
-            brush.GradientStops[0].Color = center;
-            brush.GradientStops[1].Color = edge;
-            return;
-        }
-
         var created = new RadialGradientBrush();
         created.GradientOrigin = new Point(0.5, 0.5);
         created.Center = new Point(0.5, 0.5);

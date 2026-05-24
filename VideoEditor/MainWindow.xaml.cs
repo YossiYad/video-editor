@@ -362,6 +362,14 @@ public partial class MainWindow : Window
     }
 
     private void VideoView_MediaOpened(object sender, RoutedEventArgs e) { }
+    private void VideoView_MediaFailed(object sender, ExceptionRoutedEventArgs e)
+    {
+        var fileName = _playingClip?.DisplayName ?? videoView.Source?.LocalPath ?? "(unknown)";
+        var hint = "Common cause: codec not installed (VP9 / AV1 / HEVC). Re-import as H.264 / AAC or install the matching codec.";
+        var msg = $"Cannot play {fileName}.\n\n{e.ErrorException?.Message ?? "Unknown media error"}.\n\n{hint}";
+        status.Text = "Playback failed: " + (e.ErrorException?.Message ?? "codec issue") + " · see dialog";
+        MessageBox.Show(this, msg, "Playback Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
     private void VideoView_MediaEnded(object sender, RoutedEventArgs e)
     {
         if (_playingClip == null) return;

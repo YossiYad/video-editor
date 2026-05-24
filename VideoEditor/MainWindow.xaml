@@ -76,19 +76,27 @@
                 <!-- Status + actions -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <Border BorderBrush="{DynamicResource Line}" BorderThickness="1,0,0,0" Height="32" Margin="0,0,12,0"/>
-                    <StackPanel Width="240" VerticalAlignment="Center" Margin="0,0,10,0">
-                        <StackPanel Orientation="Horizontal">
-                            <Ellipse x:Name="statusDot" Width="7" Height="7" Fill="{DynamicResource Success}" VerticalAlignment="Center" Margin="0,0,8,0">
+                    <Grid Width="240" VerticalAlignment="Center" Margin="0,0,10,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Ellipse Grid.Column="0" x:Name="statusDot" Width="7" Height="7" Fill="{DynamicResource Success}" VerticalAlignment="Center" Margin="0,0,8,0">
                                 <Ellipse.Effect>
                                     <DropShadowEffect Color="#4CAF50" BlurRadius="6" ShadowDepth="0"/>
                                 </Ellipse.Effect>
                             </Ellipse>
-                            <TextBlock x:Name="status" Text="Ready · drop video files to add" FontSize="11.5" Foreground="{DynamicResource TextMute}" TextTrimming="CharacterEllipsis"/>
-                        </StackPanel>
-                        <Border Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="3" Height="6" Margin="0,5,0,0">
+                            <TextBlock Grid.Column="1" x:Name="status" Text="Ready · drop video files to add" FontSize="11.5" Foreground="{DynamicResource TextMute}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                        </Grid>
+                        <Border Grid.Row="1" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="3" Height="6" Margin="0,5,0,0">
                             <ProgressBar x:Name="progress" Minimum="0" Maximum="1" Background="Transparent" BorderThickness="0"/>
                         </Border>
-                    </StackPanel>
+                    </Grid>
                     <Button x:Name="quickAddBlockBtn" Style="{DynamicResource GhostButton}" Click="AddBlock_Click" Height="36" Padding="10,0" ToolTip="Add Hide Block - B" Margin="0,0,6,0">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="■" FontSize="12" Foreground="{DynamicResource AccentHover}" VerticalAlignment="Center" Margin="0,0,6,0"/>
@@ -460,7 +468,8 @@
                             <MediaElement x:Name="videoView" LoadedBehavior="Manual" UnloadedBehavior="Manual"
                                           ScrubbingEnabled="True" Stretch="Uniform"
                                           MediaOpened="VideoView_MediaOpened"
-                                          MediaEnded="VideoView_MediaEnded"/>
+                                          MediaEnded="VideoView_MediaEnded"
+                                          MediaFailed="VideoView_MediaFailed"/>
                             <Canvas x:Name="overlayCanvas" Background="Transparent"/>
 
                             <!-- HUD strip -->
