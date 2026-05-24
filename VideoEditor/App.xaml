@@ -3,36 +3,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-        <!-- ============================================================
-             Design tokens (matches design_handoff_video_editor/README.md)
-             ============================================================ -->
-
-        <!-- Surfaces -->
-        <SolidColorBrush x:Key="Bg0"      Color="#07080D"/>
-        <SolidColorBrush x:Key="Bg1"      Color="#0F1119"/>
-        <SolidColorBrush x:Key="Bg2"      Color="#161A25"/>
-        <SolidColorBrush x:Key="Bg3"      Color="#1D2231"/>
-        <SolidColorBrush x:Key="Bg4"      Color="#262C3E"/>
-        <SolidColorBrush x:Key="BgRaise"  Color="#2D3447"/>
-        <SolidColorBrush x:Key="BgHover"  Color="#1A1F2C"/>
-        <SolidColorBrush x:Key="BgPress"  Color="#252B3D"/>
-
-        <!-- Hairline borders (white alpha overlay) -->
-        <SolidColorBrush x:Key="Line"        Color="#0FFFFFFF"/>
-        <SolidColorBrush x:Key="LineStrong"  Color="#1FFFFFFF"/>
-        <SolidColorBrush x:Key="LineBright"  Color="#38FFFFFF"/>
-
-        <!-- Text -->
-        <SolidColorBrush x:Key="Text"        Color="#E8EAF2"/>
-        <SolidColorBrush x:Key="TextMute"    Color="#8A91A8"/>
-        <SolidColorBrush x:Key="TextDim"     Color="#5A6178"/>
-        <SolidColorBrush x:Key="TextBright"  Color="#FFFFFF"/>
-
-        <!-- Brand accents -->
+        <!-- Brand accents (theme-agnostic) -->
         <SolidColorBrush x:Key="Accent"        Color="#8B5CFF"/>
         <SolidColorBrush x:Key="AccentHover"   Color="#A07CFF"/>
         <SolidColorBrush x:Key="AccentDark"    Color="#6E44D6"/>
-        <SolidColorBrush x:Key="AccentSoft"    Color="#248B5CFF"/>
         <SolidColorBrush x:Key="AccentShadow"  Color="#598B5CFF"/>
 
         <SolidColorBrush x:Key="Success"       Color="#4CAF50"/>
@@ -51,24 +25,9 @@
         <SolidColorBrush x:Key="ClipGreen"     Color="#51CF66"/>
         <SolidColorBrush x:Key="ClipAmber"     Color="#FFD43B"/>
 
-        <!-- Legacy aliases used in older code paths -->
-        <SolidColorBrush x:Key="PanelBg"        Color="#0F1119"/>
-        <SolidColorBrush x:Key="PanelBgLight"   Color="#1D2231"/>
         <SolidColorBrush x:Key="AccentBrush"    Color="#8B5CFF"/>
         <SolidColorBrush x:Key="AccentBrushHover" Color="#A07CFF"/>
-        <SolidColorBrush x:Key="TextBrush"      Color="#E8EAF2"/>
-        <SolidColorBrush x:Key="TextBrushMuted" Color="#8A91A8"/>
-        <SolidColorBrush x:Key="BorderBrush"    Color="#1FFFFFFF"/>
 
-        <!-- Gradients -->
-        <LinearGradientBrush x:Key="TopbarBg" StartPoint="0,0" EndPoint="0,1">
-            <GradientStop Color="#131724" Offset="0"/>
-            <GradientStop Color="#0E1119" Offset="1"/>
-        </LinearGradientBrush>
-        <LinearGradientBrush x:Key="StatusbarBg" StartPoint="0,0" EndPoint="0,1">
-            <GradientStop Color="#10131C" Offset="0"/>
-            <GradientStop Color="#0A0C12" Offset="1"/>
-        </LinearGradientBrush>
         <LinearGradientBrush x:Key="AccentBtnFill" StartPoint="0,0" EndPoint="0,1">
             <GradientStop Color="#A07CFF" Offset="0"/>
             <GradientStop Color="#8B5CFF" Offset="1"/>
@@ -77,14 +36,6 @@
             <GradientStop Color="#5FC063" Offset="0"/>
             <GradientStop Color="#4CAF50" Offset="1"/>
         </LinearGradientBrush>
-        <LinearGradientBrush x:Key="DialogTitlebarBg" StartPoint="0,0" EndPoint="0,1">
-            <GradientStop Color="#1A1E2B" Offset="0"/>
-            <GradientStop Color="#13172A" Offset="1"/>
-        </LinearGradientBrush>
-        <RadialGradientBrush x:Key="PreviewWrapBg" GradientOrigin="0.5,0.5" Center="0.5,0.5" RadiusX="0.7" RadiusY="0.7">
-            <GradientStop Color="#0D1019" Offset="0"/>
-            <GradientStop Color="#050609" Offset="0.85"/>
-        </RadialGradientBrush>
 
         <!-- ============================================================
              Buttons

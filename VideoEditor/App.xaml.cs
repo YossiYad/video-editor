@@ -12,110 +12,115 @@ public partial class App : Application
 {
     public static string FFmpegPath { get; private set; } = string.Empty;
 
+    private ResourceDictionary? _activeThemeDict;
+
     public void ApplyThemeResources()
     {
-        if (VideoEditor.Services.Theming.IsLight()) ApplyLightTheme();
-        else ApplyDarkTheme();
+        var newDict = VideoEditor.Services.Theming.IsLight() ? BuildLightTheme() : BuildDarkTheme();
 
-        foreach (Window w in Windows)
+        if (_activeThemeDict != null)
         {
-            w.InvalidateVisual();
+            Resources.MergedDictionaries.Remove(_activeThemeDict);
         }
+        Resources.MergedDictionaries.Add(newDict);
+        _activeThemeDict = newDict;
     }
 
-    private void SetBrush(string key, Color color)
+    private static void AddBrush(ResourceDictionary d, string key, Color color)
     {
-        Resources[key] = new SolidColorBrush(color);
+        d[key] = new SolidColorBrush(color);
     }
 
-    private void SetLinear(string key, Color top, Color bottom)
+    private static void AddLinear(ResourceDictionary d, string key, Color top, Color bottom)
     {
-        var created = new LinearGradientBrush();
-        created.StartPoint = new Point(0, 0);
-        created.EndPoint = new Point(0, 1);
-        created.GradientStops.Add(new GradientStop(top, 0));
-        created.GradientStops.Add(new GradientStop(bottom, 1));
-        Resources[key] = created;
+        var g = new LinearGradientBrush();
+        g.StartPoint = new Point(0, 0);
+        g.EndPoint = new Point(0, 1);
+        g.GradientStops.Add(new GradientStop(top, 0));
+        g.GradientStops.Add(new GradientStop(bottom, 1));
+        d[key] = g;
     }
 
-    private void SetRadial(string key, Color center, Color edge)
+    private static void AddRadial(ResourceDictionary d, string key, Color center, Color edge)
     {
-        var created = new RadialGradientBrush();
-        created.GradientOrigin = new Point(0.5, 0.5);
-        created.Center = new Point(0.5, 0.5);
-        created.RadiusX = 0.7;
-        created.RadiusY = 0.7;
-        created.GradientStops.Add(new GradientStop(center, 0));
-        created.GradientStops.Add(new GradientStop(edge, 0.85));
-        Resources[key] = created;
+        var g = new RadialGradientBrush();
+        g.GradientOrigin = new Point(0.5, 0.5);
+        g.Center = new Point(0.5, 0.5);
+        g.RadiusX = 0.7;
+        g.RadiusY = 0.7;
+        g.GradientStops.Add(new GradientStop(center, 0));
+        g.GradientStops.Add(new GradientStop(edge, 0.85));
+        d[key] = g;
     }
 
-    private void ApplyDarkTheme()
+    private static ResourceDictionary BuildDarkTheme()
     {
-        SetBrush("Bg0", Color.FromRgb(0x07, 0x08, 0x0D));
-        SetBrush("Bg1", Color.FromRgb(0x0F, 0x11, 0x19));
-        SetBrush("Bg2", Color.FromRgb(0x16, 0x1A, 0x25));
-        SetBrush("Bg3", Color.FromRgb(0x1D, 0x22, 0x31));
-        SetBrush("Bg4", Color.FromRgb(0x26, 0x2C, 0x3E));
-        SetBrush("BgRaise", Color.FromRgb(0x2D, 0x34, 0x47));
-        SetBrush("BgHover", Color.FromRgb(0x1A, 0x1F, 0x2C));
-        SetBrush("BgPress", Color.FromRgb(0x25, 0x2B, 0x3D));
+        var d = new ResourceDictionary();
+        AddBrush(d, "Bg0", Color.FromRgb(0x07, 0x08, 0x0D));
+        AddBrush(d, "Bg1", Color.FromRgb(0x0F, 0x11, 0x19));
+        AddBrush(d, "Bg2", Color.FromRgb(0x16, 0x1A, 0x25));
+        AddBrush(d, "Bg3", Color.FromRgb(0x1D, 0x22, 0x31));
+        AddBrush(d, "Bg4", Color.FromRgb(0x26, 0x2C, 0x3E));
+        AddBrush(d, "BgRaise", Color.FromRgb(0x2D, 0x34, 0x47));
+        AddBrush(d, "BgHover", Color.FromRgb(0x1A, 0x1F, 0x2C));
+        AddBrush(d, "BgPress", Color.FromRgb(0x25, 0x2B, 0x3D));
 
-        SetBrush("Line", Color.FromArgb(0x0F, 0xFF, 0xFF, 0xFF));
-        SetBrush("LineStrong", Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF));
-        SetBrush("LineBright", Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF));
+        AddBrush(d, "Line", Color.FromArgb(0x0F, 0xFF, 0xFF, 0xFF));
+        AddBrush(d, "LineStrong", Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF));
+        AddBrush(d, "LineBright", Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF));
 
-        SetBrush("Text", Color.FromRgb(0xE8, 0xEA, 0xF2));
-        SetBrush("TextMute", Color.FromRgb(0x8A, 0x91, 0xA8));
-        SetBrush("TextDim", Color.FromRgb(0x5A, 0x61, 0x78));
-        SetBrush("TextBright", Colors.White);
-        SetBrush("AccentSoft", Color.FromArgb(0x24, 0x8B, 0x5C, 0xFF));
+        AddBrush(d, "Text", Color.FromRgb(0xE8, 0xEA, 0xF2));
+        AddBrush(d, "TextMute", Color.FromRgb(0x8A, 0x91, 0xA8));
+        AddBrush(d, "TextDim", Color.FromRgb(0x5A, 0x61, 0x78));
+        AddBrush(d, "TextBright", Colors.White);
+        AddBrush(d, "AccentSoft", Color.FromArgb(0x24, 0x8B, 0x5C, 0xFF));
 
-        SetLinear("TopbarBg", Color.FromRgb(0x13, 0x17, 0x24), Color.FromRgb(0x0E, 0x11, 0x19));
-        SetLinear("StatusbarBg", Color.FromRgb(0x10, 0x13, 0x1C), Color.FromRgb(0x0A, 0x0C, 0x12));
-        SetLinear("DialogTitlebarBg", Color.FromRgb(0x1A, 0x1E, 0x2B), Color.FromRgb(0x13, 0x17, 0x2A));
-        SetRadial("PreviewWrapBg", Color.FromRgb(0x0D, 0x10, 0x19), Color.FromRgb(0x05, 0x06, 0x09));
+        AddLinear(d, "TopbarBg", Color.FromRgb(0x13, 0x17, 0x24), Color.FromRgb(0x0E, 0x11, 0x19));
+        AddLinear(d, "StatusbarBg", Color.FromRgb(0x10, 0x13, 0x1C), Color.FromRgb(0x0A, 0x0C, 0x12));
+        AddLinear(d, "DialogTitlebarBg", Color.FromRgb(0x1A, 0x1E, 0x2B), Color.FromRgb(0x13, 0x17, 0x2A));
+        AddRadial(d, "PreviewWrapBg", Color.FromRgb(0x0D, 0x10, 0x19), Color.FromRgb(0x05, 0x06, 0x09));
 
-        SetBrush("PanelBg", Color.FromRgb(0x0F, 0x11, 0x19));
-        SetBrush("PanelBgLight", Color.FromRgb(0x1D, 0x22, 0x31));
-        SetBrush("TextBrush", Color.FromRgb(0xE8, 0xEA, 0xF2));
-        SetBrush("TextBrushMuted", Color.FromRgb(0x8A, 0x91, 0xA8));
-        SetBrush("BorderBrush", Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF));
+        AddBrush(d, "PanelBg", Color.FromRgb(0x0F, 0x11, 0x19));
+        AddBrush(d, "PanelBgLight", Color.FromRgb(0x1D, 0x22, 0x31));
+        AddBrush(d, "TextBrush", Color.FromRgb(0xE8, 0xEA, 0xF2));
+        AddBrush(d, "TextBrushMuted", Color.FromRgb(0x8A, 0x91, 0xA8));
+        AddBrush(d, "BorderBrush", Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF));
+        return d;
     }
 
-    // Apply light-theme overrides on top of the dark palette defined in App.xaml.
-    // Surfaces become near-white, text becomes dark, borders use black-alpha, accents stay.
-    private void ApplyLightTheme()
+    private static ResourceDictionary BuildLightTheme()
     {
-        SetBrush("Bg0", Color.FromRgb(0xEB, 0xED, 0xF3));
-        SetBrush("Bg1", Color.FromRgb(0xF8, 0xF9, 0xFC));
-        SetBrush("Bg2", Color.FromRgb(0xF1, 0xF3, 0xF8));
-        SetBrush("Bg3", Color.FromRgb(0xE5, 0xE8, 0xEF));
-        SetBrush("Bg4", Color.FromRgb(0xD8, 0xDC, 0xE6));
-        SetBrush("BgRaise", Color.FromRgb(0xCB, 0xD0, 0xDC));
-        SetBrush("BgHover", Color.FromRgb(0xED, 0xEF, 0xF5));
-        SetBrush("BgPress", Color.FromRgb(0xDF, 0xE3, 0xEC));
+        var d = new ResourceDictionary();
+        AddBrush(d, "Bg0", Color.FromRgb(0xEB, 0xED, 0xF3));
+        AddBrush(d, "Bg1", Color.FromRgb(0xF8, 0xF9, 0xFC));
+        AddBrush(d, "Bg2", Color.FromRgb(0xF1, 0xF3, 0xF8));
+        AddBrush(d, "Bg3", Color.FromRgb(0xE5, 0xE8, 0xEF));
+        AddBrush(d, "Bg4", Color.FromRgb(0xD8, 0xDC, 0xE6));
+        AddBrush(d, "BgRaise", Color.FromRgb(0xCB, 0xD0, 0xDC));
+        AddBrush(d, "BgHover", Color.FromRgb(0xED, 0xEF, 0xF5));
+        AddBrush(d, "BgPress", Color.FromRgb(0xDF, 0xE3, 0xEC));
 
-        SetBrush("Line", Color.FromArgb(0x12, 0x00, 0x00, 0x00));
-        SetBrush("LineStrong", Color.FromArgb(0x24, 0x00, 0x00, 0x00));
-        SetBrush("LineBright", Color.FromArgb(0x40, 0x00, 0x00, 0x00));
+        AddBrush(d, "Line", Color.FromArgb(0x12, 0x00, 0x00, 0x00));
+        AddBrush(d, "LineStrong", Color.FromArgb(0x24, 0x00, 0x00, 0x00));
+        AddBrush(d, "LineBright", Color.FromArgb(0x40, 0x00, 0x00, 0x00));
 
-        SetBrush("Text", Color.FromRgb(0x1A, 0x1D, 0x24));
-        SetBrush("TextMute", Color.FromRgb(0x52, 0x59, 0x6B));
-        SetBrush("TextDim", Color.FromRgb(0x7A, 0x82, 0x95));
-        SetBrush("TextBright", Colors.Black);
-        SetBrush("AccentSoft", Color.FromArgb(0x24, 0x8B, 0x5C, 0xFF));
+        AddBrush(d, "Text", Color.FromRgb(0x1A, 0x1D, 0x24));
+        AddBrush(d, "TextMute", Color.FromRgb(0x52, 0x59, 0x6B));
+        AddBrush(d, "TextDim", Color.FromRgb(0x7A, 0x82, 0x95));
+        AddBrush(d, "TextBright", Colors.Black);
+        AddBrush(d, "AccentSoft", Color.FromArgb(0x24, 0x8B, 0x5C, 0xFF));
 
-        SetLinear("TopbarBg", Colors.White, Color.FromRgb(0xEE, 0xF1, 0xF7));
-        SetLinear("StatusbarBg", Color.FromRgb(0xF0, 0xF2, 0xF7), Color.FromRgb(0xE5, 0xE8, 0xEF));
-        SetLinear("DialogTitlebarBg", Color.FromRgb(0xF8, 0xF9, 0xFC), Color.FromRgb(0xEC, 0xEF, 0xF5));
-        SetRadial("PreviewWrapBg", Color.FromRgb(0xE5, 0xE8, 0xF1), Color.FromRgb(0xC9, 0xCE, 0xDA));
+        AddLinear(d, "TopbarBg", Colors.White, Color.FromRgb(0xEE, 0xF1, 0xF7));
+        AddLinear(d, "StatusbarBg", Color.FromRgb(0xF0, 0xF2, 0xF7), Color.FromRgb(0xE5, 0xE8, 0xEF));
+        AddLinear(d, "DialogTitlebarBg", Color.FromRgb(0xF8, 0xF9, 0xFC), Color.FromRgb(0xEC, 0xEF, 0xF5));
+        AddRadial(d, "PreviewWrapBg", Color.FromRgb(0xE5, 0xE8, 0xF1), Color.FromRgb(0xC9, 0xCE, 0xDA));
 
-        SetBrush("PanelBg", Color.FromRgb(0xF8, 0xF9, 0xFC));
-        SetBrush("PanelBgLight", Color.FromRgb(0xE5, 0xE8, 0xEF));
-        SetBrush("TextBrush", Color.FromRgb(0x1A, 0x1D, 0x24));
-        SetBrush("TextBrushMuted", Color.FromRgb(0x52, 0x59, 0x6B));
-        SetBrush("BorderBrush", Color.FromArgb(0x24, 0x00, 0x00, 0x00));
+        AddBrush(d, "PanelBg", Color.FromRgb(0xF8, 0xF9, 0xFC));
+        AddBrush(d, "PanelBgLight", Color.FromRgb(0xE5, 0xE8, 0xEF));
+        AddBrush(d, "TextBrush", Color.FromRgb(0x1A, 0x1D, 0x24));
+        AddBrush(d, "TextBrushMuted", Color.FromRgb(0x52, 0x59, 0x6B));
+        AddBrush(d, "BorderBrush", Color.FromArgb(0x24, 0x00, 0x00, 0x00));
+        return d;
     }
 
     protected override async void OnStartup(StartupEventArgs e)
