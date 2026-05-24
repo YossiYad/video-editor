@@ -210,6 +210,8 @@ public class FFmpegService
         }
 
         var ci = System.Globalization.CultureInfo.InvariantCulture;
+        if (canvasW <= 0 || double.IsNaN(canvasW) || double.IsInfinity(canvasW)) canvasW = videoW;
+        if (canvasH <= 0 || double.IsNaN(canvasH) || double.IsInfinity(canvasH)) canvasH = videoH;
         var sx = videoW / canvasW;
         var sy = videoH / canvasH;
 
@@ -217,12 +219,14 @@ public class FFmpegService
         var processed = new List<(VideoBlock b, int bx, int by, int bw, int bh)>(blocks.Count);
         foreach (var b in blocks)
         {
-            int bx = (int)(b.X * sx);
-            int by = (int)(b.Y * sy);
-            int bw = (int)(b.Width * sx);
-            int bh = (int)(b.Height * sy);
-            if (bw < 2) bw = 2;
-            if (bh < 2) bh = 2;
+            int bx = (int)Math.Round(b.X * sx);
+            int by = (int)Math.Round(b.Y * sy);
+            int bw = (int)Math.Round(b.Width * sx);
+            int bh = (int)Math.Round(b.Height * sy);
+            bx = Math.Clamp(bx, 0, Math.Max(0, videoW - 2));
+            by = Math.Clamp(by, 0, Math.Max(0, videoH - 2));
+            bw = Math.Clamp(bw, 2, Math.Max(2, videoW - bx));
+            bh = Math.Clamp(bh, 2, Math.Max(2, videoH - by));
             processed.Add((b, bx, by, bw, bh));
         }
 
@@ -603,6 +607,13 @@ public class FFmpegService
         var errTask = p.StandardError.ReadToEndAsync();
         await Task.WhenAll(outputTask, errTask);
         await p.WaitForExitAsync();
+        if (p.ExitCode != 0)
+        {
+            var message = string.IsNullOrWhiteSpace(errTask.Result)
+                ? $"{Path.GetFileName(exe)} exited with code {p.ExitCode}."
+                : errTask.Result.Trim();
+            throw new Exception(message);
+        }
         return outputTask.Result + "\n" + errTask.Result;
     }
 }

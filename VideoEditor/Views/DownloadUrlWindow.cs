@@ -17,97 +17,82 @@ public class DownloadUrlWindow : Window
     private readonly TextBox _urlBox;
     private readonly TextBox _folderBox;
     private readonly TextBlock _detectionText;
-    private readonly Border _detectionBox;
     private readonly Ellipse _detectionDot;
 
     public DownloadUrlWindow(string defaultFolder)
     {
-        Title = "Download Video from URL";
-        Width = 640; Height = 440;
-        MinWidth = 480;
-        Background = new SolidColorBrush(Color.FromRgb(0x15, 0x15, 0x1F));
-        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        Title = "Import from URL";
+        var ch = WindowBuilder.Build(this, "🌐", "Import from URL",
+            "YouTube · Vimeo · TikTok · direct .mp4 · …", 720, 520, "Download & Add to Timeline", primarySuccess: true);
 
-        var grid = new Grid { Margin = new Thickness(20) };
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-        // Header
-        var headerPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 14) };
-        var headerRow = new StackPanel { Orientation = Orientation.Horizontal };
-        headerRow.Children.Add(new TextBlock
-        {
-            Text = "🌐",
-            FontSize = 26,
-            Foreground = new SolidColorBrush(Color.FromRgb(0x8B, 0x5C, 0xFF)),
-            VerticalAlignment = VerticalAlignment.Center
-        });
-        headerRow.Children.Add(new TextBlock
-        {
-            Text = "Download Video from URL",
-            FontSize = 18,
-            FontWeight = FontWeights.Bold,
-            Foreground = Brushes.White,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(10, 0, 0, 0)
-        });
-        headerPanel.Children.Add(headerRow);
-        headerPanel.Children.Add(new TextBlock
-        {
-            Text = "Paste a video URL — YouTube, Vimeo, Twitter, TikTok, or a direct .mp4 link. The video will be downloaded and added to your timeline.",
-            Foreground = new SolidColorBrush(Color.FromRgb(0xA0, 0xA0, 0xB0)),
-            FontSize = 12,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 6, 0, 0)
-        });
-        Grid.SetRow(headerPanel, 0);
-        grid.Children.Add(headerPanel);
-
-        // Body
-        var body = new StackPanel();
-        body.Children.Add(MakeLabel("URL"));
-        _urlBox = MakeTextBox();
+        // ===== URL field =====
+        ch.Body.Children.Add(WindowBuilder.Lbl("URL"));
+        _urlBox = WindowBuilder.Tb();
         _urlBox.FontSize = 13;
-        _urlBox.Height = 32;
+        _urlBox.Padding = new Thickness(10, 8, 10, 8);
         _urlBox.TextChanged += (_, _) => UpdateDetection();
-        body.Children.Add(_urlBox);
+        ch.Body.Children.Add(_urlBox);
 
-        // Detection chip
-        _detectionBox = new Border
+        // ===== Detection chip =====
+        var detection = new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(0x1B, 0x1B, 0x2A)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(0x26, 0x28, 0x34)),
+            Background = WindowBuilder.Bg2,
+            BorderBrush = WindowBuilder.Line,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(5),
-            Padding = new Thickness(10, 6, 10, 6),
+            Padding = new Thickness(10, 7, 10, 7),
             Margin = new Thickness(0, 8, 0, 0)
         };
         var detRow = new StackPanel { Orientation = Orientation.Horizontal };
-        _detectionDot = new Ellipse { Width = 8, Height = 8, Fill = new SolidColorBrush(Color.FromRgb(0x5A, 0x61, 0x78)), VerticalAlignment = VerticalAlignment.Center };
+        _detectionDot = new Ellipse { Width = 8, Height = 8, Fill = WindowBuilder.TextDim, VerticalAlignment = VerticalAlignment.Center };
         detRow.Children.Add(_detectionDot);
         _detectionText = new TextBlock
         {
             Text = "Awaiting URL…",
-            Foreground = new SolidColorBrush(Color.FromRgb(0x8A, 0x91, 0xA8)),
+            Foreground = WindowBuilder.TextMute,
             FontSize = 11.5,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(8, 0, 0, 0)
         };
         detRow.Children.Add(_detectionText);
-        _detectionBox.Child = detRow;
-        body.Children.Add(_detectionBox);
+        detection.Child = detRow;
+        ch.Body.Children.Add(detection);
 
-        body.Children.Add(MakeLabel("Download to"));
+        // ===== Supported platforms strip =====
+        var platforms = new WrapPanel { Margin = new Thickness(0, 10, 0, 0) };
+        foreach (var p in new[] { "YouTube", "Vimeo", "TikTok", "Twitter / X", "Instagram", "Facebook", "Twitch", "Direct .mp4" })
+        {
+            var pill = new Border
+            {
+                Background = WindowBuilder.Bg2,
+                BorderBrush = WindowBuilder.Line,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(8, 2, 8, 2),
+                Margin = new Thickness(0, 0, 6, 6)
+            };
+            pill.Child = new TextBlock
+            {
+                Text = p,
+                Foreground = WindowBuilder.TextMute,
+                FontSize = 10.5
+            };
+            platforms.Children.Add(pill);
+        }
+        ch.Body.Children.Add(platforms);
+
+        // ===== Download folder =====
+        ch.Body.Children.Add(WindowBuilder.Lbl("Download to"));
         var folderRow = new Grid();
         folderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         folderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        _folderBox = MakeTextBox(defaultFolder);
+        _folderBox = WindowBuilder.Tb(defaultFolder);
         _folderBox.FontSize = 12;
         Grid.SetColumn(_folderBox, 0);
         folderRow.Children.Add(_folderBox);
-        var browseBtn = MakeButton("📁 Browse", false);
-        browseBtn.Margin = new Thickness(8, 0, 0, 0);
+
+        var browseBtn = new Button { Content = "📁 Browse", Margin = new Thickness(8, 0, 0, 0), MinWidth = 100, Padding = new Thickness(12, 6, 12, 6) };
+        browseBtn.Style = (Style)FindResource("ToolButton");
         browseBtn.Click += (_, _) =>
         {
             var dlg = new Microsoft.Win32.OpenFileDialog
@@ -126,44 +111,29 @@ public class DownloadUrlWindow : Window
         };
         Grid.SetColumn(browseBtn, 1);
         folderRow.Children.Add(browseBtn);
-        body.Children.Add(folderRow);
+        ch.Body.Children.Add(folderRow);
 
-        // Helpful tip
+        // ===== Tip =====
         var tip = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(0x18, 0x8B, 0x5C, 0xFF)),
+            Background = new SolidColorBrush(Color.FromArgb(0x1C, 0x8B, 0x5C, 0xFF)),
             BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0x8B, 0x5C, 0xFF)),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(5),
-            Padding = new Thickness(10, 8, 10, 8),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(12, 9, 12, 9),
             Margin = new Thickness(0, 14, 0, 0)
         };
         tip.Child = new TextBlock
         {
             Text = "💡 For YouTube / Vimeo / TikTok etc, yt-dlp will be auto-downloaded (~12 MB, first run only). For a direct .mp4 link, a simple HTTP download is used.",
-            Foreground = new SolidColorBrush(Color.FromRgb(0xC0, 0xC0, 0xD0)),
+            Foreground = WindowBuilder.TextBr,
             FontSize = 11.5,
             TextWrapping = TextWrapping.Wrap
         };
-        body.Children.Add(tip);
+        ch.Body.Children.Add(tip);
 
-        var bodyScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = body };
-        Grid.SetRow(bodyScroll, 1);
-        grid.Children.Add(bodyScroll);
-
-        // Footer
-        var footer = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 14, 0, 0)
-        };
-        var cancelBtn = MakeButton("Cancel", false);
-        cancelBtn.Margin = new Thickness(4);
-        cancelBtn.Click += (_, _) => { DialogResult = false; Close(); };
-        var downloadBtn = MakeButton("📥 Download & Add to Timeline", true);
-        downloadBtn.Margin = new Thickness(4);
-        downloadBtn.Click += (_, _) =>
+        // ===== Wire up CTA =====
+        ch.Primary.Click += (_, _) =>
         {
             if (string.IsNullOrWhiteSpace(_urlBox.Text)) { MessageBox.Show("Please enter a URL."); return; }
             Url = _urlBox.Text.Trim();
@@ -172,12 +142,7 @@ public class DownloadUrlWindow : Window
             DialogResult = true;
             Close();
         };
-        footer.Children.Add(cancelBtn);
-        footer.Children.Add(downloadBtn);
-        Grid.SetRow(footer, 2);
-        grid.Children.Add(footer);
 
-        Content = grid;
         UpdateDetection();
     }
 
@@ -187,7 +152,7 @@ public class DownloadUrlWindow : Window
         if (string.IsNullOrEmpty(url))
         {
             _detectionText.Text = "Awaiting URL…";
-            _detectionDot.Fill = new SolidColorBrush(Color.FromRgb(0x5A, 0x61, 0x78));
+            _detectionDot.Fill = WindowBuilder.TextDim;
             return;
         }
         if (DownloadService.LooksLikeStreamingSite(url))
@@ -205,48 +170,5 @@ public class DownloadUrlWindow : Window
             _detectionText.Text = "🤔 Unknown format — will try yt-dlp as fallback";
             _detectionDot.Fill = new SolidColorBrush(Color.FromRgb(0xFF, 0xD4, 0x3B));
         }
-    }
-
-    private TextBlock MakeLabel(string text) => new()
-    {
-        Text = text.ToUpperInvariant(),
-        Foreground = new SolidColorBrush(Color.FromRgb(0x5A, 0x61, 0x78)),
-        FontSize = 10.5,
-        FontWeight = FontWeights.SemiBold,
-        Margin = new Thickness(0, 12, 0, 5)
-    };
-
-    private TextBox MakeTextBox(string text = "")
-    {
-        return new TextBox
-        {
-            Text = text,
-            Background = new SolidColorBrush(Color.FromRgb(0x0F, 0x11, 0x19)),
-            Foreground = Brushes.White,
-            BorderBrush = new SolidColorBrush(Color.FromRgb(0x26, 0x28, 0x34)),
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(9, 7, 9, 7),
-            FontFamily = new FontFamily("Consolas")
-        };
-    }
-
-    private Button MakeButton(string text, bool primary)
-    {
-        var b = new Button
-        {
-            Content = text,
-            Padding = new Thickness(14, 7, 14, 7),
-            Foreground = Brushes.White,
-            BorderBrush = primary ? new SolidColorBrush(Color.FromRgb(0x6E, 0x44, 0xD6)) : new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x52)),
-            Background = primary
-                ? new LinearGradientBrush(Color.FromRgb(0xA0, 0x7C, 0xFF), Color.FromRgb(0x8B, 0x5C, 0xFF), 90)
-                : (Brush)new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x3E)),
-            FontWeight = primary ? FontWeights.Bold : FontWeights.SemiBold,
-            FontSize = 12.5,
-            Cursor = Cursors.Hand,
-            Height = 34,
-            BorderThickness = new Thickness(1)
-        };
-        return b;
     }
 }

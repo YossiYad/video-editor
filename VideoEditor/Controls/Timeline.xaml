@@ -1,7 +1,7 @@
 <UserControl x:Class="VideoEditor.Controls.Timeline"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             Background="{StaticResource Bg1}" Height="332" MinHeight="240"
+             Background="{DynamicResource Bg1}" Height="332" MinHeight="240"
              AllowDrop="True" Drop="Timeline_Drop" DragOver="Timeline_DragOver" DragLeave="Timeline_DragLeave">
     <Grid>
         <Grid.RowDefinitions>
@@ -10,7 +10,7 @@
         </Grid.RowDefinitions>
 
         <!-- Top bar: Timeline label + zoom controls -->
-        <Border Grid.Row="0" Background="{StaticResource Bg1}" Height="36" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
+        <Border Grid.Row="0" Background="{DynamicResource Bg1}" Height="36" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -18,22 +18,26 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" Margin="14,0" VerticalAlignment="Center">
-                    <TextBlock Text="▤" FontSize="13" Foreground="{StaticResource Text}" VerticalAlignment="Center"/>
-                    <TextBlock Text="Timeline" FontSize="11.5" FontWeight="Bold" Foreground="{StaticResource Text}" VerticalAlignment="Center" Margin="6,0,0,0"/>
-                    <TextBlock x:Name="clipCountLabel" Foreground="{StaticResource TextDim}" FontFamily="Consolas" FontSize="11" Text="0 clips · 0 blocks · 00:00.000" VerticalAlignment="Center" Margin="14,0,0,0"/>
+                    <Border Background="{DynamicResource AccentSoft}" BorderBrush="{DynamicResource Accent}" BorderThickness="1" CornerRadius="4" Padding="6,2">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="▤" FontSize="11" Foreground="{DynamicResource AccentHover}" VerticalAlignment="Center"/>
+                            <TextBlock Text="Timeline" FontSize="11.5" FontWeight="Bold" Foreground="{DynamicResource Text}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock x:Name="clipCountLabel" Foreground="{DynamicResource TextDim}" FontFamily="Consolas" FontSize="11" Text="0 clips · 0 blocks · 00:00.000" VerticalAlignment="Center" Margin="12,0,0,0"/>
                     <TextBlock x:Name="timeLabel" Visibility="Collapsed"/>
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,12,0">
-                    <Border Background="{StaticResource Bg1}" BorderBrush="{StaticResource LineStrong}" BorderThickness="1" CornerRadius="6" Padding="2" Margin="0,0,8,0">
+                    <Border Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource LineStrong}" BorderThickness="1" CornerRadius="6" Padding="2" Margin="0,0,8,0">
                         <StackPanel Orientation="Horizontal">
-                            <Button x:Name="zoomOutBtn" Content="−" Width="26" Height="22" Style="{StaticResource GhostButton}" Padding="0" FontSize="13"/>
-                            <Button x:Name="zoomLabelBtn" Width="48" Height="22" Style="{StaticResource GhostButton}" Padding="0">
-                                <TextBlock x:Name="zoomLabel" Text="100%" FontSize="11" Foreground="{StaticResource TextMute}"/>
+                            <Button x:Name="zoomOutBtn" Content="−" Width="26" Height="22" Style="{DynamicResource GhostButton}" Padding="0" FontSize="13" ToolTip="Zoom out"/>
+                            <Button x:Name="zoomLabelBtn" Width="52" Height="22" Style="{DynamicResource GhostButton}" Padding="0" ToolTip="Fit to view">
+                                <TextBlock x:Name="zoomLabel" Text="100%" FontSize="11" FontFamily="Consolas" Foreground="{DynamicResource TextMute}"/>
                             </Button>
-                            <Button x:Name="zoomInBtn" Content="+" Width="26" Height="22" Style="{StaticResource GhostButton}" Padding="0" FontSize="13"/>
+                            <Button x:Name="zoomInBtn" Content="+" Width="26" Height="22" Style="{DynamicResource GhostButton}" Padding="0" FontSize="13" ToolTip="Zoom in"/>
                         </StackPanel>
                     </Border>
-                    <Button x:Name="fitBtn" Content="⛶ Fit" Style="{StaticResource GhostButton}" Padding="9,4" FontSize="11.5" ToolTip="Fit to view"/>
+                    <Button x:Name="fitBtn" Content="⛶ Fit" Style="{DynamicResource GhostButton}" Padding="9,4" FontSize="11.5" ToolTip="Fit to view"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -46,31 +50,31 @@
             </Grid.ColumnDefinitions>
 
             <!-- Track headers (44px - matches design) -->
-            <StackPanel Grid.Column="0" Background="{StaticResource Bg1}">
-                <Border Height="26" Background="{StaticResource Bg2}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,1"/>
-                <Border Height="64" Background="{StaticResource Bg1}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,1">
+            <StackPanel Grid.Column="0" Background="{DynamicResource Bg1}">
+                <Border Height="26" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,1"/>
+                <Border Height="64" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,1">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock Text="▤" FontSize="13" Foreground="{StaticResource TextDim}" HorizontalAlignment="Center"/>
-                        <TextBlock Text="V1" Foreground="{StaticResource TextDim}" FontSize="10" FontWeight="Bold" FontFamily="Consolas" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                        <TextBlock Text="▤" FontSize="13" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
+                        <TextBlock Text="V1" Foreground="{DynamicResource TextDim}" FontSize="10" FontWeight="Bold" FontFamily="Consolas" HorizontalAlignment="Center" Margin="0,2,0,0"/>
                     </StackPanel>
                 </Border>
-                <Border Height="64" Background="{StaticResource Bg1}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,1">
+                <Border Height="64" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,1">
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock Text="♫" FontSize="13" Foreground="{StaticResource TextDim}" HorizontalAlignment="Center"/>
-                        <TextBlock Text="A1" Foreground="{StaticResource TextDim}" FontSize="10" FontWeight="Bold" FontFamily="Consolas" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                        <TextBlock Text="♫" FontSize="13" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
+                        <TextBlock Text="A1" Foreground="{DynamicResource TextDim}" FontSize="10" FontWeight="Bold" FontFamily="Consolas" HorizontalAlignment="Center" Margin="0,2,0,0"/>
                     </StackPanel>
                 </Border>
-                <Border Height="22" Background="{StaticResource Bg2}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,1,1">
+                <Border Height="22" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,1,1">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0">
-                        <TextBlock Text="◼" FontSize="10" Foreground="{StaticResource ClipPurple}" VerticalAlignment="Center"/>
-                        <TextBlock Text="Hide Blocks" Foreground="{StaticResource TextDim}" FontSize="9.5" FontWeight="Bold" VerticalAlignment="Center" Margin="3,0,0,0"/>
+                        <TextBlock Text="◼" FontSize="10" Foreground="{DynamicResource ClipPurple}" VerticalAlignment="Center"/>
+                        <TextBlock Text="Hide Blocks" Foreground="{DynamicResource TextDim}" FontSize="9.5" FontWeight="Bold" VerticalAlignment="Center" Margin="3,0,0,0"/>
                     </StackPanel>
                 </Border>
-                <Border Background="{StaticResource Bg1}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0" MinHeight="60"/>
+                <Border Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,1,0" MinHeight="60"/>
             </StackPanel>
 
             <ScrollViewer Grid.Column="1" x:Name="scroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-                <Grid x:Name="content" Background="{StaticResource Bg0}">
+                <Grid x:Name="content" Background="{DynamicResource Bg0}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="26"/>
                         <RowDefinition Height="64"/>
@@ -79,32 +83,32 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <Canvas x:Name="rulerCanvas" Grid.Row="0" Background="{StaticResource Bg2}"/>
+                    <Canvas x:Name="rulerCanvas" Grid.Row="0" Background="{DynamicResource Bg2}"/>
 
-                    <Canvas x:Name="clipCanvas" Grid.Row="1" Background="{StaticResource Bg0}"
+                    <Canvas x:Name="clipCanvas" Grid.Row="1" Background="{DynamicResource Bg0}"
                             AllowDrop="True" Drop="ClipCanvas_Drop" DragOver="ClipCanvas_DragOver"
                             DragLeave="ClipCanvas_DragLeave"
                             MouseLeftButtonDown="ClipCanvas_MouseLeftButtonDown"/>
 
-                    <Canvas x:Name="audioCanvas" Grid.Row="2" Background="{StaticResource Bg0}"/>
+                    <Canvas x:Name="audioCanvas" Grid.Row="2" Background="{DynamicResource Bg0}"/>
 
-                    <Border Grid.Row="3" Background="{StaticResource Bg2}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,1">
+                    <Border Grid.Row="3" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,1">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0">
-                            <TextBlock x:Name="blockTrackCountLabel" Text="0 tracks" FontSize="10" FontFamily="Consolas" Foreground="{StaticResource TextDim}"/>
+                            <TextBlock x:Name="blockTrackCountLabel" Text="0 tracks" FontSize="10" FontFamily="Consolas" Foreground="{DynamicResource TextDim}"/>
                         </StackPanel>
                     </Border>
 
-                    <Canvas x:Name="trackCanvas" Grid.Row="4" Background="{StaticResource Bg0}"
+                    <Canvas x:Name="trackCanvas" Grid.Row="4" Background="{DynamicResource Bg0}"
                             MouseLeftButtonDown="trackCanvas_MouseLeftButtonDown"/>
 
                     <!-- Visual-only overlay (line + trim markers + insert indicator). NOT hit-testable. -->
                     <Canvas x:Name="playheadLayer" Grid.RowSpan="5" Background="{x:Null}" IsHitTestVisible="False">
-                        <Line x:Name="playhead" Y1="18" Y2="400" X1="0" X2="0" Stroke="{StaticResource Warn}" StrokeThickness="2" IsHitTestVisible="False">
+                        <Line x:Name="playhead" Y1="18" Y2="400" X1="0" X2="0" Stroke="{DynamicResource Warn}" StrokeThickness="2" IsHitTestVisible="False">
                             <Line.Effect>
                                 <DropShadowEffect Color="#FFD43B" BlurRadius="8" ShadowDepth="0" Opacity="0.7"/>
                             </Line.Effect>
                         </Line>
-                        <Polygon x:Name="playheadFlag" Fill="{StaticResource Warn}" Points="6,0 12,0 6,10 0,0" IsHitTestVisible="False" Visibility="Collapsed"/>
+                        <Polygon x:Name="playheadFlag" Fill="{DynamicResource Warn}" Points="6,0 12,0 6,10 0,0" IsHitTestVisible="False" Visibility="Collapsed"/>
                     </Canvas>
 
                     <!-- Hit-testable overlay for playhead drag. Background=null lets clicks pass through except on the Thumb + flag. -->
@@ -118,7 +122,7 @@
                             </Thumb.Template>
                         </Thumb>
                         <!-- Visible yellow flag with the current time. Also a drag handle. -->
-                        <Border x:Name="playheadFlagBorder" Background="{StaticResource Warn}" CornerRadius="0,0,4,4" MinWidth="68" Height="18" Cursor="SizeWE" Padding="6,0">
+                        <Border x:Name="playheadFlagBorder" Background="{DynamicResource Warn}" CornerRadius="0,0,4,4" MinWidth="68" Height="18" Cursor="SizeWE" Padding="6,0">
                             <Border.Effect>
                                 <DropShadowEffect Color="Black" BlurRadius="4" ShadowDepth="2" Opacity="0.5"/>
                             </Border.Effect>

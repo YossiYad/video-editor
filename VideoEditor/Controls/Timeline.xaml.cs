@@ -153,14 +153,14 @@ public partial class Timeline : UserControl
     internal void ShowInsertIndicator(double timelineX)
     {
         EnsureInsertIndicator();
-        if (_insertLine == null) return;
+        if (_insertLine == null || _insertArrowTop == null || _insertArrowBottom == null) return;
         var h = Math.Max(120, content.ActualHeight);
         Canvas.SetLeft(_insertLine, timelineX);
         Canvas.SetTop(_insertLine, 0);
         _insertLine.Y2 = h;
-        Canvas.SetLeft(_insertArrowTop!, timelineX);
+        Canvas.SetLeft(_insertArrowTop, timelineX);
         Canvas.SetTop(_insertArrowTop, 24);
-        Canvas.SetLeft(_insertArrowBottom!, timelineX);
+        Canvas.SetLeft(_insertArrowBottom, timelineX);
         Canvas.SetTop(_insertArrowBottom, h - 4);
         _insertLine.Visibility = Visibility.Visible;
         _insertArrowTop.Visibility = Visibility.Visible;
@@ -608,9 +608,19 @@ public partial class Timeline : UserControl
 
     private void UpdateInfoLabels()
     {
-        if (clipCountLabel != null) clipCountLabel.Text = $"{Clips.Count} clips · {Blocks.Count} blocks · {FormatTime(TotalSeconds)}";
+        if (clipCountLabel != null)
+        {
+            clipCountLabel.Text = VideoEditor.Services.Localization.IsHebrew
+                ? $"{Clips.Count} קליפים · {Blocks.Count} בלוקים · {FormatTime(TotalSeconds)}"
+                : $"{Clips.Count} clips · {Blocks.Count} blocks · {FormatTime(TotalSeconds)}";
+        }
         if (zoomLabel != null) zoomLabel.Text = $"{(int)(PixelsPerSecond / 60.0 * 100)}%";
-        if (blockTrackCountLabel != null) blockTrackCountLabel.Text = $"{_blockBars.Count} tracks";
+        if (blockTrackCountLabel != null)
+        {
+            blockTrackCountLabel.Text = VideoEditor.Services.Localization.IsHebrew
+                ? $"{_blockBars.Count} מסלולים"
+                : $"{_blockBars.Count} tracks";
+        }
     }
 
     private Border? _dropHint;
@@ -645,7 +655,7 @@ public partial class Timeline : UserControl
         else if (_dropHint != null) _dropHint.Visibility = Visibility.Collapsed;
     }
 
-    private void FullRefresh()
+    public void FullRefresh()
     {
         if (rulerCanvas == null) return;
         UpdateCanvasSize();
@@ -668,18 +678,32 @@ public partial class Timeline : UserControl
             > 20 => 5,
             _ => 10
         };
-        var stroke = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x77));
-        var labelBrush = new SolidColorBrush(Color.FromRgb(0xB0, 0xB0, 0xC0));
+        // Design tokens: major ticks 25% white, minor 12% white, labels --text-mute
+        var majorStroke = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF));
+        var minorStroke = new SolidColorBrush(Color.FromArgb(0x1F, 0xFF, 0xFF, 0xFF));
+        var labelBrush = new SolidColorBrush(Color.FromRgb(0x8A, 0x91, 0xA8));
         for (double t = 0; t <= TotalSeconds; t += tickEvery)
         {
             bool major = Math.Abs(t / tickEvery % 4) < 0.001;
-            var line = new Line { X1 = t * PixelsPerSecond, X2 = t * PixelsPerSecond, Y1 = major ? 10 : 16, Y2 = 22, Stroke = stroke, StrokeThickness = 1 };
+            var line = new Line
+            {
+                X1 = t * PixelsPerSecond, X2 = t * PixelsPerSecond,
+                Y1 = major ? 6 : 14, Y2 = 22,
+                Stroke = major ? majorStroke : minorStroke,
+                StrokeThickness = 1
+            };
             rulerCanvas.Children.Add(line);
             if (major)
             {
-                var tb = new TextBlock { Text = FormatTime(t), Foreground = labelBrush, FontSize = 10, FontFamily = new FontFamily("Consolas") };
-                Canvas.SetLeft(tb, t * PixelsPerSecond + 3);
-                Canvas.SetTop(tb, -1);
+                var tb = new TextBlock
+                {
+                    Text = FormatTime(t),
+                    Foreground = labelBrush,
+                    FontSize = 9.5,
+                    FontFamily = new FontFamily("Consolas")
+                };
+                Canvas.SetLeft(tb, t * PixelsPerSecond + 4);
+                Canvas.SetTop(tb, 1);
                 rulerCanvas.Children.Add(tb);
             }
         }
@@ -1168,14 +1192,15 @@ internal class ClipBar
 
     public void SetSelected(bool sel)
     {
-        _bg.Stroke = new SolidColorBrush(sel ? Color.FromRgb(0xFF, 0xD7, 0x00) : Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF));
-        _bg.StrokeThickness = sel ? 2.5 : 1;
+        _bg.Stroke = new SolidColorBrush(sel ? Color.FromRgb(0xFF, 0xD4, 0x3B) : Color.FromArgb(0x2D, 0xFF, 0xFF, 0xFF));
+        _bg.StrokeThickness = sel ? 2 : 1;
     }
 
+    // Match the design's 90deg gradient: top = clip accent, bottom = same accent darkened ~45%
     private LinearGradientBrush MakeGradient(Color c)
         => new LinearGradientBrush(
             Color.FromArgb(0xFF, c.R, c.G, c.B),
-            Color.FromArgb(0xFF, (byte)(c.R * 0.6), (byte)(c.G * 0.6), (byte)(c.B * 0.7)),
+            Color.FromArgb(0xFF, (byte)(c.R * 0.55), (byte)(c.G * 0.55), (byte)(c.B * 0.55)),
             90);
 
     private void ShowContextMenu()
@@ -1215,9 +1240,10 @@ internal class ClipBar
     {
         var t = new ControlTemplate(typeof(Thumb));
         var border = new FrameworkElementFactory(typeof(Border));
-        border.SetValue(Border.BackgroundProperty, new SolidColorBrush(Color.FromArgb(0xDD, 0xFF, 0xFF, 0xFF)));
-        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(2));
-        border.SetValue(Border.MarginProperty, new Thickness(1));
+        // Design: 4 px ledge handles at 55% white opacity
+        border.SetValue(Border.BackgroundProperty, new SolidColorBrush(Color.FromArgb(0x8C, 0xFF, 0xFF, 0xFF)));
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(1));
+        border.SetValue(Border.MarginProperty, new Thickness(0, 2, 0, 2));
         t.VisualTree = border;
         return t;
     }
@@ -1351,8 +1377,8 @@ internal class BlockBar
 
     public void SetSelected(bool sel)
     {
-        _bg.Opacity = sel ? 1.0 : 0.85;
-        _bg.Stroke = new SolidColorBrush(sel ? Color.FromRgb(0xFF, 0xD7, 0x00) : Color.FromArgb(0x80, 0xFF, 0xFF, 0xFF));
+        _bg.Opacity = sel ? 1.0 : 0.92;
+        _bg.Stroke = new SolidColorBrush(sel ? Color.FromRgb(0xFF, 0xD4, 0x3B) : Color.FromArgb(0x59, 0xFF, 0xFF, 0xFF));
         _bg.StrokeThickness = sel ? 2 : 1;
     }
 }
@@ -1587,9 +1613,9 @@ internal class AudioBar
     public void SetSelected(bool sel)
     {
         _bg.Stroke = new SolidColorBrush(sel
-            ? Color.FromRgb(0xFF, 0xD7, 0x00)
+            ? Color.FromRgb(0xFF, 0xD4, 0x3B)
             : Color.FromArgb(0x40, 0xA0, 0xB4, 0xFF));
-        _bg.StrokeThickness = sel ? 2.5 : 1;
+        _bg.StrokeThickness = sel ? 2 : 1;
     }
 
     public void UpdatePosition(double pps)

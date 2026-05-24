@@ -1,6 +1,4 @@
 using System;
-using System.Collections.ObjectModel;
-using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -16,22 +14,30 @@ public class MergeVideosWindow : Window
     public MergeVideosWindow(FFmpegService ff)
     {
         _ff = ff;
-        Title = "Merge Videos"; Width = 600; Height = 460;
-        Background = new SolidColorBrush(Color.FromRgb(0x15, 0x15, 0x1F));
-        WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        var (g, body, footer) = WindowBuilder.Layout();
-        body.Children.Add(WindowBuilder.Lbl("Videos to merge (in order)"));
+        Title = "Merge Videos";
+        var ch = WindowBuilder.Build(this, "🔗", "Merge Videos",
+            "Concatenate clips in the order shown", 600, 500);
 
-        var list = new ListBox { Height = 240, Background = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x3E)), Foreground = Brushes.White };
-        body.Children.Add(list);
+        ch.Body.Children.Add(WindowBuilder.Lbl("Videos to merge (in order)"));
 
-        var btns = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        var add = new Button { Content = "Add", Width = 80, Margin = new Thickness(2), Style = (Style)FindResource("ToolButton") };
-        var rem = new Button { Content = "Remove", Width = 80, Margin = new Thickness(2), Style = (Style)FindResource("ToolButton") };
-        var up = new Button { Content = "↑", Width = 40, Margin = new Thickness(2), Style = (Style)FindResource("ToolButton") };
-        var down = new Button { Content = "↓", Width = 40, Margin = new Thickness(2), Style = (Style)FindResource("ToolButton") };
+        var list = new ListBox
+        {
+            Height = 240,
+            Background = WindowBuilder.Bg1,
+            Foreground = WindowBuilder.TextBr,
+            BorderBrush = WindowBuilder.Line,
+            BorderThickness = new Thickness(1)
+        };
+        ch.Body.Children.Add(list);
+
+        var btns = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
+        Button MakeB(string text) { var b = new Button { Content = text, MinWidth = 64, Padding = new Thickness(12, 5, 12, 5), Margin = new Thickness(0, 0, 6, 0) }; b.Style = (Style)FindResource("ToolButton"); return b; }
+        var add  = MakeB("➕ Add");
+        var rem  = MakeB("➖ Remove");
+        var up   = MakeB("↑");
+        var down = MakeB("↓");
         btns.Children.Add(add); btns.Children.Add(rem); btns.Children.Add(up); btns.Children.Add(down);
-        body.Children.Add(btns);
+        ch.Body.Children.Add(btns);
 
         add.Click += (_, _) =>
         {
@@ -51,10 +57,8 @@ public class MergeVideosWindow : Window
             if (i >= 0 && i < list.Items.Count - 1) { var item = list.SelectedItem; list.Items.RemoveAt(i); list.Items.Insert(i + 1, item); list.SelectedIndex = i + 1; }
         };
 
-        Content = g;
-        var (ok, _) = WindowBuilder.OkCancel(this, footer);
-        ok.Content = "Merge & Save";
-        ok.Click += async (_, _) =>
+        ch.Primary.Content = "Merge & Save";
+        ch.Primary.Click += async (_, _) =>
         {
             if (list.Items.Count < 2) { MessageBox.Show("Add at least 2 videos."); return; }
             var sfd = new SaveFileDialog { FileName = "merged.mp4", Filter = "MP4|*.mp4" };

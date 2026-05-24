@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -11,39 +11,104 @@ namespace VideoEditor.Views;
 
 public class SettingsWindow : Window
 {
-    private static readonly Color Bg0 = Color.FromRgb(0x07, 0x08, 0x0D);
-    private static readonly Color Bg1 = Color.FromRgb(0x0F, 0x11, 0x19);
-    private static readonly Color Bg2 = Color.FromRgb(0x16, 0x1A, 0x25);
-    private static readonly Color Bg3 = Color.FromRgb(0x1D, 0x22, 0x31);
-    private static readonly Color Bg4 = Color.FromRgb(0x26, 0x2C, 0x3E);
-    private static readonly Color Line = Color.FromArgb(0x18, 0xFF, 0xFF, 0xFF);
-    private static readonly Color LineStrong = Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF);
-    private static readonly Color Text = Color.FromRgb(0xE8, 0xEA, 0xF2);
-    private static readonly Color TextMute = Color.FromRgb(0x8A, 0x91, 0xA8);
-    private static readonly Color TextDim = Color.FromRgb(0x5A, 0x61, 0x78);
-    private static readonly Color Accent = Color.FromRgb(0x8B, 0x5C, 0xFF);
-    private static readonly Color Success = Color.FromRgb(0x4C, 0xAF, 0x50);
-    private static readonly Color Warn = Color.FromRgb(0xFF, 0xD4, 0x3B);
+    private static Color Bg0 = Color.FromRgb(0x07, 0x08, 0x0D);
+    private static Color Bg1 = Color.FromRgb(0x0F, 0x11, 0x19);
+    private static Color Bg2 = Color.FromRgb(0x16, 0x1A, 0x25);
+    private static Color Bg3 = Color.FromRgb(0x1D, 0x22, 0x31);
+    private static Color Bg4 = Color.FromRgb(0x26, 0x2C, 0x3E);
+    private static Color Line = Color.FromArgb(0x18, 0xFF, 0xFF, 0xFF);
+    private static Color LineStrong = Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF);
+    private static Color Text = Color.FromRgb(0xE8, 0xEA, 0xF2);
+    private static Color TextMute = Color.FromRgb(0x8A, 0x91, 0xA8);
+    private static Color TextDim = Color.FromRgb(0x5A, 0x61, 0x78);
+    private static Color Accent = Color.FromRgb(0x8B, 0x5C, 0xFF);
+    private static Color Success = Color.FromRgb(0x4C, 0xAF, 0x50);
+    private static Color Warn = Color.FromRgb(0xFF, 0xD4, 0x3B);
 
     private readonly Border _activeRowMarker;
     private readonly ContentControl _pane;
+    private readonly TextBlock _statusInfo;
+    private readonly Button _saveBtn;
+    private readonly SettingsDraft _draft = SettingsDraft.FromCurrent();
     private string _activeKey = "general";
+    private bool _dirty;
+
+    private sealed class SettingsDraft
+    {
+        public string Language = "auto";
+        public string Theme = "dark";
+        public string StartupBehavior = "empty";
+        public bool ConfirmDestructive = true;
+        public int AutoSaveMinutes;
+        public bool SendUsageStats;
+        public int DefaultMasterVolume = 80;
+        public int BackForwardSeconds = 5;
+        public string ScrubbingQuality = "balanced";
+        public bool AudioScrubbing = true;
+        public bool LoopOnEnd;
+        public string ProxyMedia = "off";
+        public bool RippleMode;
+        public double SnapThreshold = 0.5;
+        public int InitialPixelsPerSecond = 60;
+        public bool ShowWaveformPerClip = true;
+        public int ThumbnailsPerClip = 8;
+        public int DefaultBlockOpacity = 100;
+        public string ExportContainer = "mp4";
+        public string ExportCodec = "libx264";
+        public int ExportCrf = 20;
+        public int ExportFps = 30;
+        public int ExportAudioBitrate = 192;
+        public string HardwareAccel = "cpu";
+        public bool TwoPass;
+        public bool AudioLoudnorm = true;
+
+        public static SettingsDraft FromCurrent() => new()
+        {
+            Language = AppSettings.Language,
+            Theme = AppSettings.Theme,
+            StartupBehavior = AppSettings.StartupBehavior,
+            ConfirmDestructive = AppSettings.ConfirmDestructive,
+            AutoSaveMinutes = AppSettings.AutoSaveMinutes,
+            SendUsageStats = AppSettings.SendUsageStats,
+            DefaultMasterVolume = AppSettings.DefaultMasterVolume,
+            BackForwardSeconds = AppSettings.BackForwardSeconds,
+            ScrubbingQuality = AppSettings.ScrubbingQuality,
+            AudioScrubbing = AppSettings.AudioScrubbing,
+            LoopOnEnd = AppSettings.LoopOnEnd,
+            ProxyMedia = AppSettings.ProxyMedia,
+            RippleMode = AppSettings.RippleMode,
+            SnapThreshold = AppSettings.SnapThreshold,
+            InitialPixelsPerSecond = AppSettings.InitialPixelsPerSecond,
+            ShowWaveformPerClip = AppSettings.ShowWaveformPerClip,
+            ThumbnailsPerClip = AppSettings.ThumbnailsPerClip,
+            DefaultBlockOpacity = AppSettings.DefaultBlockOpacity,
+            ExportContainer = AppSettings.ExportContainer,
+            ExportCodec = AppSettings.ExportCodec,
+            ExportCrf = AppSettings.ExportCrf,
+            ExportFps = AppSettings.ExportFps,
+            ExportAudioBitrate = AppSettings.ExportAudioBitrate,
+            HardwareAccel = AppSettings.HardwareAccel,
+            TwoPass = AppSettings.TwoPass,
+            AudioLoudnorm = AppSettings.AudioLoudnorm,
+        };
+    }
 
     private static readonly (string key, string icon, string label, string sub)[] Sections =
     {
-        ("general",  "⚙",  "General",            "App basics"),
-        ("player",   "▶",  "Player",             "Playback & seek"),
-        ("editor",   "✎",  "Editor",             "Snap, ripple, defaults"),
-        ("export",   "💾", "Export",             "Codec & quality"),
-        ("storage",  "💿", "Storage",            "Cache & paths"),
-        ("ffmpeg",   "🛠", "FFmpeg",             "Binaries & encoders"),
-        ("keys",     "⌨",  "Keyboard",           "Shortcuts"),
-        ("updates",  "⭯",  "Updates",            "Channel & changelog"),
-        ("about",    "ⓘ",  "About",              "License & credits"),
+        ("general",  "ג™",  "General",            "App basics"),
+        ("player",   "ג–¶",  "Player",             "Playback & seek"),
+        ("editor",   "ג",  "Editor",             "Snap, ripple, defaults"),
+        ("export",   "נ’¾", "Export",             "Codec & quality"),
+        ("storage",  "נ’¿", "Storage",            "Cache & paths"),
+        ("ffmpeg",   "נ› ", "FFmpeg",             "Binaries & encoders"),
+        ("keys",     "ג¨",  "Keyboard",           "Shortcuts"),
+        ("updates",  "ג­¯",  "Updates",            "Channel & changelog"),
+        ("about",    "ג“˜",  "About",              "License & credits"),
     };
 
     public SettingsWindow()
     {
+        ApplyThemePalette();
         Title = "Settings";
         Width = 1080; Height = 740;
         Background = new SolidColorBrush(Bg0);
@@ -58,24 +123,48 @@ public class SettingsWindow : Window
         var titlebar = new Border
         {
             Background = new LinearGradientBrush(
-                Color.FromRgb(0x1A, 0x1E, 0x2B),
-                Color.FromRgb(0x13, 0x17, 0x24), 90),
+                Bg2,
+                Bg1, 90),
             BorderBrush = new SolidColorBrush(LineStrong),
             BorderThickness = new Thickness(0, 0, 0, 1)
         };
         var titleRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(16, 0, 0, 0) };
-        titleRow.Children.Add(new TextBlock
+        // 28ֳ—28 purple icon tile per design tokens
+        var iconTile = new Border
         {
-            Text = "⚙", FontSize = 18, Foreground = new SolidColorBrush(Accent),
-            VerticalAlignment = VerticalAlignment.Center
-        });
-        titleRow.Children.Add(new TextBlock
-        {
-            Text = "Settings", FontSize = 14, FontWeight = FontWeights.Bold,
-            Foreground = new SolidColorBrush(Text),
+            Width = 28, Height = 28,
+            CornerRadius = new CornerRadius(7),
+            Background = new SolidColorBrush(Accent),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x6E, 0x44, 0xD6)),
+            BorderThickness = new Thickness(1),
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(10, 0, 0, 0)
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Accent, BlurRadius = 8, ShadowDepth = 0, Opacity = 0.4
+            }
+        };
+        iconTile.Child = new TextBlock
+        {
+            Text = "ג™", FontSize = 14, FontWeight = FontWeights.Bold,
+            Foreground = Brushes.White,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        titleRow.Children.Add(iconTile);
+        var titleStack = new StackPanel { Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        titleStack.Children.Add(new TextBlock
+        {
+            Text = "Settings", FontSize = 13.5, FontWeight = FontWeights.Bold,
+            Foreground = new SolidColorBrush(Text)
         });
+        titleStack.Children.Add(new TextBlock
+        {
+            Text = "App preferences - press Save to apply",
+            FontSize = 11,
+            Foreground = new SolidColorBrush(TextMute),
+            Margin = new Thickness(0, 2, 0, 0)
+        });
+        titleRow.Children.Add(titleStack);
         titleRow.Children.Add(MakeKbd("Esc to close"));
         titlebar.Child = titleRow;
         Grid.SetRow(titlebar, 0);
@@ -116,19 +205,26 @@ public class SettingsWindow : Window
         var fRow = new Grid { Margin = new Thickness(14, 0, 14, 0) };
         fRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         fRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var statusInfo = new TextBlock
+        _statusInfo = new TextBlock
         {
-            Text = "All settings are saved automatically",
+            Text = "No unsaved changes",
             Foreground = new SolidColorBrush(TextDim),
             FontSize = 11,
             VerticalAlignment = VerticalAlignment.Center
         };
-        Grid.SetColumn(statusInfo, 0);
-        fRow.Children.Add(statusInfo);
-        var doneBtn = MakeButton("Close", true);
+        Grid.SetColumn(_statusInfo, 0);
+        fRow.Children.Add(_statusInfo);
+        var actions = new StackPanel { Orientation = Orientation.Horizontal };
+        _saveBtn = MakeButton("Save", true);
+        _saveBtn.IsEnabled = false;
+        _saveBtn.Click += (_, _) => SaveSettings();
+        actions.Children.Add(_saveBtn);
+        var doneBtn = MakeButton("Close", false);
+        doneBtn.Margin = new Thickness(8, 0, 0, 0);
         doneBtn.Click += (_, _) => Close();
-        Grid.SetColumn(doneBtn, 1);
-        fRow.Children.Add(doneBtn);
+        actions.Children.Add(doneBtn);
+        Grid.SetColumn(actions, 1);
+        fRow.Children.Add(actions);
         footer.Child = fRow;
         Grid.SetRow(footer, 2);
         root.Children.Add(footer);
@@ -137,6 +233,100 @@ public class SettingsWindow : Window
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
 
         SetActiveSection("general");
+        FlowDirection = VideoEditor.Services.Localization.IsHebrew ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
+        VideoEditor.Services.Localization.TranslateTree(this);
+    }
+
+    private static void ApplyThemePalette()
+    {
+        if (Theming.IsLight())
+        {
+            Bg0 = Color.FromRgb(0xEB, 0xED, 0xF3);
+            Bg1 = Color.FromRgb(0xF8, 0xF9, 0xFC);
+            Bg2 = Color.FromRgb(0xF1, 0xF3, 0xF8);
+            Bg3 = Color.FromRgb(0xE5, 0xE8, 0xEF);
+            Bg4 = Color.FromRgb(0xD8, 0xDC, 0xE6);
+            Line = Color.FromArgb(0x18, 0x00, 0x00, 0x00);
+            LineStrong = Color.FromArgb(0x30, 0x00, 0x00, 0x00);
+            Text = Color.FromRgb(0x1A, 0x1D, 0x24);
+            TextMute = Color.FromRgb(0x52, 0x59, 0x6B);
+            TextDim = Color.FromRgb(0x7A, 0x82, 0x95);
+        }
+        else
+        {
+            Bg0 = Color.FromRgb(0x07, 0x08, 0x0D);
+            Bg1 = Color.FromRgb(0x0F, 0x11, 0x19);
+            Bg2 = Color.FromRgb(0x16, 0x1A, 0x25);
+            Bg3 = Color.FromRgb(0x1D, 0x22, 0x31);
+            Bg4 = Color.FromRgb(0x26, 0x2C, 0x3E);
+            Line = Color.FromArgb(0x18, 0xFF, 0xFF, 0xFF);
+            LineStrong = Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF);
+            Text = Color.FromRgb(0xE8, 0xEA, 0xF2);
+            TextMute = Color.FromRgb(0x8A, 0x91, 0xA8);
+            TextDim = Color.FromRgb(0x5A, 0x61, 0x78);
+        }
+    }
+
+    private void MarkDirty()
+    {
+        _dirty = true;
+        _saveBtn.IsEnabled = true;
+        _statusInfo.Text = VideoEditor.Services.Localization.T("Unsaved changes");
+        _statusInfo.Foreground = new SolidColorBrush(Warn);
+    }
+
+    private void SaveSettings()
+    {
+        if (!_dirty) return;
+
+        var previousTheme = AppSettings.Theme;
+        AppSettings.Language = _draft.Language;
+        AppSettings.Theme = _draft.Theme;
+        AppSettings.StartupBehavior = _draft.StartupBehavior;
+        AppSettings.ConfirmDestructive = _draft.ConfirmDestructive;
+        AppSettings.AutoSaveMinutes = _draft.AutoSaveMinutes;
+        AppSettings.SendUsageStats = _draft.SendUsageStats;
+        AppSettings.DefaultMasterVolume = _draft.DefaultMasterVolume;
+        AppSettings.BackForwardSeconds = _draft.BackForwardSeconds;
+        AppSettings.ScrubbingQuality = _draft.ScrubbingQuality;
+        AppSettings.AudioScrubbing = _draft.AudioScrubbing;
+        AppSettings.LoopOnEnd = _draft.LoopOnEnd;
+        AppSettings.ProxyMedia = _draft.ProxyMedia;
+        AppSettings.RippleMode = _draft.RippleMode;
+        AppSettings.SnapThreshold = _draft.SnapThreshold;
+        AppSettings.InitialPixelsPerSecond = _draft.InitialPixelsPerSecond;
+        AppSettings.ShowWaveformPerClip = _draft.ShowWaveformPerClip;
+        AppSettings.ThumbnailsPerClip = _draft.ThumbnailsPerClip;
+        AppSettings.DefaultBlockOpacity = _draft.DefaultBlockOpacity;
+        AppSettings.ExportContainer = _draft.ExportContainer;
+        AppSettings.ExportCodec = _draft.ExportCodec;
+        AppSettings.ExportCrf = _draft.ExportCrf;
+        AppSettings.ExportFps = _draft.ExportFps;
+        AppSettings.ExportAudioBitrate = _draft.ExportAudioBitrate;
+        AppSettings.HardwareAccel = _draft.HardwareAccel;
+        AppSettings.TwoPass = _draft.TwoPass;
+        AppSettings.AudioLoudnorm = _draft.AudioLoudnorm;
+        AppSettings.Save();
+
+        if (!string.IsNullOrEmpty(AppSettings.LastSaveError))
+        {
+            _statusInfo.Text = "Save failed: " + AppSettings.LastSaveError;
+            _statusInfo.Foreground = new SolidColorBrush(Warn);
+            return;
+        }
+
+        _dirty = false;
+        _saveBtn.IsEnabled = false;
+        _statusInfo.Text = VideoEditor.Services.Localization.T("Settings saved");
+        _statusInfo.Foreground = new SolidColorBrush(Success);
+
+        if (!string.Equals(previousTheme, AppSettings.Theme, StringComparison.Ordinal))
+        {
+            (Application.Current as App)?.ApplyThemeResources();
+            var refreshed = new SettingsWindow { Owner = Owner };
+            refreshed.Show();
+            Close();
+        }
     }
 
     private Button MakeRailItem(string key, string icon, string label, string sub)
@@ -189,6 +379,7 @@ public class SettingsWindow : Window
     {
         _activeKey = key;
         _pane.Content = BuildSection(key);
+        VideoEditor.Services.Localization.TranslateTree(this);
     }
 
     private UIElement BuildSection(string key) => key switch
@@ -209,88 +400,88 @@ public class SettingsWindow : Window
 
     private UIElement BuildGeneral()
     {
-        var p = MakePanel("General", "App basics — language, theme, behavior on startup, privacy. Saved automatically.");
-        var langItems = new[] { "Auto (system)", "English", "עברית" };
+        var p = MakePanel("General", "App basics - language, theme, behavior on startup, privacy.");
+        var langItems = new[] { "Auto (system)", "English", "׳¢׳‘׳¨׳™׳×" };
         var langKeys = new[] { "auto", "en", "he" };
-        var langIdx = Array.IndexOf(langKeys, AppSettings.Language);
+        var langIdx = Array.IndexOf(langKeys, _draft.Language);
         if (langIdx < 0) langIdx = 0;
-        p.Children.Add(MakeRow("Language", "RTL is applied immediately when set to Hebrew",
+        p.Children.Add(MakeRow("Language", "Applied when you press Save",
             MakeComboBound(langItems, langIdx,
-                idx => { AppSettings.Language = langKeys[idx]; AppSettings.Save(); })));
+                idx => { _draft.Language = langKeys[idx]; MarkDirty(); })));
 
-        var themeItems = new[] { "Dark", "Light (coming soon)", "Auto" };
+        var themeItems = new[] { "Dark", "Light", "Auto" };
         var themeKeys = new[] { "dark", "light", "auto" };
-        var themeIdx = Array.IndexOf(themeKeys, AppSettings.Theme);
+        var themeIdx = Array.IndexOf(themeKeys, _draft.Theme);
         if (themeIdx < 0) themeIdx = 0;
-        p.Children.Add(MakeRow("Theme", "Color theme — requires app restart",
+        p.Children.Add(MakeRow("Theme", "Applied when you press Save",
             MakeComboBound(themeItems, themeIdx,
-                idx => { AppSettings.Theme = themeKeys[idx]; AppSettings.Save(); })));
+                idx => { _draft.Theme = themeKeys[idx]; MarkDirty(); })));
 
         var startupItems = new[] { "Empty project", "Restore last project (coming soon)", "Show welcome (coming soon)" };
         var startupKeys = new[] { "empty", "restore", "welcome" };
-        var startupIdx = Array.IndexOf(startupKeys, AppSettings.StartupBehavior);
+        var startupIdx = Array.IndexOf(startupKeys, _draft.StartupBehavior);
         if (startupIdx < 0) startupIdx = 0;
         p.Children.Add(MakeRow("On startup", "What to load when the app opens",
             MakeComboBound(startupItems, startupIdx,
-                idx => { AppSettings.StartupBehavior = startupKeys[idx]; AppSettings.Save(); })));
+                idx => { _draft.StartupBehavior = startupKeys[idx]; MarkDirty(); })));
 
         p.Children.Add(MakeRow("Confirm destructive actions", "Ask before delete / re-encode",
-            MakeToggleBound(AppSettings.ConfirmDestructive, v => { AppSettings.ConfirmDestructive = v; AppSettings.Save(); })));
-        p.Children.Add(MakeRow("Auto-save", $"Save project every {AppSettings.AutoSaveMinutes} minutes (0 = off)",
-            MakeSliderBound(0, 30, AppSettings.AutoSaveMinutes, v => { AppSettings.AutoSaveMinutes = v; AppSettings.Save(); })));
+            MakeToggleBound(_draft.ConfirmDestructive, v => { _draft.ConfirmDestructive = v; MarkDirty(); })));
+        p.Children.Add(MakeRow("Auto-save", $"Save project every {_draft.AutoSaveMinutes} minutes (0 = off)",
+            MakeSliderBound(0, 30, _draft.AutoSaveMinutes, v => { _draft.AutoSaveMinutes = v; MarkDirty(); })));
         p.Children.Add(MakeRow("Send anonymous usage stats", "Helps improve the editor (currently disabled)",
-            MakeToggleBound(AppSettings.SendUsageStats, v => { AppSettings.SendUsageStats = v; AppSettings.Save(); })));
+            MakeToggleBound(_draft.SendUsageStats, v => { _draft.SendUsageStats = v; MarkDirty(); })));
         return WrapSection(p);
     }
     private UIElement BuildPlayer()
     {
         var p = MakePanel("Player", "Playback engine & seek behavior. Changes apply immediately.");
-        p.Children.Add(MakeRow("Default volume", $"Currently {AppSettings.DefaultMasterVolume}% — applied next launch + sets master volume now",
-            MakeSliderBound(0, 100, AppSettings.DefaultMasterVolume, v => { AppSettings.DefaultMasterVolume = v; AppSettings.Save(); })));
-        p.Children.Add(MakeRow("Back / Forward step", $"Currently {AppSettings.BackForwardSeconds}s — for the -5s/+5s buttons",
-            MakeSliderBound(1, 60, AppSettings.BackForwardSeconds, v => { AppSettings.BackForwardSeconds = v; AppSettings.Save(); })));
+        p.Children.Add(MakeRow("Default volume", $"Currently {_draft.DefaultMasterVolume}% - applied when you press Save",
+            MakeSliderBound(0, 100, _draft.DefaultMasterVolume, v => { _draft.DefaultMasterVolume = v; MarkDirty(); })));
+        p.Children.Add(MakeRow("Back / Forward step", $"Currently {_draft.BackForwardSeconds}s ג€” for the -5s/+5s buttons",
+            MakeSliderBound(1, 60, _draft.BackForwardSeconds, v => { _draft.BackForwardSeconds = v; MarkDirty(); })));
 
         var scrubItems = new[] { "Smooth (low quality)", "Balanced (default)", "Frame-accurate" };
         var scrubKeys = new[] { "smooth", "balanced", "accurate" };
-        var scrubIdx = Array.IndexOf(scrubKeys, AppSettings.ScrubbingQuality);
+        var scrubIdx = Array.IndexOf(scrubKeys, _draft.ScrubbingQuality);
         if (scrubIdx < 0) scrubIdx = 1;
         p.Children.Add(MakeRow("Scrubbing quality", "Frame accuracy when dragging the playhead",
-            MakeComboBound(scrubItems, scrubIdx, idx => { AppSettings.ScrubbingQuality = scrubKeys[idx]; AppSettings.Save(); })));
+            MakeComboBound(scrubItems, scrubIdx, idx => { _draft.ScrubbingQuality = scrubKeys[idx]; MarkDirty(); })));
 
         p.Children.Add(MakeRow("Audio scrubbing", "Play audio while dragging playhead",
-            MakeToggleBound(AppSettings.AudioScrubbing, v => { AppSettings.AudioScrubbing = v; AppSettings.Save(); })));
+            MakeToggleBound(_draft.AudioScrubbing, v => { _draft.AudioScrubbing = v; MarkDirty(); })));
         p.Children.Add(MakeRow("Loop on end", "Restart project when playhead hits the end",
-            MakeToggleBound(AppSettings.LoopOnEnd, v => { AppSettings.LoopOnEnd = v; AppSettings.Save(); })));
+            MakeToggleBound(_draft.LoopOnEnd, v => { _draft.LoopOnEnd = v; MarkDirty(); })));
 
         var proxyItems = new[] { "Off", "540p (coming soon)", "720p (coming soon)", "1080p (coming soon)" };
         var proxyKeys = new[] { "off", "540p", "720p", "1080p" };
-        var proxyIdx = Array.IndexOf(proxyKeys, AppSettings.ProxyMedia);
+        var proxyIdx = Array.IndexOf(proxyKeys, _draft.ProxyMedia);
         if (proxyIdx < 0) proxyIdx = 0;
         p.Children.Add(MakeRow("Proxy media", "Lower-res proxies for smoother editing on slow PCs",
-            MakeComboBound(proxyItems, proxyIdx, idx => { AppSettings.ProxyMedia = proxyKeys[idx]; AppSettings.Save(); })));
+            MakeComboBound(proxyItems, proxyIdx, idx => { _draft.ProxyMedia = proxyKeys[idx]; MarkDirty(); })));
         return WrapSection(p);
     }
     private UIElement BuildEditor()
     {
         var p = MakePanel("Editor", "Clip dragging behavior and defaults. Most changes apply immediately.");
-        p.Children.Add(MakeRow("Ripple-abut clips on drop", "OFF (default) = free dragging with gaps allowed · ON = old behavior where clips snap together",
-            MakeToggleBound(AppSettings.RippleMode, v => { AppSettings.RippleMode = v; AppSettings.Save(); })));
-        p.Children.Add(MakeRow("Magnetic snap threshold", $"Currently {AppSettings.SnapThreshold:0.##}s — within this distance a dragged clip snaps to a neighbour's edge",
-            MakeSliderBound(0, 50, (int)(AppSettings.SnapThreshold * 10), v => { AppSettings.SnapThreshold = v / 10.0; AppSettings.Save(); })));
-        p.Children.Add(MakeRow("Initial zoom", $"Currently {AppSettings.InitialPixelsPerSecond} px/sec — default zoom level for new projects",
-            MakeSliderBound(8, 200, AppSettings.InitialPixelsPerSecond, v => { AppSettings.InitialPixelsPerSecond = v; AppSettings.Save(); })));
+        p.Children.Add(MakeRow("Ripple-abut clips on drop", "OFF (default) = free dragging with gaps allowed ֲ· ON = old behavior where clips snap together",
+            MakeToggleBound(_draft.RippleMode, v => { _draft.RippleMode = v; MarkDirty(); })));
+        p.Children.Add(MakeRow("Magnetic snap threshold", $"Currently {_draft.SnapThreshold:0.##}s ג€” within this distance a dragged clip snaps to a neighbour's edge",
+            MakeSliderBound(0, 50, (int)(_draft.SnapThreshold * 10), v => { _draft.SnapThreshold = v / 10.0; MarkDirty(); })));
+        p.Children.Add(MakeRow("Initial zoom", $"Currently {_draft.InitialPixelsPerSecond} px/sec ג€” default zoom level for new projects",
+            MakeSliderBound(8, 200, _draft.InitialPixelsPerSecond, v => { _draft.InitialPixelsPerSecond = v; MarkDirty(); })));
         p.Children.Add(MakeRow("Show waveform per clip", "Auto-generate audio waveforms in A1 lane",
-            MakeToggleBound(AppSettings.ShowWaveformPerClip, v => { AppSettings.ShowWaveformPerClip = v; AppSettings.Save(); })));
+            MakeToggleBound(_draft.ShowWaveformPerClip, v => { _draft.ShowWaveformPerClip = v; MarkDirty(); })));
 
         var thumbOptions = new[] { 4, 6, 8, 12, 16 };
         var thumbLabels = new[] { "4 (fastest)", "6", "8 (default)", "12", "16 (most detail)" };
-        var thumbIdx = Array.IndexOf(thumbOptions, AppSettings.ThumbnailsPerClip);
+        var thumbIdx = Array.IndexOf(thumbOptions, _draft.ThumbnailsPerClip);
         if (thumbIdx < 0) thumbIdx = 2;
         p.Children.Add(MakeRow("Thumbnails per clip", "Number of frame previews to render in V1 lane",
-            MakeComboBound(thumbLabels, thumbIdx, idx => { AppSettings.ThumbnailsPerClip = thumbOptions[idx]; AppSettings.Save(); })));
+            MakeComboBound(thumbLabels, thumbIdx, idx => { _draft.ThumbnailsPerClip = thumbOptions[idx]; MarkDirty(); })));
 
-        p.Children.Add(MakeRow("Default block opacity", $"Currently {AppSettings.DefaultBlockOpacity}% — opacity of new hide blocks",
-            MakeSliderBound(0, 100, AppSettings.DefaultBlockOpacity, v => { AppSettings.DefaultBlockOpacity = v; AppSettings.Save(); })));
+        p.Children.Add(MakeRow("Default block opacity", $"Currently {_draft.DefaultBlockOpacity}% ג€” opacity of new hide blocks",
+            MakeSliderBound(0, 100, _draft.DefaultBlockOpacity, v => { _draft.DefaultBlockOpacity = v; MarkDirty(); })));
         return WrapSection(p);
     }
     private UIElement BuildExport()
@@ -298,40 +489,40 @@ public class SettingsWindow : Window
         var p = MakePanel("Export", "Container, codec, and quality controls. Changes apply on next export.");
         p.Children.Add(MakeRow("Container", "Output file format",
             MakeComboBound(new[] { "MP4 (.mp4)", "MOV (.mov)", "MKV (.mkv)", "WebM (.webm)" },
-                AppSettings.ExportContainer switch { "mov" => 1, "mkv" => 2, "webm" => 3, _ => 0 },
-                idx => { AppSettings.ExportContainer = idx switch { 1 => "mov", 2 => "mkv", 3 => "webm", _ => "mp4" }; AppSettings.Save(); })));
+                _draft.ExportContainer switch { "mov" => 1, "mkv" => 2, "webm" => 3, _ => 0 },
+                idx => { _draft.ExportContainer = idx switch { 1 => "mov", 2 => "mkv", 3 => "webm", _ => "mp4" }; MarkDirty(); })));
         p.Children.Add(MakeRow("Video codec", "Encoder for the export pass",
             MakeComboBound(new[] { "H.264 (libx264)", "H.265 / HEVC", "AV1", "ProRes 422" },
-                AppSettings.ExportCodec switch { "libx265" => 1, "libaom-av1" => 2, "prores_ks" => 3, _ => 0 },
-                idx => { AppSettings.ExportCodec = idx switch { 1 => "libx265", 2 => "libaom-av1", 3 => "prores_ks", _ => "libx264" }; AppSettings.Save(); })));
-        p.Children.Add(MakeRow("Quality (CRF)", $"Currently {AppSettings.ExportCrf} · lower = better quality, larger file",
-            MakeSliderBound(0, 51, AppSettings.ExportCrf, v => { AppSettings.ExportCrf = v; AppSettings.Save(); })));
+                _draft.ExportCodec switch { "libx265" => 1, "libaom-av1" => 2, "prores_ks" => 3, _ => 0 },
+                idx => { _draft.ExportCodec = idx switch { 1 => "libx265", 2 => "libaom-av1", 3 => "prores_ks", _ => "libx264" }; MarkDirty(); })));
+        p.Children.Add(MakeRow("Quality (CRF)", $"Currently {_draft.ExportCrf} ֲ· lower = better quality, larger file",
+            MakeSliderBound(0, 51, _draft.ExportCrf, v => { _draft.ExportCrf = v; MarkDirty(); })));
 
         // Frame rate - now includes 50 and 60 fps, persisted to AppSettings
         var fpsOptions = new[] { 24, 25, 30, 50, 60 };
         var fpsLabels = new[] { "24 fps", "25 fps", "30 fps (default)", "50 fps", "60 fps" };
-        var fpsIdx = Array.IndexOf(fpsOptions, AppSettings.ExportFps);
+        var fpsIdx = Array.IndexOf(fpsOptions, _draft.ExportFps);
         if (fpsIdx < 0) fpsIdx = 2;
-        p.Children.Add(MakeRow("Frame rate", $"Currently {AppSettings.ExportFps} fps · output framerate (all clips normalized)",
-            MakeComboBound(fpsLabels, fpsIdx, idx => { AppSettings.ExportFps = fpsOptions[idx]; AppSettings.Save(); })));
+        p.Children.Add(MakeRow("Frame rate", $"Currently {_draft.ExportFps} fps ֲ· output framerate (all clips normalized)",
+            MakeComboBound(fpsLabels, fpsIdx, idx => { _draft.ExportFps = fpsOptions[idx]; MarkDirty(); })));
 
         var bitrateOptions = new[] { 128, 192, 256, 320 };
         var bitrateLabels = new[] { "128 kbps", "192 kbps (default)", "256 kbps", "320 kbps" };
-        var brIdx = Array.IndexOf(bitrateOptions, AppSettings.ExportAudioBitrate);
+        var brIdx = Array.IndexOf(bitrateOptions, _draft.ExportAudioBitrate);
         if (brIdx < 0) brIdx = 1;
         p.Children.Add(MakeRow("Audio bitrate", "AAC bitrate",
-            MakeComboBound(bitrateLabels, brIdx, idx => { AppSettings.ExportAudioBitrate = bitrateOptions[idx]; AppSettings.Save(); })));
+            MakeComboBound(bitrateLabels, brIdx, idx => { _draft.ExportAudioBitrate = bitrateOptions[idx]; MarkDirty(); })));
 
         var hwItems = new[] { "CPU (libx264)", "NVIDIA NVENC", "Intel QuickSync", "AMD AMF" };
         var hwKeys = new[] { "cpu", "nvenc", "qsv", "amf" };
-        var hwIdx = Array.IndexOf(hwKeys, AppSettings.HardwareAccel);
+        var hwIdx = Array.IndexOf(hwKeys, _draft.HardwareAccel);
         if (hwIdx < 0) hwIdx = 0;
-        p.Children.Add(MakeRow("Hardware accel", "GPU encoder — much faster export if your GPU supports it",
-            MakeComboBound(hwItems, hwIdx, idx => { AppSettings.HardwareAccel = hwKeys[idx]; AppSettings.Save(); })));
+        p.Children.Add(MakeRow("Hardware accel", "GPU encoder ג€” much faster export if your GPU supports it",
+            MakeComboBound(hwItems, hwIdx, idx => { _draft.HardwareAccel = hwKeys[idx]; MarkDirty(); })));
         p.Children.Add(MakeRow("2-pass encoding", "Slower, better bitrate distribution (coming soon)",
-            MakeToggleBound(AppSettings.TwoPass, v => { AppSettings.TwoPass = v; AppSettings.Save(); })));
-        p.Children.Add(MakeRow("Audio loudnorm", "EBU R128 normalization — uniform loudness across all clips",
-            MakeToggleBound(AppSettings.AudioLoudnorm, v => { AppSettings.AudioLoudnorm = v; AppSettings.Save(); })));
+            MakeToggleBound(_draft.TwoPass, v => { _draft.TwoPass = v; MarkDirty(); })));
+        p.Children.Add(MakeRow("Audio loudnorm", "EBU R128 normalization ג€” uniform loudness across all clips",
+            MakeToggleBound(_draft.AudioLoudnorm, v => { _draft.AudioLoudnorm = v; MarkDirty(); })));
         return WrapSection(p);
     }
 
@@ -401,14 +592,14 @@ public class SettingsWindow : Window
     }
     private UIElement BuildFFmpeg()
     {
-        var p = MakePanel("FFmpeg", "Backend binaries — set paths and verify encoders.");
+        var p = MakePanel("FFmpeg", "Backend binaries ג€” set paths and verify encoders.");
         p.Children.Add(MakeRow("ffmpeg.exe path", "Used for encoding & filters", MakeFolderPath(@"%APPDIR%\ffmpeg\ffmpeg.exe")));
         p.Children.Add(MakeRow("ffprobe.exe path", "Used to read media metadata", MakeFolderPath(@"%APPDIR%\ffmpeg\ffprobe.exe")));
         p.Children.Add(MakeRow("yt-dlp.exe path", "Used for streaming-site URL imports", MakeFolderPath(@"%APPDIR%\ffmpeg\yt-dlp.exe")));
         var statusBox = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
-        statusBox.Children.Add(MakeChip("ffmpeg 6.1 · OK", Success));
-        statusBox.Children.Add(MakeChip("ffprobe · OK", Success));
-        statusBox.Children.Add(MakeChip("yt-dlp 2024.04 · OK", Success));
+        statusBox.Children.Add(MakeChip("ffmpeg 6.1 ֲ· OK", Success));
+        statusBox.Children.Add(MakeChip("ffprobe ֲ· OK", Success));
+        statusBox.Children.Add(MakeChip("yt-dlp 2024.04 ֲ· OK", Success));
         statusBox.Children.Add(MakeChip("Encoders: libx264, libx265, aac, libvorbis, libmp3lame", Accent));
         p.Children.Add(MakeRow("Status", "Detected binaries", statusBox));
         var testBtn = MakeButton("Run test pipeline", false);
@@ -425,8 +616,8 @@ public class SettingsWindow : Window
                 new[]{"K","Pause"},
                 new[]{"J","Reverse / slow down"},
                 new[]{"L","Forward / speed up"},
-                new[]{"←  →","Step 1 frame"},
-                new[]{"Shift+← →","Step 5 frames"},
+                new[]{"ג†  ג†’","Step 1 frame"},
+                new[]{"Shift+ג† ג†’","Step 5 frames"},
                 new[]{"Home","Go to start"},
                 new[]{"End","Go to end"},
             }),
@@ -470,7 +661,7 @@ public class SettingsWindow : Window
                 new[]{"T","Trim dialog"},
                 new[]{"M","Mute clip"},
                 new[]{"Ctrl+E","Export"},
-                new[]{"Ctrl+O","Open file…"},
+                new[]{"Ctrl+O","Open fileג€¦"},
             }),
             ("Help & Settings", new[]
             {
@@ -479,7 +670,7 @@ public class SettingsWindow : Window
             }),
         };
 
-        var p = MakePanel("Keyboard", "Customize any shortcut. Click \"Change…\" to rebind.");
+        var p = MakePanel("Keyboard", "Customize any shortcut. Click \"Changeג€¦\" to rebind.");
         var grid = new StackPanel();
 
         foreach (var g in groups)
@@ -504,7 +695,7 @@ public class SettingsWindow : Window
                 var lab = new TextBlock { Text = k[1], FontSize = 12, Foreground = new SolidColorBrush(Text), VerticalAlignment = VerticalAlignment.Center };
                 Grid.SetColumn(lab, 1);
                 row.Children.Add(lab);
-                var changeBtn = MakeButton("Change…", false);
+                var changeBtn = MakeButton("Changeג€¦", false);
                 changeBtn.Height = 22; changeBtn.Padding = new Thickness(8, 0, 8, 0); changeBtn.FontSize = 10.5; changeBtn.HorizontalAlignment = HorizontalAlignment.Right;
                 Grid.SetColumn(changeBtn, 2);
                 row.Children.Add(changeBtn);
@@ -529,7 +720,7 @@ public class SettingsWindow : Window
 
         var commitRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
         commitRow.Children.Add(new TextBlock { Text = "Commit", FontSize = 11, Foreground = new SolidColorBrush(TextDim), VerticalAlignment = VerticalAlignment.Center, Width = 90 });
-        commitRow.Children.Add(new TextBlock { Text = "b93dbdf · master", FontFamily = new FontFamily("Consolas"), FontSize = 12, Foreground = new SolidColorBrush(TextMute), VerticalAlignment = VerticalAlignment.Center });
+        commitRow.Children.Add(new TextBlock { Text = "b93dbdf ֲ· master", FontFamily = new FontFamily("Consolas"), FontSize = 12, Foreground = new SolidColorBrush(TextMute), VerticalAlignment = VerticalAlignment.Center });
         stack.Children.Add(commitRow);
 
         card.Child = stack;
@@ -551,11 +742,11 @@ public class SettingsWindow : Window
             Background = new LinearGradientBrush(Color.FromRgb(0xA0, 0x7C, 0xFF), Color.FromRgb(0x5B, 0x3A, 0xD9), 90),
             HorizontalAlignment = HorizontalAlignment.Center
         };
-        logo.Child = new TextBlock { Text = "▶", FontSize = 38, FontWeight = FontWeights.Bold, Foreground = System.Windows.Media.Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        logo.Child = new TextBlock { Text = "ג–¶", FontSize = 38, FontWeight = FontWeights.Bold, Foreground = System.Windows.Media.Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         stack.Children.Add(logo);
-        stack.Children.Add(new TextBlock { Text = "VideoEditor — Pro", FontSize = 18, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Text), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) });
-        stack.Children.Add(new TextBlock { Text = "WPF · FFmpeg · yt-dlp · React UI design", FontSize = 11, Foreground = new SolidColorBrush(TextDim), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) });
-        stack.Children.Add(new TextBlock { Text = "MIT License · YossiYad/video-editor", FontSize = 11, FontFamily = new FontFamily("Consolas"), Foreground = new SolidColorBrush(TextMute), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) });
+        stack.Children.Add(new TextBlock { Text = "VideoEditor ג€” Pro", FontSize = 18, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Text), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) });
+        stack.Children.Add(new TextBlock { Text = "WPF ֲ· FFmpeg ֲ· yt-dlp ֲ· React UI design", FontSize = 11, Foreground = new SolidColorBrush(TextDim), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) });
+        stack.Children.Add(new TextBlock { Text = "MIT License ֲ· YossiYad/video-editor", FontSize = 11, FontFamily = new FontFamily("Consolas"), Foreground = new SolidColorBrush(TextMute), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) });
         card.Child = stack;
         p.Children.Add(card);
 

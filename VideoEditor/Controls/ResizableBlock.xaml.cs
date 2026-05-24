@@ -59,9 +59,9 @@ public partial class ResizableBlock : UserControl
     public void SetSelected(bool sel)
     {
         _selected = sel;
-        // Hide the dashed outline entirely when not selected - only show on selection
-        fill.StrokeThickness = sel ? 3 : 0;
-        fill.Stroke = sel ? new SolidColorBrush(Color.FromRgb(0xFF, 0xD7, 0x00)) : Brushes.Transparent;
+        // Yellow outline (--warn) only when selected; hidden otherwise so the block sits clean on the video.
+        fill.StrokeThickness = sel ? 2 : 0;
+        fill.Stroke = sel ? new SolidColorBrush(Color.FromRgb(0xFF, 0xD4, 0x3B)) : Brushes.Transparent;
         tlThumb.Visibility = trThumb.Visibility = blThumb.Visibility = brThumb.Visibility = sel ? Visibility.Visible : Visibility.Hidden;
     }
 
