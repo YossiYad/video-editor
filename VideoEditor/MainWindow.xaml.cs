@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -337,7 +337,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            // The tick fires 12ֳ—/sec; surface any unexpected failure in the debugger and the
+            // The tick fires 12×/sec; surface any unexpected failure in the debugger and the
             // status bar so problems don't silently snowball.
             System.Diagnostics.Debug.WriteLine($"Tick error: {ex}");
             status.Text = "Playback tick error: " + ex.Message;
@@ -555,7 +555,7 @@ public partial class MainWindow : Window
         if (c == null) return;
         _suppress = true;
         clipNameText.Text = c.DisplayName;
-        clipMetaText.Text = $"{(c.VideoWidth > 0 ? c.VideoWidth + "ֳ—" + c.VideoHeight : "audio")} ֲ· {Timeline.FormatTime(c.OriginalDuration)}";
+        clipMetaText.Text = $"{(c.VideoWidth > 0 ? c.VideoWidth + "×" + c.VideoHeight : "audio")} · {Timeline.FormatTime(c.OriginalDuration)}";
         var accent = new SolidColorBrush(c.AccentColor);
         clipAccentTile.Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x33, c.AccentColor.R, c.AccentColor.G, c.AccentColor.B));
         clipAccentTile.BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x66, c.AccentColor.R, c.AccentColor.G, c.AccentColor.B));
@@ -564,7 +564,7 @@ public partial class MainWindow : Window
         clipDurText.Text = c.OriginalDuration.ToString("0.00");
         clipEffText.Text = "Effective: " + Timeline.FormatTime(c.EffectiveDuration);
         clipSpeedSlider.Value = c.Speed;
-        clipSpeedLabel.Text = c.Speed.ToString("0.00") + "ֳ—";
+        clipSpeedLabel.Text = c.Speed.ToString("0.00") + "×";
         clipVolSlider.Value = c.Volume;
         clipVolLabel.Text = (c.Volume * 100).ToString("0") + "%";
         _suppress = false;
@@ -712,7 +712,7 @@ public partial class MainWindow : Window
     private void ClipInOut_Changed(object sender, TextChangedEventArgs e)
     {
         if (_suppress || _selectedClip == null) return;
-        // Parse both first, then clamp against each other ג€” otherwise we'd clamp In against
+        // Parse both first, then clamp against each other —” otherwise we'd clamp In against
         // an outdated Out (or vice versa) when the user is editing the second field.
         var inOk = double.TryParse(clipInBox.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var newIn);
         var outOk = double.TryParse(clipOutBox.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var newOut);
@@ -729,7 +729,7 @@ public partial class MainWindow : Window
     {
         if (_suppress || _selectedClip == null) return;
         _selectedClip.Speed = e.NewValue;
-        clipSpeedLabel.Text = e.NewValue.ToString("0.00") + "ֳ—";
+        clipSpeedLabel.Text = e.NewValue.ToString("0.00") + "×";
         if (clipEffText != null) clipEffText.Text = "Effective: " + Timeline.FormatTime(_selectedClip.EffectiveDuration);
         if (_playingClip == _selectedClip) videoView.SpeedRatio = e.NewValue;
     }
@@ -902,9 +902,9 @@ public partial class MainWindow : Window
         if (!c.IsAudioOnly) _selectedClip = null; // attached audio: don't claim the clip
         timeline.SelectAudio(c);
         if (c.IsAudioOnly)
-            status.Text = $"Audio clip: {c.DisplayName} ֲ· S = Split ֲ· Backspace = Delete ֲ· Ctrl+C/V ֲ· drag edges to trim ֲ· drag body to move";
+            status.Text = $"Audio clip: {c.DisplayName} · S = Split · Backspace = Delete · Ctrl+C/V · drag edges to trim · drag body to move";
         else
-            status.Text = $"Audio: {c.DisplayName} ֲ· Vol {(int)(c.Volume * 100)}% ֲ· Backspace = Mute ֲ· Ctrl+C/V = copy/paste volume";
+            status.Text = $"Audio: {c.DisplayName} · Vol {(int)(c.Volume * 100)}% · Backspace = Mute · Ctrl+C/V = copy/paste volume";
     }
 
     private async void OnAudioContextAction(VideoClip c, string action)
@@ -1303,248 +1303,20 @@ public partial class MainWindow : Window
 
     private void Settings_Click(object s, RoutedEventArgs e) => new SettingsWindow() { Owner = this }.ShowDialog();
 
-    // EN ג†’ HE map for in-window text. ApplyLanguage walks the logical tree and replaces
-    // matching TextBlock.Text and Button/Content string values both directions.
-    private static readonly Dictionary<string, string> _enHe = new(StringComparer.Ordinal)
-    {
-        ["Open"] = "׳₪׳×׳—", [" Open"] = " ׳₪׳×׳—", ["Export"] = "׳™׳™׳¦׳",
-        ["Ready ֲ· drop video files to add"] = "׳׳•׳›׳ ֲ· ׳’׳¨׳•׳¨ ׳§׳‘׳¦׳™ ׳•׳™׳“׳׳• ׳›׳“׳™ ׳׳”׳•׳¡׳™׳£",
-        // Sidebar group labels
-        ["WORKSPACE"] = "׳¡׳‘׳™׳‘׳× ׳¢׳‘׳•׳“׳”", ["CAPTURE"] = "׳׳›׳™׳“׳”",
-        ["TRANSFORM & TRIM"] = "׳”׳׳¨׳” ׳•׳§׳™׳¦׳•׳¥", ["OVERLAYS"] = "׳©׳›׳‘׳•׳×",
-        ["AUDIO"] = "׳׳•׳“׳™׳•", ["HIDE BLOCKS"] = "׳‘׳׳•׳§׳™ ׳”׳¡׳×׳¨׳”", ["SPLIT"] = "׳₪׳™׳¦׳•׳",
-        // Sidebar tools
-        ["Video Editor"] = "׳¢׳•׳¨׳ ׳•׳™׳“׳׳•", ["Import from URL"] = "׳™׳™׳‘׳•׳ ׳-URL",
-        ["Screen Recorder"] = "׳”׳§׳׳˜׳× ׳׳¡׳", ["Text to Speech"] = "׳˜׳§׳¡׳˜ ׳׳“׳™׳‘׳•׳¨",
-        ["Video Recorder"] = "׳”׳§׳׳˜׳× ׳•׳™׳“׳׳•", ["Merge Videos"] = "׳׳™׳–׳•׳’ ׳¡׳¨׳˜׳•׳ ׳™׳",
-        ["Trim Video"] = "׳§׳™׳¦׳•׳¥ ׳¡׳¨׳˜׳•׳", ["Crop Video"] = "׳—׳™׳×׳•׳ ׳¡׳¨׳˜׳•׳",
-        ["Rotate Video"] = "׳¡׳™׳‘׳•׳‘ ׳¡׳¨׳˜׳•׳", ["Flip Video"] = "׳”׳™׳₪׳•׳ ׳¡׳¨׳˜׳•׳",
-        ["Resize Video"] = "׳©׳™׳ ׳•׳™ ׳’׳•׳“׳", ["Loop Video"] = "׳׳•׳׳׳”",
-        ["Change Speed"] = "׳©׳™׳ ׳•׳™ ׳׳”׳™׳¨׳•׳×", ["Stabilize"] = "׳™׳™׳¦׳•׳‘",
-        ["Remove Logo"] = "׳”׳¡׳¨׳× ׳׳•׳’׳•", ["Add Image"] = "׳”׳•׳¡׳₪׳× ׳×׳׳•׳ ׳”",
-        ["Add Text"] = "׳”׳•׳¡׳₪׳× ׳˜׳§׳¡׳˜", ["Add Audio"] = "׳”׳•׳¡׳₪׳× ׳׳•׳“׳™׳•",
-        ["Change Volume"] = "׳©׳™׳ ׳•׳™ ׳¢׳•׳¦׳׳× ׳§׳•׳", ["Extract Audio"] = "׳—׳™׳׳•׳¥ ׳׳•׳“׳™׳•",
-        ["Mute / Remove Audio"] = "׳”׳©׳×׳§׳” / ׳”׳¡׳¨׳× ׳׳•׳“׳™׳•",
-        ["Add Hide Block"] = "׳”׳•׳¡׳₪׳× ׳‘׳׳•׳§ ׳”׳¡׳×׳¨׳”", ["Delete Block"] = "׳׳—׳™׳§׳× ׳‘׳׳•׳§",
-        ["Split at Playhead"] = "׳₪׳™׳¦׳•׳ ׳‘׳ ׳§׳•׳“׳× ׳”׳ ׳™׳’׳•׳", ["Split into N Partsג€¦"] = "׳₪׳™׳¦׳•׳ ׳-N ׳—׳׳§׳™׳ג€¦",
-        // Inspector tabs / panels
-        ["Block"] = "׳‘׳׳•׳§", ["Clip"] = "׳§׳׳™׳₪", ["Hide Block"] = "׳‘׳׳•׳§ ׳”׳¡׳×׳¨׳”",
-        ["Renders over video at export"] = "׳׳•׳¦׳’ ׳׳¢׳ ׳”׳•׳™׳“׳׳• ׳‘׳™׳™׳¦׳•׳",
-        ["LABEL"] = "׳×׳•׳•׳™׳×", ["MODE"] = "׳׳¦׳‘",
-        ["Solid"] = "׳׳׳", ["Blur"] = "׳˜׳©׳˜׳•׳©", ["Pixelate"] = "׳₪׳™׳§׳¡׳",
-        ["COLOR"] = "׳¦׳‘׳¢", ["STRENGTH"] = "׳¢׳•׳¦׳׳”",
-        ["Subtle"] = "׳¢׳“׳™׳", ["Soft"] = "׳¨׳", ["Heavy"] = "׳›׳‘׳“",
-        ["Cover whole timeline"] = "׳›׳™׳¡׳•׳™ ׳›׳ ׳¦׳™׳¨ ׳”׳–׳׳",
-        ["START (s)"] = "׳”׳×׳—׳׳” (׳©')", ["END (s)"] = "׳¡׳•׳£ (׳©')",
-        ["TRIM ג€” IN / OUT"] = "׳§׳™׳¦׳•׳¥ ג€” ׳”׳×׳—׳׳” / ׳¡׳•׳£",
-        ["SPEED"] = "׳׳”׳™׳¨׳•׳×", ["VOLUME"] = "׳¢׳•׳¦׳׳× ׳§׳•׳",
-        ["TRANSFORM"] = "׳”׳׳¨׳”", ["EXPORT-TIME EFFECTS"] = "׳׳₪׳§׳˜׳™׳ ׳‘׳™׳™׳¦׳•׳",
-        ["ARRANGE"] = "׳¡׳™׳“׳•׳¨",
-        ["ג§‰ Duplicate"] = "ג§‰ ׳©׳›׳₪׳•׳", ["נ—‘ Delete"] = "נ—‘ ׳׳—׳™׳§׳”",
-        ["ג†÷ 90ֲ° L"] = "ג†÷ 90ֲ° ׳©׳׳³", ["ג†» 90ֲ° R"] = "ג†» 90ֲ° ׳™׳׳³",
-        ["ג‡„ Flip H"] = "ג‡„ ׳׳•׳₪׳§׳™", ["ג‡… Flip V"] = "ג‡… ׳׳ ׳›׳™",
-        ["נ” Loop"] = "נ” ׳׳•׳׳׳”", ["נ₪ Stabilize"] = "נ₪ ׳™׳™׳¦׳•׳‘",
-        ["ג—³ Crop"] = "ג—³ ׳—׳™׳×׳•׳", ["נ« Remove Logo"] = "נ« ׳”׳¡׳¨ ׳׳•׳’׳•",
-        ["נ”₪ Add Text"] = "נ”₪ ׳”׳•׳¡׳£ ׳˜׳§׳¡׳˜", ["נ–¼ Add Image"] = "נ–¼ ׳”׳•׳¡׳£ ׳×׳׳•׳ ׳”",
-        ["נµ Add Audio"] = "נµ ׳”׳•׳¡׳£ ׳׳•׳“׳™׳•", ["ג›¶ Resize"] = "ג›¶ ׳©׳™׳ ׳•׳™ ׳’׳•׳“׳",
-        ["ג‚ Split"] = "ג‚ ׳₪׳™׳¦׳•׳", ["ג‹¯ Split N"] = "ג‹¯ ׳₪׳™׳¦׳•׳ ׳-N",
-        // Export panel
-        ["Output settings"] = "׳”׳’׳“׳¨׳•׳× ׳₪׳׳˜",
-        ["Select a clip or block to edit it."] = "׳‘׳—׳¨ ׳§׳׳™׳₪ ׳׳• ׳‘׳׳•׳§ ׳׳¢׳¨׳™׳›׳”.",
-        ["FORMAT"] = "׳₪׳•׳¨׳׳˜", ["RESOLUTION"] = "׳¨׳–׳•׳׳•׳¦׳™׳”", ["FPS"] = "׳₪׳¨׳™׳™׳׳™׳",
-        ["QUALITY (CRF)"] = "׳׳™׳›׳•׳× (CRF)",
-        ["Visually lossless"] = "׳׳׳ ׳׳™׳‘׳•׳“ ׳ ׳¨׳׳”", ["Smaller file"] = "׳§׳•׳‘׳¥ ׳§׳˜׳ ׳™׳•׳×׳¨",
-        ["PROJECT DURATION"] = "׳׳©׳ ׳”׳₪׳¨׳•׳™׳§׳˜", ["CLIPS"] = "׳§׳׳™׳₪׳™׳", ["CODEC"] = "׳§׳•׳“׳§",
-        ["נ’¾ Export project"] = "נ’¾ ׳™׳™׳¦׳ ׳₪׳¨׳•׳™׳§׳˜",
-        ["ג†— Extract project audio only"] = "ג†— ׳—׳׳¥ ׳׳•׳“׳™׳• ׳‘׳׳‘׳“",
-        ["Source"] = "׳׳§׳•׳¨",
-        // HUD + status
-        ["No clip loaded"] = "׳׳ ׳ ׳˜׳¢׳ ׳§׳׳™׳₪",
-        ["FFmpeg 6.1 ֲ· ffprobe ready"] = "FFmpeg 6.1 ֲ· ffprobe ׳׳•׳›׳",
-        ["Play"] = "׳ ׳’׳", ["Delete"] = "׳׳—׳§", ["Copy/Paste"] = "׳”׳¢׳×׳§ / ׳”׳“׳‘׳§",
-        ["BLOCKS"] = "׳‘׳׳•׳§׳™׳", ["ready"] = "׳׳•׳›׳", ["Fit"] = "׳”׳×׳׳",
-        ["NEW"] = "׳—׳“׳©", ["2-pass"] = "2 ׳׳¢׳‘׳¨׳™׳",
-    };
-
-    private static Dictionary<string, string>? _heEn;
-    private static Dictionary<string, string> HeEn
-    {
-        get
-        {
-            if (_heEn != null) return _heEn;
-            var d = new Dictionary<string, string>(StringComparer.Ordinal);
-            foreach (var kv in _enHe) d[kv.Value] = kv.Key;
-            _heEn = d; return d;
-        }
-    }
-
-    private bool _hebrewApplied;
-    private static bool _hebrewTranslationsFixed;
-
-    private static void EnsureHebrewTranslations()
-    {
-        if (_hebrewTranslationsFixed) return;
-
-        void T(string en, string he) => _enHe[en] = he;
-
-        T("Open", "׳₪׳×׳—");
-        T(" Open", " ׳₪׳×׳—");
-        T("Export", "׳™׳™׳¦׳•׳");
-        T("Hide Block", "׳‘׳׳•׳§ ׳”׳¡׳×׳¨׳”");
-        T("Add Hide Block", "׳”׳•׳¡׳£ ׳‘׳׳•׳§ ׳”׳¡׳×׳¨׳”");
-        T("Delete Block", "׳׳—׳§ ׳‘׳׳•׳§");
-        T("Ready ֲ· drop video files to add", "׳׳•׳›׳ ֲ· ׳’׳¨׳•׳¨ ׳§׳‘׳¦׳™ ׳•׳™׳“׳׳• ׳›׳“׳™ ׳׳”׳•׳¡׳™׳£");
-        T("WORKSPACE", "׳¡׳‘׳™׳‘׳× ׳¢׳‘׳•׳“׳”");
-        T("CAPTURE", "׳׳›׳™׳“׳”");
-        T("TRANSFORM & TRIM", "׳¢׳¨׳™׳›׳” ׳•׳—׳™׳×׳•׳");
-        T("OVERLAYS", "׳©׳›׳‘׳•׳×");
-        T("AUDIO", "׳׳•׳“׳™׳•");
-        T("HIDE BLOCKS", "׳‘׳׳•׳§׳™ ׳”׳¡׳×׳¨׳”");
-        T("SPLIT", "׳₪׳™׳¦׳•׳");
-        T("VideoEditor", "׳¢׳•׳¨׳ ׳•׳™׳“׳׳•");
-        T("Video Editor", "׳¢׳•׳¨׳ ׳•׳™׳“׳׳•");
-        T("Import from URL", "׳™׳™׳‘׳•׳ ׳׳›׳×׳•׳‘׳× URL");
-        T("Screen Recorder", "׳”׳§׳׳˜׳× ׳׳¡׳");
-        T("Text to Speech", "׳˜׳§׳¡׳˜ ׳׳“׳™׳‘׳•׳¨");
-        T("Video Recorder", "׳”׳§׳׳˜׳× ׳•׳™׳“׳׳•");
-        T("Merge Videos", "׳׳™׳–׳•׳’ ׳¡׳¨׳˜׳•׳ ׳™׳");
-        T("Trim Video", "׳—׳™׳×׳•׳ ׳¡׳¨׳˜׳•׳");
-        T("Crop Video", "׳—׳™׳×׳•׳ ׳×׳׳•׳ ׳”");
-        T("Rotate Video", "׳¡׳™׳‘׳•׳‘ ׳•׳™׳“׳׳•");
-        T("Flip Video", "׳”׳™׳₪׳•׳ ׳•׳™׳“׳׳•");
-        T("Resize Video", "׳©׳™׳ ׳•׳™ ׳’׳•׳“׳");
-        T("Loop Video", "׳׳•׳׳׳”");
-        T("Change Speed", "׳©׳™׳ ׳•׳™ ׳׳”׳™׳¨׳•׳×");
-        T("Stabilize", "׳™׳™׳¦׳•׳‘");
-        T("Remove Logo", "׳”׳¡׳¨׳× ׳׳•׳’׳•");
-        T("Add Image", "׳”׳•׳¡׳₪׳× ׳×׳׳•׳ ׳”");
-        T("Add Text", "׳”׳•׳¡׳₪׳× ׳˜׳§׳¡׳˜");
-        T("Add Audio", "׳”׳•׳¡׳₪׳× ׳׳•׳“׳™׳•");
-        T("Change Volume", "׳©׳™׳ ׳•׳™ ׳¢׳•׳¦׳׳× ׳§׳•׳");
-        T("Extract Audio", "׳—׳™׳׳•׳¥ ׳׳•׳“׳™׳•");
-        T("Mute / Remove Audio", "׳”׳©׳×׳§׳” / ׳”׳¡׳¨׳× ׳׳•׳“׳™׳•");
-        T("Split at Playhead", "׳₪׳¦׳ ׳‘׳ ׳§׳•׳“׳× ׳”׳ ׳™׳’׳•׳");
-        T("Split into N Partsג€¦", "׳₪׳¦׳ ׳׳׳¡׳₪׳¨ ׳—׳׳§׳™׳...");
-        T("Block", "׳‘׳׳•׳§");
-        T("Clip", "׳§׳׳™׳₪");
-        T("Renders over video at export", "׳׳•׳¦׳’ ׳׳¢׳ ׳”׳•׳•׳™׳“׳׳• ׳‘׳™׳™׳¦׳•׳");
-        T("LABEL", "׳×׳•׳•׳™׳×");
-        T("MODE", "׳׳¦׳‘");
-        T("Solid", "׳׳׳");
-        T("Blur", "׳˜׳©׳˜׳•׳©");
-        T("Pixelate", "׳₪׳™׳§׳¡׳•׳");
-        T("COLOR", "׳¦׳‘׳¢");
-        T("STRENGTH", "׳¢׳•׳¦׳׳”");
-        T("Cover whole timeline", "׳›׳¡׳” ׳׳× ׳›׳ ׳¦׳™׳¨ ׳”׳–׳׳");
-        T("START (s)", "׳”׳×׳—׳׳” (׳©׳ ׳™׳•׳×)");
-        T("END (s)", "׳¡׳™׳•׳ (׳©׳ ׳™׳•׳×)");
-        T("SPEED", "׳׳”׳™׳¨׳•׳×");
-        T("VOLUME", "׳¢׳•׳¦׳׳× ׳§׳•׳");
-        T("TRANSFORM", "׳©׳™׳ ׳•׳™ ׳¦׳•׳¨׳”");
-        T("EXPORT-TIME EFFECTS", "׳׳₪׳§׳˜׳™׳ ׳‘׳™׳™׳¦׳•׳");
-        T("ARRANGE", "׳¡׳™׳“׳•׳¨");
-        T("Output settings", "׳”׳’׳“׳¨׳•׳× ׳™׳™׳¦׳•׳");
-        T("Select a clip or block to edit it.", "׳‘׳—׳¨ ׳§׳׳™׳₪ ׳׳• ׳‘׳׳•׳§ ׳›׳“׳™ ׳׳¢׳¨׳•׳ ׳׳•׳×׳•.");
-        T("FORMAT", "׳₪׳•׳¨׳׳˜");
-        T("RESOLUTION", "׳¨׳–׳•׳׳•׳¦׳™׳”");
-        T("QUALITY (CRF)", "׳׳™׳›׳•׳× (CRF)");
-        T("PROJECT DURATION", "׳׳©׳ ׳”׳₪׳¨׳•׳™׳§׳˜");
-        T("CLIPS", "׳§׳׳™׳₪׳™׳");
-        T("CODEC", "׳§׳•׳“׳§");
-        T("Export project", "׳™׳™׳¦׳•׳ ׳₪׳¨׳•׳™׳§׳˜");
-        T("Extract project audio only", "׳—׳׳¥ ׳׳•׳“׳™׳• ׳׳”׳₪׳¨׳•׳™׳§׳˜ ׳‘׳׳‘׳“");
-        T("Source", "׳׳§׳•׳¨");
-        T("No clip loaded", "׳׳ ׳ ׳˜׳¢׳ ׳§׳׳™׳₪");
-        T("FFmpeg 6.1 ֲ· ffprobe ready", "FFmpeg 6.1 ֲ· ffprobe ׳׳•׳›׳");
-        T("Play", "׳ ׳’׳");
-        T("Delete", "׳׳—׳§");
-        T("Copy/Paste", "׳”׳¢׳×׳§/׳”׳“׳‘׳§");
-        T("BLOCKS", "׳‘׳׳•׳§׳™׳");
-        T("ready", "׳׳•׳›׳");
-        T("Fit", "׳”׳×׳׳");
-        T("NEW", "׳—׳“׳©");
-        T("2-pass", "2 ׳׳¢׳‘׳¨׳™׳");
-
-        _heEn = null;
-        _hebrewTranslationsFixed = true;
-    }
-
     private void ApplyLanguage()
     {
-        EnsureHebrewTranslations();
-        var lang = AppSettings.Language;
-        bool isHe = lang == "he"
-            || (lang == "auto" && System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "he");
+        bool isHe = VideoEditor.Services.Localization.IsHebrew;
         FlowDirection = isHe ? System.Windows.FlowDirection.RightToLeft : System.Windows.FlowDirection.LeftToRight;
 
-        if (isHe != _hebrewApplied || isHe)
-        {
-            TranslateTree(this, isHe ? _enHe : HeEn);
-            _hebrewApplied = isHe;
-        }
+        openBtn.ToolTip = isHe ? "פתח קבצי וידאו" : "Open video files";
+        saveBtn.ToolTip = isHe ? "ייצוא הפרויקט (Ctrl+E)" : "Export project (Ctrl+E)";
+        settingsBtn.ToolTip = isHe ? "הגדרות · ," : "Settings · ,";
+        helpBtn.ToolTip = isHe ? "מדריך למשתמש · ?" : "User Guide · ?";
 
-        if (isHe)
-        {
-            openBtn.ToolTip = "׳₪׳×׳— ׳§׳‘׳¦׳™ ׳•׳™׳“׳׳•";
-            saveBtn.ToolTip = "׳™׳™׳¦׳•׳ ׳”׳₪׳¨׳•׳™׳§׳˜";
-            settingsBtn.ToolTip = "׳”׳’׳“׳¨׳•׳× ֲ· ,";
-            helpBtn.ToolTip = "׳׳“׳¨׳™׳ ׳׳׳©׳×׳׳© ֲ· ?";
-        }
-        else
-        {
-            openBtn.ToolTip = "Open video files";
-            saveBtn.ToolTip = "Export project";
-            settingsBtn.ToolTip = "Settings ֲ· ,";
-            helpBtn.ToolTip = "User Guide ֲ· ?";
-        }
+        VideoEditor.Services.Localization.TranslateTree(this);
     }
 
-    private static void TranslateTree(DependencyObject root, Dictionary<string, string> map)
-    {
-        var seen = new HashSet<DependencyObject>();
-
-        string TranslateText(string text)
-        {
-            if (map.TryGetValue(text, out var translated)) return translated;
-            var trimmed = text.Trim();
-            if (trimmed.Length != text.Length && map.TryGetValue(trimmed, out translated))
-                return text.Replace(trimmed, translated);
-            return text;
-        }
-
-        void Recurse(DependencyObject? node)
-        {
-            if (node == null) return;
-            if (!seen.Add(node)) return;
-
-            if (node is TextBlock tb && !string.IsNullOrEmpty(tb.Text))
-            {
-                tb.Text = TranslateText(tb.Text);
-            }
-            else if (node is HeaderedContentControl hc && hc.Header is string hs)
-            {
-                hc.Header = TranslateText(hs);
-            }
-            else if (node is ContentControl cc && cc.Content is string s)
-            {
-                cc.Content = TranslateText(s);
-            }
-
-            if (node is FrameworkElement fe && fe.ToolTip is string tooltip)
-                fe.ToolTip = TranslateText(tooltip);
-
-            foreach (var child in System.Windows.LogicalTreeHelper.GetChildren(node))
-            {
-                if (child is DependencyObject d) Recurse(d);
-            }
-
-            var visualCount = 0;
-            try { visualCount = VisualTreeHelper.GetChildrenCount(node); } catch { }
-            for (int i = 0; i < visualCount; i++) Recurse(VisualTreeHelper.GetChild(node, i));
-        }
-        Recurse(root);
-    }
-    private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { Owner = this }.ShowDialog();
+private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { Owner = this }.ShowDialog();
 
     private async void DownloadUrl_Click(object s, RoutedEventArgs e)
     {
@@ -1565,7 +1337,7 @@ public partial class MainWindow : Window
         }
 
         var dl = new DownloadService();
-        dl.Log += msg => Dispatcher.Invoke(() => status.Text = msg.Length > 80 ? msg[..80] + "ג€¦" : msg);
+        dl.Log += msg => Dispatcher.Invoke(() => status.Text = msg.Length > 80 ? msg[..80] + "…" : msg);
         var prog = new Progress<double>(v => Dispatcher.Invoke(() => progress.Value = v));
 
         status.Text = "Starting download...";
@@ -1911,7 +1683,7 @@ public partial class MainWindow : Window
         {
             if (succeeded)
             {
-                // Replace the prior temp output (if any) ג€” first destructive op uses the user's
+                // Replace the prior temp output (if any) —” first destructive op uses the user's
                 // original file (don't touch), subsequent ones supersede our own temp files.
                 if (IsAppTempFile(previousSource))
                 {
@@ -1920,13 +1692,13 @@ public partial class MainWindow : Window
             }
             else
             {
-                // Operation failed ג€” clean up the half-written temp if it exists.
+                // Operation failed —” clean up the half-written temp if it exists.
                 try { if (File.Exists(tempOut)) File.Delete(tempOut); } catch { }
             }
         }
     }
 
-    // Use the ProcessStartInfo argument list so the path is quoted by the runtime ג€” avoids
+    // Use the ProcessStartInfo argument list so the path is quoted by the runtime —” avoids
     // breaking when the file name contains characters that interact with the shell parser.
     private static void RevealInExplorer(string filePath)
     {

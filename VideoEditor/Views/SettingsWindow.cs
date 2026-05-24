@@ -95,15 +95,15 @@ public class SettingsWindow : Window
 
     private static readonly (string key, string icon, string label, string sub)[] Sections =
     {
-        ("general",  "ג™",  "General",            "App basics"),
-        ("player",   "ג–¶",  "Player",             "Playback & seek"),
-        ("editor",   "ג",  "Editor",             "Snap, ripple, defaults"),
-        ("export",   "נ’¾", "Export",             "Codec & quality"),
-        ("storage",  "נ’¿", "Storage",            "Cache & paths"),
-        ("ffmpeg",   "נ› ", "FFmpeg",             "Binaries & encoders"),
-        ("keys",     "ג¨",  "Keyboard",           "Shortcuts"),
-        ("updates",  "ג­¯",  "Updates",            "Channel & changelog"),
-        ("about",    "ג“˜",  "About",              "License & credits"),
+        ("general",  "⚙",  "General",            "App basics"),
+        ("player",   "▶",  "Player",             "Playback & seek"),
+        ("editor",   "✎",  "Editor",             "Snap, ripple, defaults"),
+        ("export",   "💾", "Export",             "Codec & quality"),
+        ("storage",  "💿", "Storage",            "Cache & paths"),
+        ("ffmpeg",   "🛠", "FFmpeg",             "Binaries & encoders"),
+        ("keys",     "⌨",  "Keyboard",           "Shortcuts"),
+        ("updates",  "⭐",  "Updates",            "Channel & changelog"),
+        ("about",    "ℹ",  "About",              "License & credits"),
     };
 
     public SettingsWindow()
@@ -129,7 +129,7 @@ public class SettingsWindow : Window
             BorderThickness = new Thickness(0, 0, 0, 1)
         };
         var titleRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(16, 0, 0, 0) };
-        // 28ֳ—28 purple icon tile per design tokens
+        // 28×28 purple icon tile per design tokens
         var iconTile = new Border
         {
             Width = 28, Height = 28,
@@ -145,7 +145,7 @@ public class SettingsWindow : Window
         };
         iconTile.Child = new TextBlock
         {
-            Text = "ג™", FontSize = 14, FontWeight = FontWeights.Bold,
+            Text = "⚙", FontSize = 14, FontWeight = FontWeights.Bold,
             Foreground = Brushes.White,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
@@ -401,7 +401,7 @@ public class SettingsWindow : Window
     private UIElement BuildGeneral()
     {
         var p = MakePanel("General", "App basics - language, theme, behavior on startup, privacy.");
-        var langItems = new[] { "Auto (system)", "English", "׳¢׳‘׳¨׳™׳×" };
+        var langItems = new[] { "Auto (system)", "English", "עברית" };
         var langKeys = new[] { "auto", "en", "he" };
         var langIdx = Array.IndexOf(langKeys, _draft.Language);
         if (langIdx < 0) langIdx = 0;
@@ -438,7 +438,7 @@ public class SettingsWindow : Window
         var p = MakePanel("Player", "Playback engine & seek behavior. Changes apply immediately.");
         p.Children.Add(MakeRow("Default volume", $"Currently {_draft.DefaultMasterVolume}% - applied when you press Save",
             MakeSliderBound(0, 100, _draft.DefaultMasterVolume, v => { _draft.DefaultMasterVolume = v; MarkDirty(); })));
-        p.Children.Add(MakeRow("Back / Forward step", $"Currently {_draft.BackForwardSeconds}s ג€” for the -5s/+5s buttons",
+        p.Children.Add(MakeRow("Back / Forward step", $"Currently {_draft.BackForwardSeconds}s —” for the -5s/+5s buttons",
             MakeSliderBound(1, 60, _draft.BackForwardSeconds, v => { _draft.BackForwardSeconds = v; MarkDirty(); })));
 
         var scrubItems = new[] { "Smooth (low quality)", "Balanced (default)", "Frame-accurate" };
@@ -464,11 +464,11 @@ public class SettingsWindow : Window
     private UIElement BuildEditor()
     {
         var p = MakePanel("Editor", "Clip dragging behavior and defaults. Most changes apply immediately.");
-        p.Children.Add(MakeRow("Ripple-abut clips on drop", "OFF (default) = free dragging with gaps allowed ֲ· ON = old behavior where clips snap together",
+        p.Children.Add(MakeRow("Ripple-abut clips on drop", "OFF (default) = free dragging with gaps allowed · ON = old behavior where clips snap together",
             MakeToggleBound(_draft.RippleMode, v => { _draft.RippleMode = v; MarkDirty(); })));
-        p.Children.Add(MakeRow("Magnetic snap threshold", $"Currently {_draft.SnapThreshold:0.##}s ג€” within this distance a dragged clip snaps to a neighbour's edge",
+        p.Children.Add(MakeRow("Magnetic snap threshold", $"Currently {_draft.SnapThreshold:0.##}s —” within this distance a dragged clip snaps to a neighbour's edge",
             MakeSliderBound(0, 50, (int)(_draft.SnapThreshold * 10), v => { _draft.SnapThreshold = v / 10.0; MarkDirty(); })));
-        p.Children.Add(MakeRow("Initial zoom", $"Currently {_draft.InitialPixelsPerSecond} px/sec ג€” default zoom level for new projects",
+        p.Children.Add(MakeRow("Initial zoom", $"Currently {_draft.InitialPixelsPerSecond} px/sec —” default zoom level for new projects",
             MakeSliderBound(8, 200, _draft.InitialPixelsPerSecond, v => { _draft.InitialPixelsPerSecond = v; MarkDirty(); })));
         p.Children.Add(MakeRow("Show waveform per clip", "Auto-generate audio waveforms in A1 lane",
             MakeToggleBound(_draft.ShowWaveformPerClip, v => { _draft.ShowWaveformPerClip = v; MarkDirty(); })));
@@ -480,7 +480,7 @@ public class SettingsWindow : Window
         p.Children.Add(MakeRow("Thumbnails per clip", "Number of frame previews to render in V1 lane",
             MakeComboBound(thumbLabels, thumbIdx, idx => { _draft.ThumbnailsPerClip = thumbOptions[idx]; MarkDirty(); })));
 
-        p.Children.Add(MakeRow("Default block opacity", $"Currently {_draft.DefaultBlockOpacity}% ג€” opacity of new hide blocks",
+        p.Children.Add(MakeRow("Default block opacity", $"Currently {_draft.DefaultBlockOpacity}% —” opacity of new hide blocks",
             MakeSliderBound(0, 100, _draft.DefaultBlockOpacity, v => { _draft.DefaultBlockOpacity = v; MarkDirty(); })));
         return WrapSection(p);
     }
@@ -495,7 +495,7 @@ public class SettingsWindow : Window
             MakeComboBound(new[] { "H.264 (libx264)", "H.265 / HEVC", "AV1", "ProRes 422" },
                 _draft.ExportCodec switch { "libx265" => 1, "libaom-av1" => 2, "prores_ks" => 3, _ => 0 },
                 idx => { _draft.ExportCodec = idx switch { 1 => "libx265", 2 => "libaom-av1", 3 => "prores_ks", _ => "libx264" }; MarkDirty(); })));
-        p.Children.Add(MakeRow("Quality (CRF)", $"Currently {_draft.ExportCrf} ֲ· lower = better quality, larger file",
+        p.Children.Add(MakeRow("Quality (CRF)", $"Currently {_draft.ExportCrf} · lower = better quality, larger file",
             MakeSliderBound(0, 51, _draft.ExportCrf, v => { _draft.ExportCrf = v; MarkDirty(); })));
 
         // Frame rate - now includes 50 and 60 fps, persisted to AppSettings
@@ -503,7 +503,7 @@ public class SettingsWindow : Window
         var fpsLabels = new[] { "24 fps", "25 fps", "30 fps (default)", "50 fps", "60 fps" };
         var fpsIdx = Array.IndexOf(fpsOptions, _draft.ExportFps);
         if (fpsIdx < 0) fpsIdx = 2;
-        p.Children.Add(MakeRow("Frame rate", $"Currently {_draft.ExportFps} fps ֲ· output framerate (all clips normalized)",
+        p.Children.Add(MakeRow("Frame rate", $"Currently {_draft.ExportFps} fps · output framerate (all clips normalized)",
             MakeComboBound(fpsLabels, fpsIdx, idx => { _draft.ExportFps = fpsOptions[idx]; MarkDirty(); })));
 
         var bitrateOptions = new[] { 128, 192, 256, 320 };
@@ -517,11 +517,11 @@ public class SettingsWindow : Window
         var hwKeys = new[] { "cpu", "nvenc", "qsv", "amf" };
         var hwIdx = Array.IndexOf(hwKeys, _draft.HardwareAccel);
         if (hwIdx < 0) hwIdx = 0;
-        p.Children.Add(MakeRow("Hardware accel", "GPU encoder ג€” much faster export if your GPU supports it",
+        p.Children.Add(MakeRow("Hardware accel", "GPU encoder —” much faster export if your GPU supports it",
             MakeComboBound(hwItems, hwIdx, idx => { _draft.HardwareAccel = hwKeys[idx]; MarkDirty(); })));
         p.Children.Add(MakeRow("2-pass encoding", "Slower, better bitrate distribution (coming soon)",
             MakeToggleBound(_draft.TwoPass, v => { _draft.TwoPass = v; MarkDirty(); })));
-        p.Children.Add(MakeRow("Audio loudnorm", "EBU R128 normalization ג€” uniform loudness across all clips",
+        p.Children.Add(MakeRow("Audio loudnorm", "EBU R128 normalization —” uniform loudness across all clips",
             MakeToggleBound(_draft.AudioLoudnorm, v => { _draft.AudioLoudnorm = v; MarkDirty(); })));
         return WrapSection(p);
     }
@@ -592,14 +592,14 @@ public class SettingsWindow : Window
     }
     private UIElement BuildFFmpeg()
     {
-        var p = MakePanel("FFmpeg", "Backend binaries ג€” set paths and verify encoders.");
+        var p = MakePanel("FFmpeg", "Backend binaries —” set paths and verify encoders.");
         p.Children.Add(MakeRow("ffmpeg.exe path", "Used for encoding & filters", MakeFolderPath(@"%APPDIR%\ffmpeg\ffmpeg.exe")));
         p.Children.Add(MakeRow("ffprobe.exe path", "Used to read media metadata", MakeFolderPath(@"%APPDIR%\ffmpeg\ffprobe.exe")));
         p.Children.Add(MakeRow("yt-dlp.exe path", "Used for streaming-site URL imports", MakeFolderPath(@"%APPDIR%\ffmpeg\yt-dlp.exe")));
         var statusBox = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
-        statusBox.Children.Add(MakeChip("ffmpeg 6.1 ֲ· OK", Success));
-        statusBox.Children.Add(MakeChip("ffprobe ֲ· OK", Success));
-        statusBox.Children.Add(MakeChip("yt-dlp 2024.04 ֲ· OK", Success));
+        statusBox.Children.Add(MakeChip("ffmpeg 6.1 · OK", Success));
+        statusBox.Children.Add(MakeChip("ffprobe · OK", Success));
+        statusBox.Children.Add(MakeChip("yt-dlp 2024.04 · OK", Success));
         statusBox.Children.Add(MakeChip("Encoders: libx264, libx265, aac, libvorbis, libmp3lame", Accent));
         p.Children.Add(MakeRow("Status", "Detected binaries", statusBox));
         var testBtn = MakeButton("Run test pipeline", false);
@@ -661,7 +661,7 @@ public class SettingsWindow : Window
                 new[]{"T","Trim dialog"},
                 new[]{"M","Mute clip"},
                 new[]{"Ctrl+E","Export"},
-                new[]{"Ctrl+O","Open fileג€¦"},
+                new[]{"Ctrl+O","Open file…"},
             }),
             ("Help & Settings", new[]
             {
@@ -670,7 +670,7 @@ public class SettingsWindow : Window
             }),
         };
 
-        var p = MakePanel("Keyboard", "Customize any shortcut. Click \"Changeג€¦\" to rebind.");
+        var p = MakePanel("Keyboard", "Customize any shortcut. Click \"Change…\" to rebind.");
         var grid = new StackPanel();
 
         foreach (var g in groups)
@@ -695,7 +695,7 @@ public class SettingsWindow : Window
                 var lab = new TextBlock { Text = k[1], FontSize = 12, Foreground = new SolidColorBrush(Text), VerticalAlignment = VerticalAlignment.Center };
                 Grid.SetColumn(lab, 1);
                 row.Children.Add(lab);
-                var changeBtn = MakeButton("Changeג€¦", false);
+                var changeBtn = MakeButton("Change…", false);
                 changeBtn.Height = 22; changeBtn.Padding = new Thickness(8, 0, 8, 0); changeBtn.FontSize = 10.5; changeBtn.HorizontalAlignment = HorizontalAlignment.Right;
                 Grid.SetColumn(changeBtn, 2);
                 row.Children.Add(changeBtn);
@@ -720,7 +720,7 @@ public class SettingsWindow : Window
 
         var commitRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
         commitRow.Children.Add(new TextBlock { Text = "Commit", FontSize = 11, Foreground = new SolidColorBrush(TextDim), VerticalAlignment = VerticalAlignment.Center, Width = 90 });
-        commitRow.Children.Add(new TextBlock { Text = "b93dbdf ֲ· master", FontFamily = new FontFamily("Consolas"), FontSize = 12, Foreground = new SolidColorBrush(TextMute), VerticalAlignment = VerticalAlignment.Center });
+        commitRow.Children.Add(new TextBlock { Text = "b93dbdf · master", FontFamily = new FontFamily("Consolas"), FontSize = 12, Foreground = new SolidColorBrush(TextMute), VerticalAlignment = VerticalAlignment.Center });
         stack.Children.Add(commitRow);
 
         card.Child = stack;
@@ -742,11 +742,11 @@ public class SettingsWindow : Window
             Background = new LinearGradientBrush(Color.FromRgb(0xA0, 0x7C, 0xFF), Color.FromRgb(0x5B, 0x3A, 0xD9), 90),
             HorizontalAlignment = HorizontalAlignment.Center
         };
-        logo.Child = new TextBlock { Text = "ג–¶", FontSize = 38, FontWeight = FontWeights.Bold, Foreground = System.Windows.Media.Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        logo.Child = new TextBlock { Text = "▶", FontSize = 38, FontWeight = FontWeights.Bold, Foreground = System.Windows.Media.Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         stack.Children.Add(logo);
-        stack.Children.Add(new TextBlock { Text = "VideoEditor ג€” Pro", FontSize = 18, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Text), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) });
-        stack.Children.Add(new TextBlock { Text = "WPF ֲ· FFmpeg ֲ· yt-dlp ֲ· React UI design", FontSize = 11, Foreground = new SolidColorBrush(TextDim), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) });
-        stack.Children.Add(new TextBlock { Text = "MIT License ֲ· YossiYad/video-editor", FontSize = 11, FontFamily = new FontFamily("Consolas"), Foreground = new SolidColorBrush(TextMute), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) });
+        stack.Children.Add(new TextBlock { Text = "VideoEditor —” Pro", FontSize = 18, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Text), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) });
+        stack.Children.Add(new TextBlock { Text = "WPF · FFmpeg · yt-dlp · React UI design", FontSize = 11, Foreground = new SolidColorBrush(TextDim), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) });
+        stack.Children.Add(new TextBlock { Text = "MIT License · YossiYad/video-editor", FontSize = 11, FontFamily = new FontFamily("Consolas"), Foreground = new SolidColorBrush(TextMute), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) });
         card.Child = stack;
         p.Children.Add(card);
 
