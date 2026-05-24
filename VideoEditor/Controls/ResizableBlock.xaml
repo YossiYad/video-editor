@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              MinWidth="20" MinHeight="20">
     <Grid x:Name="root">
-        <Rectangle x:Name="fill" Fill="Black" Opacity="1.0" Stroke="#7C4DFF" StrokeThickness="2" StrokeDashArray="4,2"/>
+        <Rectangle x:Name="fill" Fill="Black" Opacity="1.0" Stroke="#FFD43B" StrokeThickness="2" StrokeDashArray="4,2"/>
         <Rectangle x:Name="patternFill" IsHitTestVisible="False" Visibility="Collapsed"/>
         <Border x:Name="modeBadge" Background="#CC000000" CornerRadius="3" Padding="5,1" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4" IsHitTestVisible="False">
             <TextBlock x:Name="modeBadgeText" Foreground="White" FontSize="9.5" FontWeight="Bold" FontFamily="Consolas" Text="SOLID"/>
@@ -15,26 +15,26 @@
                 </ControlTemplate>
             </Thumb.Template>
         </Thumb>
-        <Thumb x:Name="tlThumb" Width="12" Height="12" HorizontalAlignment="Left" VerticalAlignment="Top" Cursor="SizeNWSE" Margin="-6">
+        <Thumb x:Name="tlThumb" Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Top" Cursor="SizeNWSE" Margin="-5">
             <Thumb.Template>
                 <ControlTemplate>
-                    <Rectangle Fill="#7C4DFF" Stroke="White" StrokeThickness="1"/>
+                    <Rectangle Fill="White" Stroke="#1A1B22" StrokeThickness="1"/>
                 </ControlTemplate>
             </Thumb.Template>
         </Thumb>
-        <Thumb x:Name="trThumb" Width="12" Height="12" HorizontalAlignment="Right" VerticalAlignment="Top" Cursor="SizeNESW" Margin="-6">
+        <Thumb x:Name="trThumb" Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Top" Cursor="SizeNESW" Margin="-5">
             <Thumb.Template>
-                <ControlTemplate><Rectangle Fill="#7C4DFF" Stroke="White" StrokeThickness="1"/></ControlTemplate>
+                <ControlTemplate><Rectangle Fill="White" Stroke="#1A1B22" StrokeThickness="1"/></ControlTemplate>
             </Thumb.Template>
         </Thumb>
-        <Thumb x:Name="blThumb" Width="12" Height="12" HorizontalAlignment="Left" VerticalAlignment="Bottom" Cursor="SizeNESW" Margin="-6">
+        <Thumb x:Name="blThumb" Width="10" Height="10" HorizontalAlignment="Left" VerticalAlignment="Bottom" Cursor="SizeNESW" Margin="-5">
             <Thumb.Template>
-                <ControlTemplate><Rectangle Fill="#7C4DFF" Stroke="White" StrokeThickness="1"/></ControlTemplate>
+                <ControlTemplate><Rectangle Fill="White" Stroke="#1A1B22" StrokeThickness="1"/></ControlTemplate>
             </Thumb.Template>
         </Thumb>
-        <Thumb x:Name="brThumb" Width="12" Height="12" HorizontalAlignment="Right" VerticalAlignment="Bottom" Cursor="SizeNWSE" Margin="-6">
+        <Thumb x:Name="brThumb" Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Cursor="SizeNWSE" Margin="-5">
             <Thumb.Template>
-                <ControlTemplate><Rectangle Fill="#7C4DFF" Stroke="White" StrokeThickness="1"/></ControlTemplate>
+                <ControlTemplate><Rectangle Fill="White" Stroke="#1A1B22" StrokeThickness="1"/></ControlTemplate>
             </Thumb.Template>
         </Thumb>
     </Grid>

@@ -9,15 +9,16 @@ namespace VideoEditor.Views;
 
 public class UserGuideWindow : Window
 {
-    private static readonly Color Bg0 = Color.FromRgb(0x07, 0x08, 0x0D);
-    private static readonly Color Bg1 = Color.FromRgb(0x0F, 0x11, 0x19);
-    private static readonly Color Bg2 = Color.FromRgb(0x16, 0x1A, 0x25);
-    private static readonly Color Bg3 = Color.FromRgb(0x1D, 0x22, 0x31);
-    private static readonly Color Line = Color.FromArgb(0x18, 0xFF, 0xFF, 0xFF);
-    private static readonly Color LineStrong = Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF);
-    private static readonly Color Text = Color.FromRgb(0xE8, 0xEA, 0xF2);
-    private static readonly Color TextMute = Color.FromRgb(0x8A, 0x91, 0xA8);
-    private static readonly Color TextDim = Color.FromRgb(0x5A, 0x61, 0x78);
+    private static bool L => VideoEditor.Services.Theming.IsLight();
+    private static Color Bg0        => L ? Color.FromRgb(0xEB, 0xED, 0xF3) : Color.FromRgb(0x07, 0x08, 0x0D);
+    private static Color Bg1        => L ? Color.FromRgb(0xF8, 0xF9, 0xFC) : Color.FromRgb(0x0F, 0x11, 0x19);
+    private static Color Bg2        => L ? Color.FromRgb(0xF1, 0xF3, 0xF8) : Color.FromRgb(0x16, 0x1A, 0x25);
+    private static Color Bg3        => L ? Color.FromRgb(0xE5, 0xE8, 0xEF) : Color.FromRgb(0x1D, 0x22, 0x31);
+    private static Color Line       => L ? Color.FromArgb(0x18, 0x00, 0x00, 0x00) : Color.FromArgb(0x18, 0xFF, 0xFF, 0xFF);
+    private static Color LineStrong => L ? Color.FromArgb(0x30, 0x00, 0x00, 0x00) : Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF);
+    private static Color Text       => L ? Color.FromRgb(0x1A, 0x1D, 0x24) : Color.FromRgb(0xE8, 0xEA, 0xF2);
+    private static Color TextMute   => L ? Color.FromRgb(0x52, 0x59, 0x6B) : Color.FromRgb(0x8A, 0x91, 0xA8);
+    private static Color TextDim    => L ? Color.FromRgb(0x7A, 0x82, 0x95) : Color.FromRgb(0x5A, 0x61, 0x78);
     private static readonly Color Accent = Color.FromRgb(0x8B, 0x5C, 0xFF);
     private static readonly Color Success = Color.FromRgb(0x4C, 0xAF, 0x50);
     private static readonly Color Warn = Color.FromRgb(0xFF, 0xD4, 0x3B);
@@ -56,9 +57,8 @@ public class UserGuideWindow : Window
         // Titlebar
         var titlebar = new Border
         {
-            Background = new LinearGradientBrush(
-                Color.FromRgb(0x1A, 0x1E, 0x2B),
-                Color.FromRgb(0x13, 0x17, 0x24), 90),
+            Background = (Application.Current?.Resources["DialogTitlebarBg"] as Brush)
+                ?? new SolidColorBrush(Bg1),
             BorderBrush = new SolidColorBrush(LineStrong),
             BorderThickness = new Thickness(0, 0, 0, 1)
         };
@@ -67,9 +67,25 @@ public class UserGuideWindow : Window
         tRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         tRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var left = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        left.Children.Add(new TextBlock { Text = "?", FontSize = 20, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Accent), VerticalAlignment = VerticalAlignment.Center });
-        left.Children.Add(new TextBlock { Text = " User Guide", FontSize = 15, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Text), Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
-        left.Children.Add(new TextBlock { Text = "  ·  Press F1 anytime", FontSize = 11, Foreground = new SolidColorBrush(TextDim), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) });
+        var iconTile = new Border
+        {
+            Width = 28, Height = 28, CornerRadius = new CornerRadius(7),
+            Background = new SolidColorBrush(Accent),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x6E, 0x44, 0xD6)),
+            BorderThickness = new Thickness(1),
+            VerticalAlignment = VerticalAlignment.Center,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Accent, BlurRadius = 8, ShadowDepth = 0, Opacity = 0.4 }
+        };
+        iconTile.Child = new TextBlock
+        {
+            Text = "?", FontSize = 15, FontWeight = FontWeights.Bold, Foreground = Brushes.White,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+        };
+        left.Children.Add(iconTile);
+        var titleStack = new StackPanel { Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        titleStack.Children.Add(new TextBlock { Text = "User Guide", FontSize = 13.5, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Text) });
+        titleStack.Children.Add(new TextBlock { Text = "Press F1 or ? anytime to open this", FontSize = 11, Foreground = new SolidColorBrush(TextMute), Margin = new Thickness(0, 2, 0, 0) });
+        left.Children.Add(titleStack);
         Grid.SetColumn(left, 0);
         tRow.Children.Add(left);
         var kbdEsc = MakeKbd("Esc");

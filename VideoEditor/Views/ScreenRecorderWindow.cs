@@ -4,7 +4,6 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using Microsoft.Win32;
 using VideoEditor.Services;
 
 namespace VideoEditor.Views;
@@ -20,24 +19,48 @@ public class ScreenRecorderWindow : Window
         _ff = ff;
         _webcam = webcam;
         Title = webcam ? "Video Recorder (Webcam)" : "Screen Recorder";
-        Width = 480; Height = 320;
-        Background = new SolidColorBrush(Color.FromRgb(0x15, 0x15, 0x1F));
-        WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        var (g, body, footer) = WindowBuilder.Layout();
-        body.Children.Add(WindowBuilder.Lbl(webcam ? "Captures webcam via dshow." : "Captures the primary screen using gdigrab."));
-        body.Children.Add(WindowBuilder.Lbl("Output file"));
-        var path = new TextBox { Text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), webcam ? "webcam.mp4" : "screen.mp4") };
-        body.Children.Add(path);
+        var icon = webcam ? "🎥" : "🖥";
+        var sub = webcam ? "Capture webcam via dshow" : "Capture the primary screen using gdigrab";
+        var ch = WindowBuilder.Build(this, icon, Title, sub, 540, 380);
 
-        var fps = new TextBox { Text = "30", Width = 80 };
-        body.Children.Add(WindowBuilder.Lbl("FPS"));
-        body.Children.Add(fps);
+        ch.Body.Children.Add(WindowBuilder.Lbl("Output file"));
+        var path = WindowBuilder.Tb(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyVideos),
+            webcam ? "webcam.mp4" : "screen.mp4"));
+        ch.Body.Children.Add(path);
+
+        ch.Body.Children.Add(WindowBuilder.Lbl("Frame rate (FPS)"));
+        var fps = WindowBuilder.Tb("30");
+        fps.HorizontalAlignment = HorizontalAlignment.Left;
+        fps.Width = 100;
+        ch.Body.Children.Add(fps);
+
+        // Recording status indicator
+        var statusRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 14, 0, 0) };
+        var statusDot = new System.Windows.Shapes.Ellipse
+        {
+            Width = 9, Height = 9, Margin = new Thickness(0, 0, 8, 0),
+            Fill = WindowBuilder.TextDim,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var statusText = new TextBlock
+        {
+            Text = "Idle",
+            FontSize = 11.5,
+            Foreground = WindowBuilder.TextMute,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        statusRow.Children.Add(statusDot);
+        statusRow.Children.Add(statusText);
+        ch.Body.Children.Add(statusRow);
 
         var btnRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
-        var startBtn = new Button { Content = "● Start Recording", Width = 160, Style = (Style)FindResource("PrimaryButton"), Margin = new Thickness(4) };
-        var stopBtn = new Button { Content = "■ Stop", Width = 100, Style = (Style)FindResource("ToolButton"), Margin = new Thickness(4), IsEnabled = false };
+        var startBtn = new Button { Content = "● Start Recording", MinWidth = 168, Height = 32, Margin = new Thickness(0, 0, 6, 0) };
+        startBtn.Style = (Style)FindResource("PrimaryButton");
+        var stopBtn = new Button { Content = "■ Stop", MinWidth = 100, Height = 32, IsEnabled = false };
+        stopBtn.Style = (Style)FindResource("ToolButton");
         btnRow.Children.Add(startBtn); btnRow.Children.Add(stopBtn);
-        body.Children.Add(btnRow);
+        ch.Body.Children.Add(btnRow);
 
         startBtn.Click += (_, _) =>
         {
@@ -66,12 +89,13 @@ public class ScreenRecorderWindow : Window
                     EnableRaisingEvents = true
                 };
                 _proc.Start();
-                // Drain both pipes — otherwise long recordings can hang when the buffer fills.
                 _proc.BeginErrorReadLine();
                 _proc.BeginOutputReadLine();
-                _proc.ErrorDataReceived += (_, _) => { /* discard */ };
-                _proc.OutputDataReceived += (_, _) => { /* discard */ };
+                _proc.ErrorDataReceived += (_, _) => { };
+                _proc.OutputDataReceived += (_, _) => { };
                 startBtn.IsEnabled = false; stopBtn.IsEnabled = true;
+                statusDot.Fill = new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x6B));
+                statusText.Text = "Recording…";
             }
             catch (Exception ex) { MessageBox.Show(ex.Message); }
         };
@@ -80,16 +104,18 @@ public class ScreenRecorderWindow : Window
             try
             {
                 StopRecording();
+                statusDot.Fill = new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50));
+                statusText.Text = "Saved: " + Path.GetFileName(path.Text);
                 MessageBox.Show("Saved: " + path.Text);
                 startBtn.IsEnabled = true; stopBtn.IsEnabled = false;
             }
             catch (Exception ex) { MessageBox.Show(ex.Message); }
         };
 
-        Content = g;
-        WindowBuilder.OkCancel(this, footer);
+        // Primary CTA closes the window (recording is started/stopped via the buttons above)
+        ch.Primary.Content = "Done";
+        ch.Primary.Click += (_, _) => { DialogResult = true; Close(); };
 
-        // If the user closes the window without pressing Stop, don't leave ffmpeg running.
         Closed += (_, _) => { try { StopRecording(); } catch { } };
     }
 
