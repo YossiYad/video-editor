@@ -917,13 +917,17 @@
                                                     <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="1.4*"/>
                                                 </Grid.ColumnDefinitions>
                                                 <TextBox Grid.Column="0" x:Name="startH" TextChanged="StartEnd_Changed" TextAlignment="Center" ToolTip="hours"/>
-                                                <TextBlock Grid.Column="1" Text=":" VerticalAlignment="Center" Margin="4,0" Foreground="{DynamicResource TextDim}" FontFamily="Consolas" FontWeight="Bold"/>
+                                                <TextBlock Grid.Column="1" Text=":" VerticalAlignment="Center" Margin="3,0" Foreground="{DynamicResource TextDim}" FontFamily="Consolas" FontWeight="Bold"/>
                                                 <TextBox Grid.Column="2" x:Name="startM" TextChanged="StartEnd_Changed" TextAlignment="Center" ToolTip="minutes"/>
-                                                <TextBlock Grid.Column="3" Text=":" VerticalAlignment="Center" Margin="4,0" Foreground="{DynamicResource TextDim}" FontFamily="Consolas" FontWeight="Bold"/>
-                                                <TextBox Grid.Column="4" x:Name="startS" TextChanged="StartEnd_Changed" TextAlignment="Center" ToolTip="seconds (decimals allowed)"/>
+                                                <TextBlock Grid.Column="3" Text=":" VerticalAlignment="Center" Margin="3,0" Foreground="{DynamicResource TextDim}" FontFamily="Consolas" FontWeight="Bold"/>
+                                                <TextBox Grid.Column="4" x:Name="startS" TextChanged="StartEnd_Changed" TextAlignment="Center" ToolTip="seconds"/>
+                                                <TextBlock Grid.Column="5" Text="." VerticalAlignment="Center" Margin="3,0" Foreground="{DynamicResource TextDim}" FontFamily="Consolas" FontWeight="Bold"/>
+                                                <TextBox Grid.Column="6" x:Name="startMs" TextChanged="StartEnd_Changed" TextAlignment="Center" ToolTip="milliseconds (0–999)"/>
                                             </Grid>
                                             <Grid FlowDirection="LeftToRight" Margin="0,2,0,0">
                                                 <Grid.ColumnDefinitions>
@@ -931,13 +935,17 @@
                                                     <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="1.4*"/>
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Grid.Column="0" Text="h" FontSize="9.5" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
-                                                <TextBlock Grid.Column="1" Margin="4,0"/>
+                                                <TextBlock Grid.Column="1" Margin="3,0"/>
                                                 <TextBlock Grid.Column="2" Text="m" FontSize="9.5" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
-                                                <TextBlock Grid.Column="3" Margin="4,0"/>
+                                                <TextBlock Grid.Column="3" Margin="3,0"/>
                                                 <TextBlock Grid.Column="4" Text="s" FontSize="9.5" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
+                                                <TextBlock Grid.Column="5" Margin="3,0"/>
+                                                <TextBlock Grid.Column="6" Text="ms" FontSize="9.5" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
                                             </Grid>
                                         </StackPanel>
                                         <StackPanel Margin="0,8,0,0">
@@ -948,13 +956,17 @@
                                                     <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="1.4*"/>
                                                 </Grid.ColumnDefinitions>
                                                 <TextBox Grid.Column="0" x:Name="endH" TextChanged="StartEnd_Changed" TextAlignment="Center" ToolTip="hours"/>
-                                                <TextBlock Grid.Column="1" Text=":" VerticalAlignment="Center" Margin="4,0" Foreground="{DynamicResource TextDim}" FontFamily="Consolas" FontWeight="Bold"/>
+                                                <TextBlock Grid.Column="1" Text=":" VerticalAlignment="Center" Margin="3,0" Foreground="{DynamicResource TextDim}" FontFamily="Consolas" FontWeight="Bold"/>
                                                 <TextBox Grid.Column="2" x:Name="endM" TextChanged="StartEnd_Changed" TextAlignment="Center" ToolTip="minutes"/>
-                                                <TextBlock Grid.Column="3" Text=":" VerticalAlignment="Center" Margin="4,0" Foreground="{DynamicResource TextDim}" FontFamily="Consolas" FontWeight="Bold"/>
-                                                <TextBox Grid.Column="4" x:Name="endS" TextChanged="StartEnd_Changed" TextAlignment="Center" ToolTip="seconds (decimals allowed)"/>
+                                                <TextBlock Grid.Column="3" Text=":" VerticalAlignment="Center" Margin="3,0" Foreground="{DynamicResource TextDim}" FontFamily="Consolas" FontWeight="Bold"/>
+                                                <TextBox Grid.Column="4" x:Name="endS" TextChanged="StartEnd_Changed" TextAlignment="Center" ToolTip="seconds"/>
+                                                <TextBlock Grid.Column="5" Text="." VerticalAlignment="Center" Margin="3,0" Foreground="{DynamicResource TextDim}" FontFamily="Consolas" FontWeight="Bold"/>
+                                                <TextBox Grid.Column="6" x:Name="endMs" TextChanged="StartEnd_Changed" TextAlignment="Center" ToolTip="milliseconds (0–999)"/>
                                             </Grid>
                                             <Grid FlowDirection="LeftToRight" Margin="0,2,0,0">
                                                 <Grid.ColumnDefinitions>
@@ -962,13 +974,17 @@
                                                     <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
                                                     <ColumnDefinition Width="1.4*"/>
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Grid.Column="0" Text="h" FontSize="9.5" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
-                                                <TextBlock Grid.Column="1" Margin="4,0"/>
+                                                <TextBlock Grid.Column="1" Margin="3,0"/>
                                                 <TextBlock Grid.Column="2" Text="m" FontSize="9.5" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
-                                                <TextBlock Grid.Column="3" Margin="4,0"/>
+                                                <TextBlock Grid.Column="3" Margin="3,0"/>
                                                 <TextBlock Grid.Column="4" Text="s" FontSize="9.5" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
+                                                <TextBlock Grid.Column="5" Margin="3,0"/>
+                                                <TextBlock Grid.Column="6" Text="ms" FontSize="9.5" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center"/>
                                             </Grid>
                                         </StackPanel>
                                     </StackPanel>

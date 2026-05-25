@@ -883,34 +883,41 @@ public partial class MainWindow : Window
         strengthSlider.Value = b.BlurStrength;
         strengthLabel.Text = ((int)b.BlurStrength).ToString();
         wholeCheck.IsChecked = b.CoversWholeVideo;
-        FillHmsBoxes(b.StartSeconds, startH, startM, startS);
-        FillHmsBoxes(b.EndSeconds, endH, endM, endS);
+        FillHmsBoxes(b.StartSeconds, startH, startM, startS, startMs);
+        FillHmsBoxes(b.EndSeconds, endH, endM, endS, endMs);
         _suppress = false;
     }
 
-    private static void FillHmsBoxes(double totalSeconds, TextBox hBox, TextBox mBox, TextBox sBox)
+    private static void FillHmsBoxes(double totalSeconds, TextBox hBox, TextBox mBox, TextBox sBox, TextBox msBox)
     {
         if (totalSeconds < 0) totalSeconds = 0;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
         var h = (int)(totalSeconds / 3600);
         var m = (int)((totalSeconds - h * 3600) / 60);
-        var s = totalSeconds - h * 3600 - m * 60;
-        hBox.Text = h.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        mBox.Text = m.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        sBox.Text = s.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        var s = (int)(totalSeconds - h * 3600 - m * 60);
+        var ms = (int)Math.Round((totalSeconds - h * 3600 - m * 60 - s) * 1000);
+        // Floating-point round-up: 12.9996 → 13 s 0 ms (not 12 s 1000 ms).
+        if (ms >= 1000) { ms -= 1000; s += 1; if (s >= 60) { s -= 60; m += 1; if (m >= 60) { m -= 60; h += 1; } } }
+        hBox.Text = h.ToString(inv);
+        mBox.Text = m.ToString(inv);
+        sBox.Text = s.ToString(inv);
+        msBox.Text = ms.ToString("000", inv);
     }
 
-    private static double ReadHmsBoxes(TextBox hBox, TextBox mBox, TextBox sBox)
+    private static double ReadHmsBoxes(TextBox hBox, TextBox mBox, TextBox sBox, TextBox msBox)
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         var any = System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowThousands;
-        double h = 0, m = 0, s = 0;
+        double h = 0, m = 0, s = 0, ms = 0;
         double.TryParse(hBox.Text, any, inv, out h);
         double.TryParse(mBox.Text, any, inv, out m);
         double.TryParse(sBox.Text, any, inv, out s);
+        double.TryParse(msBox.Text, any, inv, out ms);
         if (h < 0) h = 0;
         if (m < 0) m = 0;
         if (s < 0) s = 0;
-        return h * 3600 + m * 60 + s;
+        if (ms < 0) ms = 0;
+        return h * 3600 + m * 60 + s + ms / 1000.0;
     }
 
     private void SelectClip(VideoClip? c)
@@ -1089,8 +1096,8 @@ public partial class MainWindow : Window
     {
         if (_selectedBlock == null) return;
         _suppress = true;
-        FillHmsBoxes(_selectedBlock.StartSeconds, startH, startM, startS);
-        FillHmsBoxes(_selectedBlock.EndSeconds, endH, endM, endS);
+        FillHmsBoxes(_selectedBlock.StartSeconds, startH, startM, startS, startMs);
+        FillHmsBoxes(_selectedBlock.EndSeconds, endH, endM, endS, endMs);
         wholeCheck.IsChecked = _selectedBlock.CoversWholeVideo;
         _suppress = false;
     }
@@ -1133,8 +1140,8 @@ public partial class MainWindow : Window
     private void StartEnd_Changed(object sender, TextChangedEventArgs e)
     {
         if (_suppress || _selectedBlock == null) return;
-        var startTotal = ReadHmsBoxes(startH, startM, startS);
-        var endTotal = ReadHmsBoxes(endH, endM, endS);
+        var startTotal = ReadHmsBoxes(startH, startM, startS, startMs);
+        var endTotal = ReadHmsBoxes(endH, endM, endS, endMs);
         _selectedBlock.StartSeconds = Math.Max(0, startTotal);
         _selectedBlock.EndSeconds = Math.Min(timeline.TotalSeconds, Math.Max(_selectedBlock.StartSeconds + 0.1, endTotal));
         if (_selectedBlock.EndSeconds < timeline.TotalSeconds || _selectedBlock.StartSeconds > 0) _selectedBlock.CoversWholeVideo = false;
