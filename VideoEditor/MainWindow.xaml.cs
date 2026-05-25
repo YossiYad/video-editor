@@ -1718,6 +1718,49 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
         await OpenTextPickerAndAddAsync(c, null);
     }
 
+    private void AiCaptions_Click(object s, RoutedEventArgs e)
+    {
+        var anyVideo = false;
+        foreach (var c in timeline.Clips) if (!c.IsAudioOnly) { anyVideo = true; break; }
+        if (!anyVideo)
+        {
+            MessageBox.Show(VideoEditor.Services.Localization.T("Add a video clip first."),
+                "AI Captions", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(AppSettings.LlmApiKey))
+        {
+            MessageBox.Show(
+                VideoEditor.Services.Localization.T("Set your Gemini API key first — opening Settings…"),
+                "AI Captions", MessageBoxButton.OK, MessageBoxImage.Information);
+            new SettingsWindow("ai") { Owner = this }.ShowDialog();
+            if (string.IsNullOrWhiteSpace(AppSettings.LlmApiKey)) return;
+        }
+
+        var selected = CurrentClip();
+        int width = 1920, height = 1080;
+        foreach (var clip in timeline.Clips)
+        {
+            if (clip.IsAudioOnly) continue;
+            if (clip.VideoWidth > 0 && clip.VideoHeight > 0)
+            {
+                width = clip.VideoWidth;
+                height = clip.VideoHeight;
+                break;
+            }
+        }
+
+        var dlg = new AiCaptionsWindow(selected, timeline.Clips, width, height) { Owner = this };
+        var ok = dlg.ShowDialog() == true;
+        if (!ok || dlg.Result.Count == 0) return;
+
+        foreach (var ov in dlg.Result) timeline.TextOverlays.Add(ov);
+
+        status.Text = VideoEditor.Services.Localization.T("AI Captions added · {0} overlays — drag bars on the timeline to tweak.")
+            .Replace("{0}", dlg.Result.Count.ToString());
+    }
+
     private async System.Threading.Tasks.Task OpenTextPickerAndAddAsync(VideoClip c, TextOverlay? edit)
     {
         var tempFrame = Path.Combine(Path.GetTempPath(), $"text_frame_{Guid.NewGuid():N}.jpg");

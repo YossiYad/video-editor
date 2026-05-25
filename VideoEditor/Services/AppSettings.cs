@@ -81,6 +81,20 @@ public static class AppSettings
     /// <summary>boxblur sigma for the "blur" fit mode background.</summary>
     public static int BlurredBgStrength { get; set; } = 20;
 
+    // ----- Transcription -----
+    /// <summary>"tiny" | "base" | "small" - default whisper model.</summary>
+    public static string LastTranscribeModel { get; set; } = "base";
+    /// <summary>"auto" | "he" | "en" - last picked transcription language.</summary>
+    public static string LastTranscribeLanguage { get; set; } = "auto";
+    /// <summary>"clip" | "all" - transcribe selected clip vs all video clips.</summary>
+    public static string LastTranscribeSource { get; set; } = "clip";
+
+    // ----- AI Captions -----
+    /// <summary>"gemini" for now. Reserved for future expansion.</summary>
+    public static string LlmProvider { get; set; } = "gemini";
+    /// <summary>Free-form key paste. Persisted in settings.json next to the EXE (gitignored).</summary>
+    public static string LlmApiKey { get; set; } = "";
+
     // ----- Storage -----
     public static string DownloadsFolder { get; set; } = "";
     public static string CacheFolder { get; set; } = "";
@@ -125,6 +139,13 @@ public static class AppSettings
         public int CustomTargetHeight { get; set; } = 1080;
         public string? TargetFitMode { get; set; }
         public int BlurredBgStrength { get; set; } = 20;
+
+        public string? LastTranscribeModel { get; set; }
+        public string? LastTranscribeLanguage { get; set; }
+        public string? LastTranscribeSource { get; set; }
+
+        public string? LlmProvider { get; set; }
+        public string? LlmApiKey { get; set; }
 
         public string? DownloadsFolder { get; set; }
         public string? CacheFolder { get; set; }
@@ -174,6 +195,11 @@ public static class AppSettings
             CustomTargetHeight = Clamp(d.CustomTargetHeight, 16, 4320);
             if (!string.IsNullOrEmpty(d.TargetFitMode)) TargetFitMode = d.TargetFitMode;
             BlurredBgStrength = Clamp(d.BlurredBgStrength, 0, 60);
+            if (!string.IsNullOrEmpty(d.LastTranscribeModel)) LastTranscribeModel = d.LastTranscribeModel;
+            if (!string.IsNullOrEmpty(d.LastTranscribeLanguage)) LastTranscribeLanguage = d.LastTranscribeLanguage;
+            if (!string.IsNullOrEmpty(d.LastTranscribeSource)) LastTranscribeSource = d.LastTranscribeSource;
+            if (!string.IsNullOrEmpty(d.LlmProvider)) LlmProvider = d.LlmProvider;
+            if (d.LlmApiKey != null) LlmApiKey = d.LlmApiKey;
             if (!string.IsNullOrEmpty(d.DownloadsFolder)) DownloadsFolder = d.DownloadsFolder;
             if (!string.IsNullOrEmpty(d.CacheFolder)) CacheFolder = d.CacheFolder;
             if (!string.IsNullOrEmpty(d.MaxCacheSize)) MaxCacheSize = d.MaxCacheSize;
@@ -211,6 +237,10 @@ public static class AppSettings
                 TargetFormatPreset = TargetFormatPreset,
                 CustomTargetWidth = CustomTargetWidth, CustomTargetHeight = CustomTargetHeight,
                 TargetFitMode = TargetFitMode, BlurredBgStrength = BlurredBgStrength,
+                LastTranscribeModel = LastTranscribeModel,
+                LastTranscribeLanguage = LastTranscribeLanguage,
+                LastTranscribeSource = LastTranscribeSource,
+                LlmProvider = LlmProvider, LlmApiKey = LlmApiKey,
                 DownloadsFolder = DownloadsFolder, CacheFolder = CacheFolder,
                 MaxCacheSize = MaxCacheSize, AutoCleanCache = AutoCleanCache,
             };

@@ -23,3 +23,10 @@ ffmpeg/
 # OS
 Thumbs.db
 .DS_Store
+
+# Per-install user settings (contains LLM API keys, never commit)
+settings.json
+**/settings.json
+
+# Whisper.cpp binaries + models (downloaded at runtime)
+whisper/

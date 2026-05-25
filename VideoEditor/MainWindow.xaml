@@ -384,6 +384,14 @@
 
                             <!-- Audio -->
                             <TextBlock Text="AUDIO" Style="{DynamicResource GroupLabel}"/>
+                            <Button x:Name="btnAiCaptions" Style="{DynamicResource SidebarToolButton}" Click="AiCaptions_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <Border Width="22" Height="22" CornerRadius="4" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1">
+                                        <TextBlock Text="✨" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <TextBlock Text="AI Captions" Margin="9,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
                             <Button x:Name="btnAddAudio" Style="{DynamicResource SidebarToolButton}" Click="AddAudio_Click">
                                 <StackPanel Orientation="Horizontal">
                                     <Border Width="22" Height="22" CornerRadius="4" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1">
