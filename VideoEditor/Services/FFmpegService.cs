@@ -196,8 +196,8 @@ public class FFmpegService
             var fontFile = ResolveDrawtextFont(opt.Bold, opt.Italic);
             var parts = new List<string>
             {
-                "drawtext=textfile=" + EscapeFilterArg(tempText),
-                "fontfile=" + EscapeFilterArg(fontFile),
+                "drawtext=textfile=" + QuoteFilterPath(tempText),
+                "fontfile=" + QuoteFilterPath(fontFile),
                 "x=" + opt.X,
                 "y=" + opt.Y,
                 "fontsize=" + opt.FontSize,
@@ -218,8 +218,13 @@ public class FFmpegService
         }
     }
 
-    private static string EscapeFilterArg(string p)
-        => p.Replace("\\", "/").Replace(":", "\\:").Replace("'", "\\'").Replace(",", "\\,");
+    // Inside libavfilter single-quoted strings, only \ and ' are special. Wrapping the path in
+    // single quotes lets ':' (drive letter) sit literally without breaking the kv-pair tokenizer.
+    private static string QuoteFilterPath(string p)
+    {
+        var s = p.Replace("\\", "/").Replace("'", "\\'");
+        return "'" + s + "'";
+    }
 
     private static string ResolveDrawtextFont(bool bold, bool italic)
     {
