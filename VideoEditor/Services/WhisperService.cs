@@ -170,7 +170,10 @@ public sealed class WhisperService
             if (!File.Exists(srtOutPath))
                 throw new Exception($"whisper did not produce {srtOutPath}");
 
-            var srtText = await File.ReadAllTextAsync(srtOutPath, ct);
+            // whisper.cpp writes the .srt as UTF-8 (no BOM). Always read as
+            // UTF-8 — File.ReadAllTextAsync without an encoding falls back to
+            // the system default code page on Windows, which corrupts Hebrew.
+            var srtText = await File.ReadAllTextAsync(srtOutPath, Encoding.UTF8, ct);
             progress?.Report(1.0);
             return ParseSrt(srtText);
         }
@@ -262,7 +265,12 @@ public sealed class WhisperService
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
-            RedirectStandardError = true
+            RedirectStandardError = true,
+            // whisper.cpp emits UTF-8 (Hebrew/CJK/etc); without this the
+            // .NET process host decodes with the system code page and the
+            // status log turns into mojibake.
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8
         };
         var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
         p.OutputDataReceived += (_, e) => { if (e.Data != null) onLine(e.Data); };
