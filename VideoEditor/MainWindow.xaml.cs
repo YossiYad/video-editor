@@ -84,6 +84,9 @@ public partial class MainWindow : Window
         timeline.ClipEdgeDragEnded += c => { /* leave preview at the trim point */ };
         timeline.AudioSelected += OnAudioSelected;
         timeline.AudioContextAction += OnAudioContextAction;
+        timeline.TextOverlaySelected += o => { /* selection visual handled by Timeline */ };
+        timeline.TextOverlayContextAction += OnTextOverlayContext;
+        timeline.TextOverlaysChanged += () => UpdateStats();
         timeline.ClipsChanged += () =>
         {
             if (timeline.Clips.Count > 0 && _playingClip == null) LoadClipForPreview(timeline.Clips[0], 0);
@@ -438,6 +441,7 @@ public partial class MainWindow : Window
             var withinClip = (mediaPos - _playingClip.InPoint) / Math.Max(0.01, _playingClip.Speed);
             timeline.SetCurrent(clipStart + withinClip);
             UpdateBlockVisibility();
+            UpdateTextOverlaysVisibility(clipStart + withinClip);
             UpdateTimeDisplays();
         }
         catch (Exception ex)
@@ -1241,6 +1245,104 @@ public partial class MainWindow : Window
             }
             ctl.Visibility = shouldShow ? Visibility.Visible : Visibility.Hidden;
         }
+        UpdateTextOverlaysVisibility(t);
+    }
+
+    private readonly Dictionary<TextOverlay, Border> _textOverlayPreviewControls = new();
+
+    private void UpdateTextOverlaysVisibility(double currentSec)
+    {
+        if (overlayCanvas == null) return;
+        // Clean up stale controls (deleted overlays).
+        foreach (var stale in _textOverlayPreviewControls.Keys.Where(o => !timeline.TextOverlays.Contains(o)).ToList())
+        {
+            if (_textOverlayPreviewControls.TryGetValue(stale, out var ctl)) overlayCanvas.Children.Remove(ctl);
+            _textOverlayPreviewControls.Remove(stale);
+        }
+
+        double canvasW = overlayCanvas.ActualWidth, canvasH = overlayCanvas.ActualHeight;
+        if (canvasW < 1 || canvasH < 1) return;
+        var firstVideo = timeline.Clips.FirstOrDefault(c => !c.IsAudioOnly);
+        if (firstVideo == null || firstVideo.VideoWidth <= 0 || firstVideo.VideoHeight <= 0) return;
+        double sx = canvasW / firstVideo.VideoWidth;
+        double sy = canvasH / firstVideo.VideoHeight;
+        double s = Math.Min(sx, sy);
+
+        foreach (var ov in timeline.TextOverlays)
+        {
+            bool active = !_isPlaying || (currentSec >= ov.StartSeconds && currentSec <= ov.EndSeconds);
+            if (!_textOverlayPreviewControls.TryGetValue(ov, out var ctl))
+            {
+                ctl = MakeTextOverlayPreviewControl(ov);
+                _textOverlayPreviewControls[ov] = ctl;
+                overlayCanvas.Children.Add(ctl);
+            }
+            else
+            {
+                ApplyOverlayStyle(ctl, ov, s);
+            }
+            ApplyOverlayPlacement(ctl, ov, s);
+            ctl.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private Border MakeTextOverlayPreviewControl(TextOverlay ov)
+    {
+        var tb = new TextBlock
+        {
+            Text = ov.Text,
+            Foreground = Brushes.White,
+            FontFamily = new FontFamily("Segoe UI"),
+            FontWeight = ov.Bold ? FontWeights.Bold : FontWeights.Normal,
+            FontStyle = ov.Italic ? FontStyles.Italic : FontStyles.Normal,
+            TextWrapping = TextWrapping.Wrap
+        };
+        tb.Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Colors.Black, BlurRadius = 6, ShadowDepth = 0, Opacity = 0.9 };
+        var border = new Border
+        {
+            CornerRadius = new CornerRadius(6),
+            Child = tb,
+            IsHitTestVisible = false
+        };
+        ApplyOverlayStyle(border, ov, 1.0);
+        return border;
+    }
+
+    private static void ApplyOverlayStyle(Border ctl, TextOverlay ov, double scale)
+    {
+        if (ctl.Child is not TextBlock tb) return;
+        tb.Text = ov.Text;
+        tb.FontWeight = ov.Bold ? FontWeights.Bold : FontWeights.Normal;
+        tb.FontStyle = ov.Italic ? FontStyles.Italic : FontStyles.Normal;
+        tb.Foreground = new SolidColorBrush(ParseDrawtextColor(ov.FontColor));
+        tb.FontSize = Math.Max(6, ov.FontSize * scale);
+
+        if (ov.BackgroundEnabled && ov.BackgroundOpacity > 0)
+        {
+            var c = ParseDrawtextColor(ov.BackgroundColor);
+            ctl.Background = new SolidColorBrush(Color.FromArgb((byte)(ov.BackgroundOpacity * 255), c.R, c.G, c.B));
+            var pad = Math.Max(2, ov.BackgroundPadding * scale);
+            ctl.Padding = new Thickness(pad, pad * 0.55, pad, pad * 0.55);
+        }
+        else
+        {
+            ctl.Background = Brushes.Transparent;
+            ctl.Padding = new Thickness(0);
+        }
+    }
+
+    private void ApplyOverlayPlacement(Border ctl, TextOverlay ov, double scale)
+    {
+        Canvas.SetLeft(ctl, ov.X * scale);
+        Canvas.SetTop(ctl, ov.Y * scale);
+    }
+
+    private static Color ParseDrawtextColor(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return Colors.White;
+        var t = s.Trim();
+        if (t.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) t = "#" + t.Substring(2);
+        try { return (Color)ColorConverter.ConvertFromString(t); } catch { return Colors.White; }
     }
 
     private void Split_Click(object sender, RoutedEventArgs e)
@@ -1407,7 +1509,8 @@ public partial class MainWindow : Window
             await _ff.ExportProjectAsync(orderedClips, timeline.Blocks.ToList(),
                 tW, tH,
                 overlayCanvas.ActualWidth, overlayCanvas.ActualHeight,
-                timeline.TotalSeconds, sfd.FileName, AppSettings.TargetFitMode, prog);
+                timeline.TotalSeconds, sfd.FileName, AppSettings.TargetFitMode,
+                timeline.TextOverlays.ToList(), prog);
             status.Text = "Exported: " + sfd.FileName;
             progress.Value = 1;
             if (MessageBox.Show("Open output folder?", "Done", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
@@ -1612,15 +1715,26 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
     {
         var c = CurrentClip();
         if (c == null) { MessageBox.Show("Select a clip first."); return; }
+        await OpenTextPickerAndAddAsync(c, null);
+    }
 
+    private async System.Threading.Tasks.Task OpenTextPickerAndAddAsync(VideoClip c, TextOverlay? edit)
+    {
         var tempFrame = Path.Combine(Path.GetTempPath(), $"text_frame_{Guid.NewGuid():N}.jpg");
         try
         {
             double frameTime;
-            if (timeline.CurrentSeconds >= c.TimelineStart && timeline.CurrentSeconds <= c.TimelineStart + c.EffectiveDuration)
+            if (edit != null)
             {
-                var withinClip = (timeline.CurrentSeconds - c.TimelineStart) * c.Speed;
-                frameTime = c.InPoint + withinClip;
+                var midProject = (edit.StartSeconds + edit.EndSeconds) / 2.0;
+                if (midProject >= c.TimelineStart && midProject <= c.TimelineStart + c.EffectiveDuration)
+                    frameTime = c.InPoint + (midProject - c.TimelineStart) * c.Speed;
+                else
+                    frameTime = c.InPoint + (c.OutPoint - c.InPoint) / 2;
+            }
+            else if (timeline.CurrentSeconds >= c.TimelineStart && timeline.CurrentSeconds <= c.TimelineStart + c.EffectiveDuration)
+            {
+                frameTime = c.InPoint + (timeline.CurrentSeconds - c.TimelineStart) * c.Speed;
             }
             else
             {
@@ -1635,17 +1749,78 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
             return;
         }
 
+        TextOverlayOptions? initial = null;
+        if (edit != null)
+        {
+            initial = new TextOverlayOptions
+            {
+                Text = edit.Text, X = edit.X, Y = edit.Y,
+                FontSize = edit.FontSize, FontColor = edit.FontColor,
+                Bold = edit.Bold, Italic = edit.Italic,
+                BackgroundEnabled = edit.BackgroundEnabled,
+                BackgroundColor = edit.BackgroundColor,
+                BackgroundOpacity = edit.BackgroundOpacity,
+                BackgroundPadding = edit.BackgroundPadding
+            };
+        }
+
         var picker = new TextOverlayPickerWindow(tempFrame,
             c.VideoWidth > 0 ? c.VideoWidth : 1920,
-            c.VideoHeight > 0 ? c.VideoHeight : 1080)
+            c.VideoHeight > 0 ? c.VideoHeight : 1080,
+            initial)
         { Owner = this };
         var ok = picker.ShowDialog() == true;
         try { File.Delete(tempFrame); } catch { }
         if (!ok || string.IsNullOrWhiteSpace(picker.Result.Text)) return;
 
         var opt = picker.Result;
-        await ApplyDestructiveOpAsync(c, async (input, output, prog) =>
-            await _ff.AddTextAsync(input, output, opt, c.OriginalDuration, prog));
+        if (edit == null)
+        {
+            double start = Math.Max(c.TimelineStart, timeline.CurrentSeconds);
+            double end = c.TimelineStart + c.EffectiveDuration;
+            if (end - start < 0.5) { start = c.TimelineStart; end = c.TimelineStart + c.EffectiveDuration; }
+            var ov = new TextOverlay
+            {
+                Text = opt.Text, X = opt.X, Y = opt.Y,
+                FontSize = opt.FontSize, FontColor = opt.FontColor,
+                Bold = opt.Bold, Italic = opt.Italic,
+                BackgroundEnabled = opt.BackgroundEnabled,
+                BackgroundColor = opt.BackgroundColor,
+                BackgroundOpacity = opt.BackgroundOpacity,
+                BackgroundPadding = opt.BackgroundPadding,
+                StartSeconds = start, EndSeconds = end
+            };
+            timeline.TextOverlays.Add(ov);
+            timeline.SelectTextOverlay(ov);
+            status.Text = "Text overlay added. Drag the teal bar on the timeline to move or resize it.";
+        }
+        else
+        {
+            edit.Text = opt.Text; edit.X = opt.X; edit.Y = opt.Y;
+            edit.FontSize = opt.FontSize; edit.FontColor = opt.FontColor;
+            edit.Bold = opt.Bold; edit.Italic = opt.Italic;
+            edit.BackgroundEnabled = opt.BackgroundEnabled;
+            edit.BackgroundColor = opt.BackgroundColor;
+            edit.BackgroundOpacity = opt.BackgroundOpacity;
+            edit.BackgroundPadding = opt.BackgroundPadding;
+            timeline.NotifyTextOverlayChanged(edit);
+            status.Text = "Text overlay updated.";
+        }
+    }
+
+    private async void OnTextOverlayContext(TextOverlay o, string action)
+    {
+        if (action == "delete")
+        {
+            timeline.TextOverlays.Remove(o);
+            status.Text = "Text overlay deleted.";
+        }
+        else if (action == "edit")
+        {
+            var clip = CurrentClip() ?? timeline.Clips.FirstOrDefault(c => !c.IsAudioOnly);
+            if (clip == null) { MessageBox.Show("Add a video clip first."); return; }
+            await OpenTextPickerAndAddAsync(clip, o);
+        }
     }
     private async void RemoveLogo_Click(object s, RoutedEventArgs e)
     {
@@ -1753,7 +1928,8 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
             await _ff.ExportProjectAsync(orderedClips, new List<VideoBlock>(),
                 tW, tH,
                 overlayCanvas.ActualWidth, overlayCanvas.ActualHeight,
-                timeline.TotalSeconds, tempVideo, AppSettings.TargetFitMode, prog1);
+                timeline.TotalSeconds, tempVideo, AppSettings.TargetFitMode,
+                null, prog1);
 
             status.Text = "Extracting audio...";
             var prog2 = new Progress<double>(v => Dispatcher.Invoke(() => progress.Value = 0.8 + v * 0.2));

@@ -352,7 +352,9 @@ public class FFmpegService
 
     public async Task ExportProjectAsync(IList<VideoClip> clips, IList<VideoBlock> blocks,
         int canvasVideoW, int canvasVideoH, double canvasUiW, double canvasUiH,
-        double totalDuration, string output, string fitMode = "contain", IProgress<double>? progress = null)
+        double totalDuration, string output, string fitMode = "contain",
+        IList<VideoEditor.Models.TextOverlay>? textOverlays = null,
+        IProgress<double>? progress = null)
     {
         if (clips.Count == 0) throw new Exception("No clips.");
         var temps = new List<string>();
@@ -363,12 +365,9 @@ public class FFmpegService
             if (targetW % 2 != 0) targetW++;
             if (targetH % 2 != 0) targetH++;
 
-            // Only video clips go to the V1 track. Audio-only clips are handled separately (TBD).
             var videoClips = clips.Where(c => !c.IsAudioOnly).OrderBy(c => c.TimelineStart).ToList();
             if (videoClips.Count == 0) throw new Exception("No video clips to export.");
 
-            // Pass 1: render each clip + insert black filler for real gaps in the timeline.
-            // Black is only inserted when clips don't abut (gap > 0.1s), so seamless joins stay seamless.
             const double gapEpsilon = 0.1;
             var renderQueue = new List<string>();
             double prevEnd = 0;
@@ -394,21 +393,40 @@ public class FFmpegService
             string concatList = Path.Combine(Path.GetTempPath(), $"ve_concat_{Guid.NewGuid():N}.txt");
             File.WriteAllText(concatList, string.Join("\n", renderQueue.Select(t => $"file '{EscapeConcatPath(t)}'")));
 
-            string concatOut = blocks.Count > 0
+            bool hasOverlays = textOverlays != null && textOverlays.Count > 0;
+            bool hasBlocks = blocks.Count > 0;
+            bool extraStages = hasOverlays || hasBlocks;
+
+            string concatOut = extraStages
                 ? Path.Combine(Path.GetTempPath(), $"ve_concat_{Guid.NewGuid():N}.mp4")
                 : output;
+            if (extraStages) temps.Add(concatOut);
 
             var concatArgs = $"-y -f concat -safe 0 -i \"{concatList}\" -c copy \"{concatOut}\"";
             await RunAsync(concatArgs, totalDuration, null);
-            progress?.Report(0.85);
+            progress?.Report(0.78);
 
             try { File.Delete(concatList); } catch { }
 
-            if (blocks.Count > 0)
+            string stageIn = concatOut;
+
+            if (hasOverlays)
             {
-                await ApplyBlocksAsync(concatOut, output, blocks, targetW, targetH, canvasUiW, canvasUiH, totalDuration,
-                    new Progress<double>(p => progress?.Report(0.85 + p * 0.15)));
-                try { File.Delete(concatOut); } catch { }
+                string textOut = hasBlocks
+                    ? Path.Combine(Path.GetTempPath(), $"ve_texts_{Guid.NewGuid():N}.mp4")
+                    : output;
+                if (textOut != output) temps.Add(textOut);
+
+                await BurnTextOverlaysAsync(stageIn, textOut, textOverlays!, totalDuration,
+                    new Progress<double>(p => progress?.Report(0.78 + p * 0.12)));
+                stageIn = textOut;
+                progress?.Report(0.90);
+            }
+
+            if (hasBlocks)
+            {
+                await ApplyBlocksAsync(stageIn, output, blocks, targetW, targetH, canvasUiW, canvasUiH, totalDuration,
+                    new Progress<double>(p => progress?.Report(0.90 + p * 0.10)));
             }
             else
             {
@@ -419,6 +437,46 @@ public class FFmpegService
         {
             foreach (var t in temps) try { File.Delete(t); } catch { }
         }
+    }
+
+    private async Task BurnTextOverlaysAsync(string videoIn, string output,
+        IList<VideoEditor.Models.TextOverlay> overlays, double duration, IProgress<double>? progress)
+    {
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        var filterParts = new List<string>();
+        foreach (var ov in overlays)
+        {
+            if (string.IsNullOrWhiteSpace(ov.Text)) continue;
+            if (ov.EndSeconds <= ov.StartSeconds) continue;
+            var fontFile = ResolveDrawtextFont(ov.Bold, ov.Italic).Replace('\\', '/');
+            var bits = new List<string>
+            {
+                "drawtext=text=" + EscapeDrawtextValue(ov.Text, isText: true),
+                "fontfile=" + EscapeDrawtextValue(fontFile, isText: false),
+                "x=" + ov.X,
+                "y=" + ov.Y,
+                "fontsize=" + ov.FontSize,
+                "fontcolor=" + ov.FontColor
+            };
+            if (ov.BackgroundEnabled && ov.BackgroundOpacity > 0)
+            {
+                bits.Add("box=1");
+                bits.Add($"boxcolor={ov.BackgroundColor}@{ov.BackgroundOpacity.ToString("0.##", ci)}");
+                bits.Add("boxborderw=" + ov.BackgroundPadding);
+            }
+            // enable= must be quoted so the comma inside between(...) isn't read as a filter separator.
+            bits.Add($"enable='between(t,{ov.StartSeconds.ToString("0.###", ci)},{ov.EndSeconds.ToString("0.###", ci)})'");
+            filterParts.Add(string.Join(":", bits));
+        }
+        if (filterParts.Count == 0)
+        {
+            // No usable overlays — copy through unchanged.
+            await RunAsync($"-y -i \"{videoIn}\" -c copy \"{output}\"", duration, progress);
+            return;
+        }
+        var filter = string.Join(",", filterParts);
+        var args = $"-y -i \"{videoIn}\" -vf \"{filter}\" -c:a copy \"{output}\"";
+        await RunAsync(args, duration, progress);
     }
 
     private async Task RenderClipAsync(VideoClip c, string output, int targetW, int targetH, string fitMode = "contain")

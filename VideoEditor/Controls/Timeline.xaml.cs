@@ -25,6 +25,7 @@ public partial class Timeline : UserControl
 
     public ObservableCollection<VideoBlock> Blocks { get; } = new();
     public ObservableCollection<VideoClip> Clips { get; } = new();
+    public ObservableCollection<TextOverlay> TextOverlays { get; } = new();
 
     public event Action<double>? Seek;
     public event Action<VideoBlock>? BlockSelected;
@@ -34,10 +35,27 @@ public partial class Timeline : UserControl
     public event Action<string[], double>? FilesDropped;
     public event Action? ClipsChanged;
     public event Action? BlocksChanged;
+    public event Action? TextOverlaysChanged;
+    public event Action<TextOverlay>? TextOverlaySelected;
+    public event Action<TextOverlay, string>? TextOverlayContextAction;
     public event Action<VideoClip, double>? ClipScrubPreview;
     public event Action<VideoClip>? ClipEdgeDragEnded;
     public event Action<VideoClip>? AudioSelected;
     public event Action<VideoClip, string>? AudioContextAction;
+
+    internal void RaiseTextOverlaySelected(TextOverlay o) { _selectedTextOverlay = o; SelectTextOverlay(o); TextOverlaySelected?.Invoke(o); ClearClipSelectionVisuals(); ClearBlockSelectionVisuals(); UpdateAudioBarSelection(); }
+    internal void RaiseTextOverlayContext(TextOverlay o, string action) => TextOverlayContextAction?.Invoke(o, action);
+
+    private TextOverlay? _selectedTextOverlay;
+    public TextOverlay? SelectedTextOverlay => _selectedTextOverlay;
+    public void SelectTextOverlay(TextOverlay? o)
+    {
+        var prev = _selectedTextOverlay;
+        _selectedTextOverlay = o;
+        if (prev != null && _textBars.TryGetValue(prev, out var pb)) pb.SetSelected(false);
+        if (o != null && _textBars.TryGetValue(o, out var nb)) nb.SetSelected(true);
+    }
+    private void ClearTextOverlaySelectionVisuals() { foreach (var bb in _textBars.Values) bb.SetSelected(false); _selectedTextOverlay = null; }
 
     internal void RaiseClipScrub(VideoClip c, double sourceTime) => ClipScrubPreview?.Invoke(c, sourceTime);
     internal void RaiseClipEdgeDragEnded(VideoClip c) => ClipEdgeDragEnded?.Invoke(c);
@@ -299,6 +317,7 @@ public partial class Timeline : UserControl
     private readonly Dictionary<VideoClip, ClipBar> _clipBars = new();
     private readonly Dictionary<VideoClip, AudioBar> _audioBars = new();
     private readonly Dictionary<VideoBlock, BlockBar> _blockBars = new();
+    private readonly Dictionary<TextOverlay, TextOverlayBar> _textBars = new();
 
     private bool _isDragging;
 
@@ -312,6 +331,7 @@ public partial class Timeline : UserControl
         InitializeComponent();
         Blocks.CollectionChanged += BlocksOnChanged;
         Clips.CollectionChanged += ClipsOnChanged;
+        TextOverlays.CollectionChanged += TextOverlaysOnChanged;
         zoomInBtn.Click += (_, _) => { PixelsPerSecond = Math.Min(400, PixelsPerSecond * 1.4); FullRefresh(); };
         zoomOutBtn.Click += (_, _) => { PixelsPerSecond = Math.Max(8, PixelsPerSecond / 1.4); FullRefresh(); };
         fitBtn.Click += (_, _) => FitToView();
@@ -473,6 +493,10 @@ public partial class Timeline : UserControl
                 if (end > max) max = end;
             }
         }
+        foreach (var o in TextOverlays)
+        {
+            if (o.EndSeconds > max) max = o.EndSeconds;
+        }
         TotalSeconds = Math.Max(1, max);
     }
 
@@ -505,6 +529,61 @@ public partial class Timeline : UserControl
         UpdateInfoLabels();
         SetCurrent(CurrentSeconds);
         BlocksChanged?.Invoke();
+    }
+
+    private void TextOverlaysOnChanged(object? s, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems != null)
+            foreach (TextOverlay o in e.NewItems)
+                AddTextOverlayBar(o);
+        if (e.OldItems != null)
+            foreach (TextOverlay o in e.OldItems)
+            {
+                if (_textBars.TryGetValue(o, out var bar))
+                {
+                    trackCanvas.Children.Remove(bar.Root);
+                    _textBars.Remove(o);
+                }
+                if (_selectedTextOverlay == o) _selectedTextOverlay = null;
+            }
+        if (e.Action == NotifyCollectionChangedAction.Reset)
+        {
+            foreach (var bar in _textBars.Values) trackCanvas.Children.Remove(bar.Root);
+            _textBars.Clear();
+            _selectedTextOverlay = null;
+        }
+        RecomputeTotal();
+        UpdateCanvasSize();
+        UpdateAllTextOverlayPositions();
+        UpdateInfoLabels();
+        SetCurrent(CurrentSeconds);
+        TextOverlaysChanged?.Invoke();
+    }
+
+    private void AddTextOverlayBar(TextOverlay o)
+    {
+        var row = _blockBars.Count + _textBars.Count;
+        var bar = new TextOverlayBar(o, this, row);
+        _textBars[o] = bar;
+        trackCanvas.Children.Add(bar.Root);
+    }
+
+    private void UpdateAllTextOverlayPositions()
+    {
+        int idx = _blockBars.Count;
+        foreach (var bar in _textBars.Values)
+        {
+            bar.UpdatePosition(PixelsPerSecond, TotalSeconds, idx++);
+        }
+    }
+
+    internal void NotifyTextOverlayChanged(TextOverlay o)
+    {
+        if (_textBars.TryGetValue(o, out var bar)) bar.UpdatePosition(PixelsPerSecond, TotalSeconds, null);
+        RecomputeTotal();
+        UpdateCanvasSize();
+        UpdateInfoLabels();
+        TextOverlaysChanged?.Invoke();
     }
 
     private void ClipsOnChanged(object? s, NotifyCollectionChangedEventArgs e)
@@ -601,7 +680,7 @@ public partial class Timeline : UserControl
         clipCanvas.Width = width;
         audioCanvas.Width = width;
         trackCanvas.Width = width;
-        trackCanvas.Height = Math.Max(60, _blockBars.Count * 30 + 12);
+        trackCanvas.Height = Math.Max(60, (_blockBars.Count + _textBars.Count) * 30 + 12);
         playheadLayer.Width = width;
         playheadThumbLayer.Width = width;
     }
@@ -611,15 +690,15 @@ public partial class Timeline : UserControl
         if (clipCountLabel != null)
         {
             clipCountLabel.Text = VideoEditor.Services.Localization.IsHebrew
-                ? $"{Clips.Count} קליפים · {Blocks.Count} בלוקים · {FormatTime(TotalSeconds)}"
-                : $"{Clips.Count} clips · {Blocks.Count} blocks · {FormatTime(TotalSeconds)}";
+                ? $"{Clips.Count} קליפים · {Blocks.Count} בלוקים · {TextOverlays.Count} טקסטים · {FormatTime(TotalSeconds)}"
+                : $"{Clips.Count} clips · {Blocks.Count} blocks · {TextOverlays.Count} texts · {FormatTime(TotalSeconds)}";
         }
         if (zoomLabel != null) zoomLabel.Text = $"{(int)(PixelsPerSecond / 60.0 * 100)}%";
         if (blockTrackCountLabel != null)
         {
             blockTrackCountLabel.Text = VideoEditor.Services.Localization.IsHebrew
-                ? $"{_blockBars.Count} מסלולים"
-                : $"{_blockBars.Count} tracks";
+                ? $"{_blockBars.Count + _textBars.Count} מסלולים"
+                : $"{_blockBars.Count + _textBars.Count} tracks";
         }
     }
 
@@ -1380,6 +1459,162 @@ internal class BlockBar
         _bg.Opacity = sel ? 1.0 : 0.92;
         _bg.Stroke = new SolidColorBrush(sel ? Color.FromRgb(0xFF, 0xD4, 0x3B) : Color.FromArgb(0x59, 0xFF, 0xFF, 0xFF));
         _bg.StrokeThickness = sel ? 2 : 1;
+    }
+}
+
+// ============================ TextOverlayBar control ============================
+// Bar for a TextOverlay on the Overlays lane. Teal gradient to distinguish from blocks.
+internal class TextOverlayBar
+{
+    public Grid Root { get; }
+    public TextOverlay Overlay { get; }
+    private readonly Timeline _owner;
+    private readonly Rectangle _bg;
+    private readonly TextBlock _label;
+    private readonly Thumb _dragThumb;
+    private readonly Thumb _leftHandle;
+    private readonly Thumb _rightHandle;
+    private int _row;
+    private double _dragStartStart;
+    private double _dragStartEnd;
+
+    public TextOverlayBar(TextOverlay o, Timeline owner, int row)
+    {
+        Overlay = o; _owner = owner; _row = row;
+        Root = new Grid { Height = 26, ClipToBounds = true };
+
+        _bg = new Rectangle
+        {
+            Fill = new LinearGradientBrush(Color.FromRgb(0x14, 0xB8, 0xA6), Color.FromRgb(0x0F, 0x6E, 0x68), 90),
+            Opacity = 0.9,
+            RadiusX = 4, RadiusY = 4,
+            Stroke = new SolidColorBrush(Color.FromArgb(0x80, 0xFF, 0xFF, 0xFF)),
+            StrokeThickness = 1
+        };
+        _label = new TextBlock
+        {
+            Text = LabelText(),
+            Foreground = Brushes.White,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(20, 0, 20, 0),
+            FontWeight = FontWeights.SemiBold,
+            FontSize = 11,
+            IsHitTestVisible = false,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        };
+        var prefix = new TextBlock
+        {
+            Text = "T",
+            Foreground = new SolidColorBrush(Color.FromArgb(0xC0, 0xFF, 0xFF, 0xFF)),
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(8, 0, 0, 0),
+            FontFamily = new FontFamily("Consolas"),
+            FontWeight = FontWeights.Bold,
+            FontSize = 10,
+            IsHitTestVisible = false
+        };
+
+        _leftHandle = new Thumb { Width = 6, HorizontalAlignment = HorizontalAlignment.Left, Cursor = Cursors.SizeWE };
+        _leftHandle.Template = ClipBar.HandleTemplate();
+        _rightHandle = new Thumb { Width = 6, HorizontalAlignment = HorizontalAlignment.Right, Cursor = Cursors.SizeWE };
+        _rightHandle.Template = ClipBar.HandleTemplate();
+        _dragThumb = new Thumb { Background = Brushes.Transparent, Cursor = Cursors.SizeAll, Margin = new Thickness(8, 0, 8, 0) };
+        _dragThumb.Template = ClipBar.TransparentThumbTemplate();
+
+        Root.Children.Add(_bg);
+        Root.Children.Add(prefix);
+        Root.Children.Add(_label);
+        Root.Children.Add(_dragThumb);
+        Root.Children.Add(_leftHandle);
+        Root.Children.Add(_rightHandle);
+
+        Canvas.SetTop(Root, _row * 30 + 6);
+
+        Root.MouseLeftButtonDown += (_, e) => { _owner.RaiseTextOverlaySelected(Overlay); e.Handled = true; };
+
+        Root.MouseRightButtonUp += (_, e) =>
+        {
+            var menu = new ContextMenu();
+            var edit = new MenuItem { Header = "Edit text…" };
+            edit.Click += (_, _) => _owner.RaiseTextOverlayContext(Overlay, "edit");
+            menu.Items.Add(edit);
+            var del = new MenuItem { Header = "Delete text" };
+            del.Click += (_, _) => _owner.RaiseTextOverlayContext(Overlay, "delete");
+            menu.Items.Add(del);
+            menu.IsOpen = true;
+            e.Handled = true;
+        };
+
+        _dragThumb.DragStarted += (_, _) =>
+        {
+            _owner.RaiseTextOverlaySelected(Overlay);
+            _owner.BeginDrag();
+            _dragStartStart = Overlay.StartSeconds;
+            _dragStartEnd = Overlay.EndSeconds;
+        };
+        _dragThumb.DragDelta += (_, e) =>
+        {
+            var totalDxSec = e.HorizontalChange / _owner.PixelsPerSecond;
+            var len = _dragStartEnd - _dragStartStart;
+            var newStart = Math.Max(0, _dragStartStart + totalDxSec);
+            Overlay.StartSeconds = newStart;
+            Overlay.EndSeconds = newStart + len;
+            _owner.NotifyTextOverlayChanged(Overlay);
+        };
+        _dragThumb.DragCompleted += (_, _) => _owner.EndDrag();
+
+        _leftHandle.DragStarted += (_, _) =>
+        {
+            _owner.RaiseTextOverlaySelected(Overlay);
+            _owner.BeginDrag();
+            _dragStartStart = Overlay.StartSeconds;
+            _dragStartEnd = Overlay.EndSeconds;
+        };
+        _leftHandle.DragDelta += (_, e) =>
+        {
+            var totalDxSec = e.HorizontalChange / _owner.PixelsPerSecond;
+            Overlay.StartSeconds = Math.Max(0, Math.Min(_dragStartEnd - 0.1, _dragStartStart + totalDxSec));
+            _owner.NotifyTextOverlayChanged(Overlay);
+        };
+        _leftHandle.DragCompleted += (_, _) => _owner.EndDrag();
+
+        _rightHandle.DragStarted += (_, _) =>
+        {
+            _owner.RaiseTextOverlaySelected(Overlay);
+            _owner.BeginDrag();
+            _dragStartStart = Overlay.StartSeconds;
+            _dragStartEnd = Overlay.EndSeconds;
+        };
+        _rightHandle.DragDelta += (_, e) =>
+        {
+            var totalDxSec = e.HorizontalChange / _owner.PixelsPerSecond;
+            Overlay.EndSeconds = Math.Max(_dragStartStart + 0.1, _dragStartEnd + totalDxSec);
+            _owner.NotifyTextOverlayChanged(Overlay);
+        };
+        _rightHandle.DragCompleted += (_, _) => _owner.EndDrag();
+    }
+
+    public void UpdatePosition(double pps, double totalSec, int? newRow)
+    {
+        if (newRow.HasValue) { _row = newRow.Value; Canvas.SetTop(Root, _row * 30 + 6); }
+        Canvas.SetLeft(Root, Overlay.StartSeconds * pps);
+        Root.Width = Math.Max(28, (Overlay.EndSeconds - Overlay.StartSeconds) * pps);
+        _label.Text = LabelText();
+    }
+
+    public void SetSelected(bool sel)
+    {
+        _bg.Opacity = sel ? 1.0 : 0.92;
+        _bg.Stroke = new SolidColorBrush(sel ? Color.FromRgb(0xFF, 0xD4, 0x3B) : Color.FromArgb(0x80, 0xFF, 0xFF, 0xFF));
+        _bg.StrokeThickness = sel ? 2 : 1;
+    }
+
+    private string LabelText()
+    {
+        var t = (Overlay.Text ?? "").Replace("\r", "").Replace("\n", " ").Trim();
+        if (t.Length > 40) t = t.Substring(0, 40) + "…";
+        return string.IsNullOrEmpty(t) ? "(empty)" : t;
     }
 }
 

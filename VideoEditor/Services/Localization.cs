@@ -173,6 +173,12 @@ internal static class Localization
         ["TEXT COLOR"] = "צבע טקסט",
         ["BACKGROUND HIGHLIGHT"] = "רקע הדגשה",
         ["Add text"] = "הוסף טקסט",
+        ["Text overlay added. Drag the teal bar on the timeline to move or resize it."] = "טקסט נוסף. גרור את הבר הטורקיז בציר הזמן כדי להזיז או לשנות אורך.",
+        ["Text overlay updated."] = "הטקסט עודכן.",
+        ["Text overlay deleted."] = "הטקסט נמחק.",
+        ["Edit text…"] = "ערוך טקסט…",
+        ["Delete text"] = "מחק טקסט",
+        ["Add a video clip first."] = "הוסף קליפ וידאו קודם.",
 
         ["Choose project format"] = "בחר פורמט פרויקט",
         ["Pick the canvas you'll be editing for. You can change this anytime."] = "בחר את המסגרת שלפיה תערוך. אפשר לשנות בכל רגע.",
