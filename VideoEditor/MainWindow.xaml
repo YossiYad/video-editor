@@ -505,7 +505,13 @@
                                  Pinned to the 4 corners of the project canvas via alignment so
                                  they always render at the visible bounds — no measuring math.
                                  Hidden when no video clip is loaded. -->
-                            <Grid x:Name="canvasHandlesLayer" Background="Transparent" IsHitTestVisible="True"
+                            <!-- No Background on this Grid: a transparent Background still hit-tests
+                                 the whole layer, which used to swallow clicks meant for the
+                                 hide-block ResizableBlock controls underneath. With Background
+                                 unset only the dashed border + the 4 corner handles are clickable;
+                                 everything else (clicks meant for blocks, the videoView pan, etc.)
+                                 passes through to the layer underneath. -->
+                            <Grid x:Name="canvasHandlesLayer" IsHitTestVisible="True"
                                   HorizontalAlignment="Center" VerticalAlignment="Center"
                                   Visibility="Collapsed">
                                 <!-- Dashed purple frame around the (visible) project canvas. -->
