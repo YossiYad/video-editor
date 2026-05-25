@@ -20,9 +20,23 @@ public static class MonitorInfo
         public required int Width { get; init; }
         public required int Height { get; init; }
         public required bool IsPrimary { get; init; }
+        /// <summary>Real physical pixel width from GetDeviceCaps (DESKTOPHORZRES).
+        /// On HiDPI displays this is greater than <see cref="Width"/>; ffmpeg's
+        /// gdigrab needs the physical dimensions to actually capture the whole
+        /// monitor.</summary>
+        public required int PhysicalWidth { get; init; }
+        public required int PhysicalHeight { get; init; }
+
+        public bool HasDpiScaling =>
+            PhysicalWidth > Width || PhysicalHeight > Height;
 
         public string FriendlyName =>
-            $"Monitor {Index + 1} — {Width}×{Height}" + (IsPrimary ? " (primary)" : "");
+            HasDpiScaling
+                ? $"Monitor {Index + 1} — {PhysicalWidth}×{PhysicalHeight}" +
+                  $" (scaled to {Width}×{Height})" +
+                  (IsPrimary ? " · primary" : "")
+                : $"Monitor {Index + 1} — {Width}×{Height}" +
+                  (IsPrimary ? " (primary)" : "");
     }
 
     public static List<Display> EnumerateAll()
@@ -36,6 +50,19 @@ public static class MonitorInfo
                 info.cbSize = Marshal.SizeOf(typeof(MONITORINFOEX));
                 if (GetMonitorInfo(hMon, ref info))
                 {
+                    int physW = info.rcMonitor.right - info.rcMonitor.left;
+                    int physH = info.rcMonitor.bottom - info.rcMonitor.top;
+                    // Try CreateDC + GetDeviceCaps(DESKTOPHORZRES/VERTRES) to find
+                    // the actual pixel resolution behind DPI scaling. If anything
+                    // fails, fall back to the rcMonitor size.
+                    IntPtr hdcMon = CreateDC(info.szDevice, info.szDevice, null, IntPtr.Zero);
+                    if (hdcMon != IntPtr.Zero)
+                    {
+                        int dw = GetDeviceCaps(hdcMon, DESKTOPHORZRES);
+                        int dh = GetDeviceCaps(hdcMon, DESKTOPVERTRES);
+                        if (dw > 0 && dh > 0) { physW = dw; physH = dh; }
+                        DeleteDC(hdcMon);
+                    }
                     list.Add(new Display
                     {
                         Index = i++,
@@ -44,6 +71,8 @@ public static class MonitorInfo
                         Y = info.rcMonitor.top,
                         Width = info.rcMonitor.right - info.rcMonitor.left,
                         Height = info.rcMonitor.bottom - info.rcMonitor.top,
+                        PhysicalWidth = physW,
+                        PhysicalHeight = physH,
                         IsPrimary = (info.dwFlags & MONITORINFOF_PRIMARY) != 0
                     });
                 }
@@ -77,4 +106,18 @@ public static class MonitorInfo
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFOEX lpmi);
+
+    // ---- GDI for physical-pixel dimensions ----
+
+    private const int DESKTOPHORZRES = 118;
+    private const int DESKTOPVERTRES = 117;
+
+    [DllImport("gdi32.dll", CharSet = CharSet.Auto)]
+    private static extern IntPtr CreateDC(string lpDriver, string lpDevice, string? lpOutput, IntPtr lpInitData);
+
+    [DllImport("gdi32.dll")]
+    private static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
+
+    [DllImport("gdi32.dll")]
+    private static extern bool DeleteDC(IntPtr hdc);
 }

@@ -143,6 +143,41 @@ public class ScreenRecorderWindow : Window
                 TextWrapping = TextWrapping.Wrap
             });
 
+            // Diagnostic line — shows exactly which rectangle of the screen we're
+            // capturing. If the user reports "I don't see the whole monitor", we can
+            // compare these numbers to what Windows Display Settings actually reports.
+            var diagText = new TextBlock
+            {
+                Text = "",
+                FontSize = 10,
+                FontFamily = new FontFamily("Consolas"),
+                Foreground = WindowBuilder.TextMute,
+                Margin = new Thickness(0, 0, 0, 4),
+                TextWrapping = TextWrapping.Wrap
+            };
+            ch.Body.Children.Add(diagText);
+            Action refreshDiag = () =>
+            {
+                int idx = monitorBox?.SelectedIndex ?? 0;
+                if (idx > 0 && idx - 1 < monitors.Count)
+                {
+                    var m = monitors[idx - 1];
+                    diagText.Text = m.HasDpiScaling
+                        ? $"Capturing rect [x={m.X}, y={m.Y}, w={m.Width}, h={m.Height}] · physical {m.PhysicalWidth}×{m.PhysicalHeight} (DPI-scaled view)"
+                        : $"Capturing rect [x={m.X}, y={m.Y}, w={m.Width}, h={m.Height}]";
+                }
+                else
+                {
+                    diagText.Text = $"Capturing entire virtual desktop · " +
+                        $"x={(int)SystemParameters.VirtualScreenLeft}, " +
+                        $"y={(int)SystemParameters.VirtualScreenTop}, " +
+                        $"w={(int)SystemParameters.VirtualScreenWidth}, " +
+                        $"h={(int)SystemParameters.VirtualScreenHeight}";
+                }
+            };
+            refreshDiag();
+            if (monitorBox != null) monitorBox.SelectionChanged += (_, _) => refreshDiag();
+
             // Start the preview timer immediately (before recording too — so the
             // user can confirm the picker selected the right monitor).
             _previewTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(160) };
@@ -229,10 +264,11 @@ public class ScreenRecorderWindow : Window
                 }
                 else
                 {
-                    // gdigrab captures the virtual screen. When the user picks a specific
-                    // monitor we add -offset_x / -offset_y / -video_size to crop to that
-                    // monitor's rectangle inside the virtual screen (offsets can be negative
-                    // for monitors to the left of the primary).
+                    // gdigrab is DPI-unaware, so it sees coords in the SCALED (virtual)
+                    // coordinate space. Use rcMonitor (X / Y / Width / Height) for offset
+                    // — NOT the physical dimensions — and pass the matching size. ffmpeg
+                    // captures the whole monitor at scaled resolution; the resulting file
+                    // is then the same pixel size the user sees on screen.
                     string sourceArgs;
                     int monIdx = monitorBox?.SelectedIndex ?? 0;
                     if (monIdx > 0 && monIdx - 1 < monitors.Count)
