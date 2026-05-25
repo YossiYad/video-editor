@@ -6,6 +6,23 @@ The latest signed Windows build is always available at
 
 ---
 
+## [v1.6.2] - 2026-05-26
+
+Polish + release-prep pass on top of v1.6.1.
+
+### Changed
+- Codebase-wide text consistency sweep across UI strings, in-app User
+  Guide content, comments, log messages, and documentation (README +
+  CHANGELOG). Single style for separators throughout the project.
+- README and CHANGELOG version badges bumped to v1.6.2.
+
+### Notes
+- No functional change versus v1.6.1.
+- Localization map preserved; English-key / Hebrew-value pairs still
+  match.
+
+---
+
 ## [v1.6.1] - 2026-05-26
 
 Polish on top of v1.6.0 - Screen Recorder fit, the new Export
@@ -204,6 +221,7 @@ First public release.
 - Self-contained single-file Windows EXE - no installer, no admin
   rights, no .NET install required (~150 MB).
 
+[v1.6.2]: https://github.com/YossiYad/video-editor/releases/tag/v1.6.2
 [v1.6.1]: https://github.com/YossiYad/video-editor/releases/tag/v1.6.1
 [v1.6.0]: https://github.com/YossiYad/video-editor/releases/tag/v1.6.0
 [v1.5.0]: https://github.com/YossiYad/video-editor/releases/tag/v1.5.0
