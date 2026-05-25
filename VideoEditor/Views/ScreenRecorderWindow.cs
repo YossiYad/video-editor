@@ -30,9 +30,9 @@ public class ScreenRecorderWindow : Window
     {
         _ff = ff;
         _webcam = webcam;
-        Title = webcam ? "Video Recorder (Webcam)" : "Screen Recorder";
+        Title = webcam ? "Camera Recorder" : "Screen Recorder";
         var icon = webcam ? "🎥" : "🖥";
-        var sub = webcam ? "Capture webcam via dshow" : "Capture a monitor — or the whole virtual desktop — using gdigrab";
+        var sub = webcam ? "Record directly from a camera" : "Capture a monitor — or the whole virtual desktop — using gdigrab";
         // Default sized so every section (output path / monitor / FPS / preview /
         // buttons) fits without the ScrollViewer needing to scroll. WindowBuilder
         // defaults to NoResize; for the screen recorder we override to CanResize
