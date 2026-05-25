@@ -343,12 +343,15 @@ public partial class MainWindow : Window
         try
         {
             _playingClip = clip;
-            videoView.Source = new Uri(clip.SourceFile);
+            var srcUri = new Uri(clip.SourceFile);
+            bool sourceChanged = videoView.Source == null ||
+                !string.Equals(videoView.Source.LocalPath, srcUri.LocalPath, StringComparison.OrdinalIgnoreCase);
+            if (sourceChanged) videoView.Source = srcUri;
             videoView.Position = TimeSpan.FromSeconds(clip.InPoint + Math.Max(0, offsetWithinClip));
             videoView.SpeedRatio = clip.Speed;
             videoView.Volume = _masterVolume * clip.Volume;
             ApplyClipTransform(clip);
-            if (!_isPlaying)
+            if (sourceChanged && !_isPlaying)
             {
                 videoView.Play();
                 System.Threading.Tasks.Task.Delay(80).ContinueWith(_ => Dispatcher.Invoke(() => { if (!_isPlaying) videoView.Pause(); }));
@@ -369,11 +372,42 @@ public partial class MainWindow : Window
         videoView.RenderTransform = tg;
     }
 
+    // MediaElement stutters on rapid Position changes during playback — pause on drag, debounced resume.
+    private readonly DispatcherTimer _seekResumeTimer = new() { Interval = TimeSpan.FromMilliseconds(200) };
+    private bool _wasPlayingBeforeSeek;
+    private bool _seekResumeWired;
+
+    private void EnsureSeekResumeTimer()
+    {
+        if (_seekResumeWired) return;
+        _seekResumeWired = true;
+        _seekResumeTimer.Tick += (_, _) =>
+        {
+            _seekResumeTimer.Stop();
+            if (_wasPlayingBeforeSeek)
+            {
+                _wasPlayingBeforeSeek = false;
+                try { videoView.Play(); _isPlaying = true; } catch { }
+            }
+        };
+    }
+
     private void SeekTo(double seconds)
     {
+        EnsureSeekResumeTimer();
         var clip = timeline.GetClipAt(seconds);
         if (clip == null) { timeline.SetCurrent(seconds); return; }
         var withinClip = Math.Max(0, seconds - clip.TimelineStart) * clip.Speed;
+
+        // If we were playing and a new seek starts, remember and pause. Subsequent seeks during
+        // the same drag won't override _wasPlayingBeforeSeek (timer is still pending).
+        if (!_seekResumeTimer.IsEnabled && _isPlaying)
+        {
+            _wasPlayingBeforeSeek = true;
+            try { videoView.Pause(); } catch { }
+            _isPlaying = false;
+        }
+
         if (clip != _playingClip)
         {
             LoadClipForPreview(clip, withinClip);
@@ -383,6 +417,9 @@ public partial class MainWindow : Window
             try { videoView.Position = TimeSpan.FromSeconds(clip.InPoint + withinClip); } catch { }
         }
         timeline.SetCurrent(seconds);
+
+        _seekResumeTimer.Stop();
+        _seekResumeTimer.Start();
     }
 
     private VideoClip? NextClipAfter(VideoClip c)
