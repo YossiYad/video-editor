@@ -86,6 +86,7 @@ public partial class MainWindow : Window
         timeline.AudioContextAction += OnAudioContextAction;
         timeline.TextOverlaySelected += o => { /* selection visual handled by Timeline */ };
         timeline.TextOverlayContextAction += OnTextOverlayContext;
+        timeline.TextOverlayChanged += o => _textOverlayDirty.Add(o);
         timeline.TextOverlaysChanged += () => UpdateStats();
         timeline.ClipsChanged += () =>
         {
@@ -95,7 +96,13 @@ public partial class MainWindow : Window
         };
         timeline.BlocksChanged += () => UpdateStats();
 
-        overlayCanvas.SizeChanged += (_, _) => RepositionOverlay();
+        overlayCanvas.SizeChanged += (_, _) =>
+        {
+            RepositionOverlay();
+            // Scale of every text-overlay preview control depends on canvas size — mark all dirty
+            // so the next tick re-styles + re-places them. Cheap because it only happens on resize.
+            foreach (var ov in timeline.TextOverlays) _textOverlayDirty.Add(ov);
+        };
         overlayCanvas.MouseLeftButtonDown += OverlayCanvas_BackgroundClick;
     }
 
@@ -1249,6 +1256,11 @@ public partial class MainWindow : Window
     }
 
     private readonly Dictionary<TextOverlay, Border> _textOverlayPreviewControls = new();
+    /// <summary>Overlays that need their preview control restyled / repositioned on next Tick.
+    /// New / edited / resize-affected overlays go in here; the Tick clears it after processing.
+    /// This avoids the per-Tick brush churn that made scrubbing stutter once ~40 AI captions
+    /// were on the timeline.</summary>
+    private readonly HashSet<TextOverlay> _textOverlayDirty = new();
 
     private void UpdateTextOverlaysVisibility(double currentSec)
     {
@@ -1258,6 +1270,7 @@ public partial class MainWindow : Window
         {
             if (_textOverlayPreviewControls.TryGetValue(stale, out var ctl)) overlayCanvas.Children.Remove(ctl);
             _textOverlayPreviewControls.Remove(stale);
+            _textOverlayDirty.Remove(stale);
         }
 
         double canvasW = overlayCanvas.ActualWidth, canvasH = overlayCanvas.ActualHeight;
@@ -1270,20 +1283,26 @@ public partial class MainWindow : Window
 
         foreach (var ov in timeline.TextOverlays)
         {
-            bool active = !_isPlaying || (currentSec >= ov.StartSeconds && currentSec <= ov.EndSeconds);
-            if (!_textOverlayPreviewControls.TryGetValue(ov, out var ctl))
+            bool isNew = !_textOverlayPreviewControls.TryGetValue(ov, out var ctl);
+            if (isNew)
             {
                 ctl = MakeTextOverlayPreviewControl(ov);
                 _textOverlayPreviewControls[ov] = ctl;
                 overlayCanvas.Children.Add(ctl);
-            }
-            else
-            {
                 ApplyOverlayStyle(ctl, ov, s);
+                ApplyOverlayPlacement(ctl, ov, s);
             }
-            ApplyOverlayPlacement(ctl, ov, s);
-            ctl.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+            else if (_textOverlayDirty.Contains(ov))
+            {
+                ApplyOverlayStyle(ctl!, ov, s);
+                ApplyOverlayPlacement(ctl!, ov, s);
+            }
+            // Per-tick we only flip Visibility — the cheap part. Style + placement
+            // are no-ops unless the overlay was just added or marked dirty.
+            bool active = !_isPlaying || (currentSec >= ov.StartSeconds && currentSec <= ov.EndSeconds);
+            ctl!.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
         }
+        _textOverlayDirty.Clear();
     }
 
     private Border MakeTextOverlayPreviewControl(TextOverlay ov)
