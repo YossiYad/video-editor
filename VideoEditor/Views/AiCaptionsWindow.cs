@@ -58,6 +58,28 @@ public class AiCaptionsWindow : Window
     };
     private static readonly string[] SourceItems = { "Selected clip", "All video clips" };
     private static readonly string[] SourceKeys  = { "clip",          "all" };
+    // Output language for the captions Gemini writes. "auto" = keep the source language.
+    // Anything else asks Gemini to translate the transcript into that language before
+    // producing kinetic-typography captions.
+    private static readonly string[] CaptionLanguageItems =
+    {
+        "Same as audio (no translation)",
+        "Hebrew", "English", "Arabic", "Spanish", "French", "Russian", "Portuguese", "German"
+    };
+    private static readonly string[] CaptionLanguageKeys =
+    {
+        "auto",
+        "he", "en", "ar", "es", "fr", "ru", "pt", "de"
+    };
+    /// <summary>Human label of the requested caption language, for the LLM prompt.
+    /// "Hebrew", "English", etc. — paired with <see cref="CaptionLanguageKeys"/>.</summary>
+    private static readonly string[] CaptionLanguageNames =
+    {
+        "auto",
+        "Hebrew", "English", "Arabic", "Spanish", "French", "Russian", "Portuguese", "German"
+    };
+
+    private readonly ComboBox _captionLangBox;
 
     public AiCaptionsWindow(VideoClip? selectedClip, IEnumerable<VideoClip> allVideoClips,
                             int videoWidth, int videoHeight)
@@ -97,6 +119,15 @@ public class AiCaptionsWindow : Window
         if (modelIdx < 0) modelIdx = 1;
         _modelBox.SelectedIndex = modelIdx;
         ch.Body.Children.Add(_modelBox);
+
+        // Caption language: defaults to "same as audio", but the user can pick any of the
+        // supported targets to translate. Choice persists across runs.
+        ch.Body.Children.Add(WindowBuilder.Lbl("Caption language"));
+        _captionLangBox = MakeCombo(CaptionLanguageItems);
+        int capLangIdx = Array.IndexOf(CaptionLanguageKeys, AppSettings.LastCaptionLanguage);
+        if (capLangIdx < 0) capLangIdx = 0;
+        _captionLangBox.SelectedIndex = capLangIdx;
+        ch.Body.Children.Add(_captionLangBox);
 
         // Daily Gemini-request counter — Google's free tier is ~1500 req/day per key,
         // and the count survives across runs in settings.json.
@@ -172,9 +203,13 @@ public class AiCaptionsWindow : Window
         var sourceKey = SourceKeys[Math.Max(0, _sourceBox.SelectedIndex)];
         var languageKey = LanguageKeys[Math.Max(0, _languageBox.SelectedIndex)];
         var modelKey = ModelKeys[Math.Max(0, _modelBox.SelectedIndex)];
+        int capIdx = Math.Max(0, _captionLangBox.SelectedIndex);
+        var captionLangKey = CaptionLanguageKeys[capIdx];
+        var captionLangName = CaptionLanguageNames[capIdx];   // "Hebrew" / "English" / … or "auto"
         AppSettings.LastTranscribeSource = sourceKey;
         AppSettings.LastTranscribeLanguage = languageKey;
         AppSettings.LastTranscribeModel = modelKey;
+        AppSettings.LastCaptionLanguage = captionLangKey;
         AppSettings.Save();
 
         // Pick the clips to transcribe.
@@ -246,7 +281,8 @@ public class AiCaptionsWindow : Window
                 Dispatcher.Invoke(() => _progress.Value = 0.60 + p * 0.35));
 
             var overlays = await llm.GenerateOverlaysAsync(
-                allSegments, _videoWidth, _videoHeight, llmProgress, _cts.Token);
+                allSegments, _videoWidth, _videoHeight,
+                captionLangName, llmProgress, _cts.Token);
 
             // ---- Phase 3: hand back (0.95 → 1.0) ----
             _phaseText.Text = Localization.T("Step 3/3 — Applying overlays");

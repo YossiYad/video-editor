@@ -136,6 +136,7 @@ public sealed class LlmCaptionService
     public async Task<List<TextOverlay>> GenerateOverlaysAsync(
         IList<SubtitleSegment> segments,
         int videoWidth, int videoHeight,
+        string? targetLanguage = null,
         IProgress<double>? progress = null,
         CancellationToken ct = default)
     {
@@ -146,7 +147,7 @@ public sealed class LlmCaptionService
             return new List<TextOverlay>();
 
         progress?.Report(0.05);
-        var prompt = BuildPrompt(segments);
+        var prompt = BuildPrompt(segments, targetLanguage);
         var body = new
         {
             contents = new[]
@@ -213,8 +214,10 @@ public sealed class LlmCaptionService
 
     // ---------- prompt ----------
 
-    private static string BuildPrompt(IList<SubtitleSegment> segments)
+    private static string BuildPrompt(IList<SubtitleSegment> segments, string? targetLanguage = null)
     {
+        bool translate = !string.IsNullOrEmpty(targetLanguage) &&
+                         !targetLanguage!.Equals("auto", StringComparison.OrdinalIgnoreCase);
         var sb = new StringBuilder();
         sb.AppendLine("You are an expert short-form video editor (Reels / TikTok / Shorts) AND a careful");
         sb.AppendLine("transcription editor. The transcript below was produced by an automatic speech-");
@@ -229,8 +232,19 @@ public sealed class LlmCaptionService
         sb.AppendLine("   word that makes the sentence make sense). Treat song lyrics, idioms and");
         sb.AppendLine("   common Hebrew phrases as anchors — \"שוב חוזרים ללוודה הנקודה\" is gibberish;");
         sb.AppendLine("   the real lyric is \"שוב חוזרים לאותה הנקודה\".");
-        sb.AppendLine("2. Then convert the cleaned transcript into a sequence of short, punchy on-screen");
-        sb.AppendLine("   captions — \"kinetic typography\" style — that drive engagement.");
+        if (translate)
+        {
+            sb.AppendLine($"2. Translate the cleaned transcript into {targetLanguage}. Use natural,");
+            sb.AppendLine($"   idiomatic {targetLanguage} — not a word-for-word literal translation.");
+            sb.AppendLine("   Preserve names, places, numbers and brand names verbatim.");
+            sb.AppendLine("3. Then convert the translated text into a sequence of short, punchy on-screen");
+            sb.AppendLine("   captions — \"kinetic typography\" style — that drive engagement.");
+        }
+        else
+        {
+            sb.AppendLine("2. Then convert the cleaned transcript into a sequence of short, punchy on-screen");
+            sb.AppendLine("   captions — \"kinetic typography\" style — that drive engagement.");
+        }
         sb.AppendLine();
         sb.AppendLine("Rules (must follow):");
         sb.AppendLine("- Output STRICT JSON: an array of objects with exactly these keys: start, end, text, color.");
@@ -239,7 +253,15 @@ public sealed class LlmCaptionService
         sb.AppendLine("  what the transcript provides.");
         sb.AppendLine("- Caption ranges must NOT overlap and must be in chronological order.");
         sb.AppendLine("- Cover roughly the whole spoken duration; gaps between captions are fine.");
-        sb.AppendLine("- text: 3–7 words per caption (1–5 in Hebrew). Use the SAME language as the transcript — do not translate.");
+        if (translate)
+        {
+            sb.AppendLine($"- text: write every caption in {targetLanguage}. 3–7 words per caption");
+            sb.AppendLine("  (1–5 in Hebrew or other RTL scripts).");
+        }
+        else
+        {
+            sb.AppendLine("- text: 3–7 words per caption (1–5 in Hebrew). Use the SAME language as the transcript — do not translate.");
+        }
         sb.AppendLine("- Use real, well-formed words in that language. NEVER pass through obvious");
         sb.AppendLine("  gibberish from the input — fix it.");
         sb.AppendLine("- Capitalise for emphasis sparingly. Avoid ALL CAPS on every single line.");

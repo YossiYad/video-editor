@@ -88,6 +88,9 @@ public static class AppSettings
     public static string LastTranscribeLanguage { get; set; } = "auto";
     /// <summary>"clip" | "all" - transcribe selected clip vs all video clips.</summary>
     public static string LastTranscribeSource { get; set; } = "clip";
+    /// <summary>"auto" | "he" | "en" | "ar" | "es" | "fr" | "ru" | "pt" | "de" — language to write the captions in.
+    /// "auto" keeps the same language as the audio; anything else asks the LLM to translate.</summary>
+    public static string LastCaptionLanguage { get; set; } = "auto";
 
     // ----- AI Captions -----
     /// <summary>"gemini" for now. Reserved for future expansion.</summary>
@@ -149,6 +152,7 @@ public static class AppSettings
         public string? LastTranscribeModel { get; set; }
         public string? LastTranscribeLanguage { get; set; }
         public string? LastTranscribeSource { get; set; }
+        public string? LastCaptionLanguage { get; set; }
 
         public string? LlmProvider { get; set; }
         public string? LlmApiKey { get; set; }
@@ -207,6 +211,7 @@ public static class AppSettings
             if (!string.IsNullOrEmpty(d.LastTranscribeModel)) LastTranscribeModel = d.LastTranscribeModel;
             if (!string.IsNullOrEmpty(d.LastTranscribeLanguage)) LastTranscribeLanguage = d.LastTranscribeLanguage;
             if (!string.IsNullOrEmpty(d.LastTranscribeSource)) LastTranscribeSource = d.LastTranscribeSource;
+            if (!string.IsNullOrEmpty(d.LastCaptionLanguage)) LastCaptionLanguage = d.LastCaptionLanguage;
             if (!string.IsNullOrEmpty(d.LlmProvider)) LlmProvider = d.LlmProvider;
             if (d.LlmApiKey != null) LlmApiKey = d.LlmApiKey;
             if (!string.IsNullOrEmpty(d.LlmModel)) LlmModel = d.LlmModel;
@@ -252,6 +257,7 @@ public static class AppSettings
                 LastTranscribeModel = LastTranscribeModel,
                 LastTranscribeLanguage = LastTranscribeLanguage,
                 LastTranscribeSource = LastTranscribeSource,
+                LastCaptionLanguage = LastCaptionLanguage,
                 LlmProvider = LlmProvider, LlmApiKey = LlmApiKey, LlmModel = LlmModel,
                 LlmUsageToday = LlmUsageToday, LlmUsageDate = LlmUsageDate,
                 DownloadsFolder = DownloadsFolder, CacheFolder = CacheFolder,
