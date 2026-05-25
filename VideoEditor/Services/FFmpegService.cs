@@ -187,13 +187,43 @@ public class FFmpegService
         return RunAsync(args, duration, progress);
     }
 
-    public Task AddTextAsync(string videoIn, string output, string text, int x, int y, int fontSize, string colorHex, double duration, IProgress<double>? progress = null)
+    public async Task AddTextAsync(string videoIn, string output, string text, int x, int y, int fontSize, string colorHex, double duration, IProgress<double>? progress = null)
     {
-        // drawtext requires \ to be escaped FIRST — if we escape ' and : first, the \ we
-        // added would itself get doubled and the closing quote of text='...' would break.
-        var safeText = text.Replace("\\", "\\\\").Replace("'", "\\'").Replace(":", "\\:");
-        var args = $"-y -i \"{videoIn}\" -vf \"drawtext=text='{safeText}':x={x}:y={y}:fontsize={fontSize}:fontcolor={colorHex}\" -c:a copy \"{output}\"";
-        return RunAsync(args, duration, progress);
+        // text -> tempfile to dodge every drawtext escape pitfall (',', '%', '{', '}', '=', '\\').
+        var tempText = Path.Combine(Path.GetTempPath(), $"ve_text_{Guid.NewGuid():N}.txt");
+        await File.WriteAllTextAsync(tempText, text ?? "", new System.Text.UTF8Encoding(false));
+        try
+        {
+            // drawtext NEEDS an explicit fontfile on Windows — without it ffmpeg dereferences a
+            // null face inside libavfilter and dies with STATUS_ACCESS_VIOLATION (-1073741819).
+            var fontFile = ResolveDrawtextFont();
+            var args = $"-y -i \"{videoIn}\" -vf \"drawtext=textfile='{EscapeFilterArg(tempText)}'" +
+                       $":fontfile='{EscapeFilterArg(fontFile)}'" +
+                       $":x={x}:y={y}:fontsize={fontSize}:fontcolor={colorHex}\" -c:a copy \"{output}\"";
+            await RunAsync(args, duration, progress);
+        }
+        finally
+        {
+            try { File.Delete(tempText); } catch { }
+        }
+    }
+
+    // Filter args (textfile=, fontfile=) need backslashes doubled and colons escaped because
+    // libavfilter parses them again after ffmpeg's top-level argv split.
+    private static string EscapeFilterArg(string p)
+        => p.Replace("\\", "/").Replace(":", "\\:");
+
+    // Pick the first font on disk that supports Hebrew + Latin. Segoe UI is on every Win 7+;
+    // Arial is the absolute fallback.
+    private static string ResolveDrawtextFont()
+    {
+        string winFonts = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts");
+        foreach (var name in new[] { "segoeui.ttf", "arialuni.ttf", "arial.ttf", "tahoma.ttf" })
+        {
+            var p = Path.Combine(winFonts, name);
+            if (File.Exists(p)) return p;
+        }
+        return Path.Combine(winFonts, "arial.ttf");
     }
 
     public Task RemoveLogoAsync(string videoIn, string output, int x, int y, int w, int h, double duration, IProgress<double>? progress = null)
