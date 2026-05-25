@@ -566,7 +566,7 @@ public partial class MainWindow : Window
     private void SeekTo(double seconds)
     {
         var clip = timeline.GetClipAt(seconds);
-        if (clip == null) { timeline.SetCurrent(seconds); return; }
+        if (clip == null) { timeline.SetCurrent(seconds); UpdateBlockVisibility(); return; }
         timeline.SetCurrent(seconds);
 
         var withinClip = Math.Max(0, seconds - clip.TimelineStart) * clip.Speed;
@@ -584,6 +584,9 @@ public partial class MainWindow : Window
             // ruler) still feel instant because there's only one call.
             ScrubToClipFrame(clip, clip.InPoint + withinClip);
         }
+        // Block + text overlay visibility tracks the playhead in real time, paused or not —
+        // so scrubbing past a hide block's range immediately reveals the underlying frame.
+        UpdateBlockVisibility();
     }
 
     private VideoClip? NextClipAfter(VideoClip c)
@@ -840,6 +843,9 @@ public partial class MainWindow : Window
         foreach (var kv in _blockControls) kv.Value.SetSelected(kv.Key == b);
         timeline.SelectBlock(b);
         ShowInspectorTab(b != null ? "block" : (_selectedClip != null ? "clip" : "export"));
+        // Selection changed → previously-selected block (if out of range) must now hide;
+        // the newly-selected one must now show even if out of range.
+        UpdateBlockVisibility();
         if (b == null) return;
         _suppress = true;
         lblBox.Text = b.Label;
@@ -1492,18 +1498,14 @@ public partial class MainWindow : Window
         {
             var block = kv.Key;
             var ctl = kv.Value;
-            bool shouldShow;
-            if (!_isPlaying)
-            {
-                // When paused, always show blocks so user can edit/position them
-                shouldShow = true;
-            }
-            else
-            {
-                // When playing, only show blocks within their active time range (matches export)
-                shouldShow = block.CoversWholeVideo || (t >= block.StartSeconds && t <= block.EndSeconds);
-            }
-            ctl.Visibility = shouldShow ? Visibility.Visible : Visibility.Hidden;
+            // Blocks render exactly the way the exported video will look: a block is on-
+            // screen iff the playhead is inside its time range (or it covers the whole
+            // project). One concession to editability: the *currently selected* block stays
+            // visible even outside its range — otherwise it'd disappear the moment you
+            // selected it to drag/resize.
+            bool inRange = block.CoversWholeVideo || (t >= block.StartSeconds && t <= block.EndSeconds);
+            bool isEditing = block == _selectedBlock;
+            ctl.Visibility = (inRange || isEditing) ? Visibility.Visible : Visibility.Hidden;
         }
         UpdateTextOverlaysVisibility(t);
     }
