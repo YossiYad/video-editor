@@ -220,6 +220,7 @@ public partial class MainWindow : Window
     // hover and uses the diagonal resize cursor.
 
     private readonly System.Collections.Generic.List<Border> _canvasHandles = new();
+    private System.Windows.Shapes.Rectangle? _canvasFrame;
     private bool _handleDragActive;
     private Point _handleDragCentre;       // centre of the canvas in canvas-layer coords
     private double _handleDragStartDist;   // distance from centre to mouse at drag start
@@ -230,22 +231,33 @@ public partial class MainWindow : Window
         if (canvasHandlesLayer == null) return;
         canvasHandlesLayer.Children.Clear();
         _canvasHandles.Clear();
+        // Dashed purple frame around the clip's transformed bounds — a clear visual cue
+        // that the clip is in "edit canvas" mode. Sits below the corner handles in z-order.
+        _canvasFrame = new System.Windows.Shapes.Rectangle
+        {
+            Stroke = new SolidColorBrush(Color.FromRgb(0x8B, 0x5C, 0xFF)),
+            StrokeThickness = 2,
+            StrokeDashArray = new System.Windows.Media.DoubleCollection { 6, 4 },
+            Fill = System.Windows.Media.Brushes.Transparent,
+            IsHitTestVisible = false
+        };
+        canvasHandlesLayer.Children.Add(_canvasFrame);
         // Tag each handle with which corner it's on so the cursor can hint resize direction.
         var corners = new[] { "tl", "tr", "bl", "br" };
         foreach (var corner in corners)
         {
             var h = new Border
             {
-                Width = 14, Height = 14,
-                CornerRadius = new CornerRadius(3),
-                Background = new SolidColorBrush(Color.FromRgb(0x8B, 0x5C, 0xFF)),
-                BorderBrush = new SolidColorBrush(Colors.White),
-                BorderThickness = new Thickness(2),
+                Width = 20, Height = 20,
+                CornerRadius = new CornerRadius(4),
+                Background = new SolidColorBrush(Colors.White),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0x8B, 0x5C, 0xFF)),
+                BorderThickness = new Thickness(3),
                 Tag = corner,
                 Cursor = corner is "tl" or "br" ? Cursors.SizeNWSE : Cursors.SizeNESW,
                 Effect = new System.Windows.Media.Effects.DropShadowEffect
                 {
-                    Color = Colors.Black, BlurRadius = 6, ShadowDepth = 0, Opacity = 0.55
+                    Color = Color.FromRgb(0x8B, 0x5C, 0xFF), BlurRadius = 12, ShadowDepth = 0, Opacity = 0.8
                 }
             };
             h.MouseLeftButtonDown += Handle_MouseDown;
@@ -270,20 +282,32 @@ public partial class MainWindow : Window
         // whole layer scaled by CanvasScale, then shifted by CanvasOffset × layer size.
         double w = canvasHandlesLayer.ActualWidth;
         double h = canvasHandlesLayer.ActualHeight;
+        const double handleSize = 20.0;
         double cw = w * c.CanvasScale;
         double ch = h * c.CanvasScale;
         double cx = (w - cw) / 2 + c.CanvasOffsetX * w + cw / 2;  // centre of transformed clip
         double cy = (h - ch) / 2 + c.CanvasOffsetY * h + ch / 2;
         // Clamp the handles to stay inside the visible canvas — easier to grab when the
         // user has zoomed in very far (transformed corners may be off-screen otherwise).
-        double left   = Math.Max(2, Math.Min(w - 16, cx - cw / 2));
-        double right  = Math.Max(2, Math.Min(w - 16, cx + cw / 2 - 14));
-        double top    = Math.Max(2, Math.Min(h - 16, cy - ch / 2));
-        double bottom = Math.Max(2, Math.Min(h - 16, cy + ch / 2 - 14));
+        double left   = Math.Max(2, Math.Min(w - handleSize - 2, cx - cw / 2));
+        double right  = Math.Max(2, Math.Min(w - handleSize - 2, cx + cw / 2 - handleSize));
+        double top    = Math.Max(2, Math.Min(h - handleSize - 2, cy - ch / 2));
+        double bottom = Math.Max(2, Math.Min(h - handleSize - 2, cy + ch / 2 - handleSize));
         Canvas.SetLeft(_canvasHandles[0], left);  Canvas.SetTop(_canvasHandles[0], top);
         Canvas.SetLeft(_canvasHandles[1], right); Canvas.SetTop(_canvasHandles[1], top);
         Canvas.SetLeft(_canvasHandles[2], left);  Canvas.SetTop(_canvasHandles[2], bottom);
         Canvas.SetLeft(_canvasHandles[3], right); Canvas.SetTop(_canvasHandles[3], bottom);
+        // Dashed frame matches the *unclamped* transformed clip bounds so it's still
+        // meaningful at extreme zoom levels (frame can extend off-canvas; ClipToBounds
+        // on videoStack hides the part that's outside).
+        if (_canvasFrame != null)
+        {
+            double fLeft = cx - cw / 2, fTop = cy - ch / 2;
+            _canvasFrame.Width = Math.Max(0, cw);
+            _canvasFrame.Height = Math.Max(0, ch);
+            Canvas.SetLeft(_canvasFrame, fLeft);
+            Canvas.SetTop(_canvasFrame, fTop);
+        }
     }
 
     private void Handle_MouseDown(object sender, MouseButtonEventArgs e)
@@ -473,6 +497,8 @@ public partial class MainWindow : Window
         else                       { w = aw; h = w / targetRatio; }
         videoContainer.Width  = Math.Max(40, w);
         videoContainer.Height = Math.Max(40, h);
+        // Project-format change resizes the canvas — handles must follow.
+        RepositionCanvasHandles();
     }
 
     private void UpdateTopbarDims()
@@ -577,6 +603,9 @@ public partial class MainWindow : Window
             videoView.SpeedRatio = clip.Speed;
             videoView.Volume = _masterVolume * clip.Volume;
             ApplyClipTransform(clip);
+            // Show resize handles as soon as a clip is loaded — even before the user
+            // explicitly selects it in the timeline.
+            Dispatcher.BeginInvoke(new Action(RepositionCanvasHandles), System.Windows.Threading.DispatcherPriority.Loaded);
             if (!_isPlaying)
             {
                 videoView.Play();
@@ -591,6 +620,8 @@ public partial class MainWindow : Window
 
     private void ApplyClipTransform(VideoClip clip)
     {
+        // Any transform change should also slide the handles to the new corners.
+        Dispatcher.BeginInvoke(new Action(RepositionCanvasHandles), System.Windows.Threading.DispatcherPriority.Loaded);
         double cx = videoView.ActualWidth / 2, cy = videoView.ActualHeight / 2;
         var tg = new TransformGroup();
         // 1) flip around centre
