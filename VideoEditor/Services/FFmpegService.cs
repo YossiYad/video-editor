@@ -189,16 +189,15 @@ public class FFmpegService
 
     public async Task AddTextAsync(string videoIn, string output, string text, int x, int y, int fontSize, string colorHex, double duration, IProgress<double>? progress = null)
     {
-        // text -> tempfile to dodge every drawtext escape pitfall (',', '%', '{', '}', '=', '\\').
         var tempText = Path.Combine(Path.GetTempPath(), $"ve_text_{Guid.NewGuid():N}.txt");
         await File.WriteAllTextAsync(tempText, text ?? "", new System.Text.UTF8Encoding(false));
         try
         {
-            // drawtext NEEDS an explicit fontfile on Windows — without it ffmpeg dereferences a
-            // null face inside libavfilter and dies with STATUS_ACCESS_VIOLATION (-1073741819).
             var fontFile = ResolveDrawtextFont();
-            var args = $"-y -i \"{videoIn}\" -vf \"drawtext=textfile='{EscapeFilterArg(tempText)}'" +
-                       $":fontfile='{EscapeFilterArg(fontFile)}'" +
+            // Unquoted path with \: for colons. Wrapping in '...' nests the escape and breaks
+            // libavfilter's path resolution — drawtext then silently renders nothing.
+            var args = $"-y -i \"{videoIn}\" -vf \"drawtext=textfile={EscapeFilterArg(tempText)}" +
+                       $":fontfile={EscapeFilterArg(fontFile)}" +
                        $":x={x}:y={y}:fontsize={fontSize}:fontcolor={colorHex}\" -c:a copy \"{output}\"";
             await RunAsync(args, duration, progress);
         }
@@ -208,10 +207,8 @@ public class FFmpegService
         }
     }
 
-    // Filter args (textfile=, fontfile=) need backslashes doubled and colons escaped because
-    // libavfilter parses them again after ffmpeg's top-level argv split.
     private static string EscapeFilterArg(string p)
-        => p.Replace("\\", "/").Replace(":", "\\:");
+        => p.Replace("\\", "/").Replace(":", "\\:").Replace("'", "\\'").Replace(",", "\\,");
 
     // Pick the first font on disk that supports Hebrew + Latin. Segoe UI is on every Win 7+;
     // Arial is the absolute fallback.
