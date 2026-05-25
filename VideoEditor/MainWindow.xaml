@@ -501,6 +501,10 @@
                                           MediaEnded="VideoView_MediaEnded"
                                           MediaFailed="VideoView_MediaFailed"/>
                             <Canvas x:Name="overlayCanvas" Background="Transparent"/>
+                            <!-- Resize handles for the per-clip canvas transform.
+                                 Populated and positioned in code-behind so they stay on the corners
+                                 of the *transformed* video bounds. Hidden when no clip is selected. -->
+                            <Canvas x:Name="canvasHandlesLayer" Background="Transparent" IsHitTestVisible="True"/>
 
                             <!-- HUD strip -->
                             <Border VerticalAlignment="Bottom" Background="#CC0A0C12" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="12,7">
