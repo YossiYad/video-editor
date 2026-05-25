@@ -44,7 +44,11 @@ public partial class MainWindow : Window
     private VideoBlock? _inlineRecorderWebcamBlock;
     private ResizableBlock? _inlineRecorderWebcamControl;
     private const string DefaultWebcamDeviceName = "USB Video Device";
-    private bool _inlineRecorderCameraDevicesLoaded;
+    private string _inlineRecorderWebcamDeviceName = DefaultWebcamDeviceName;
+    private System.Diagnostics.Process? _inlineRecorderWebcamPreviewProc;
+    private System.Threading.CancellationTokenSource? _inlineRecorderWebcamPreviewCts;
+    private readonly Queue<string> _inlineRecorderLogTail = new();
+    private string _inlineRecorderLastError = "";
 
     public MainWindow()
     {
@@ -306,6 +310,7 @@ public partial class MainWindow : Window
     {
         _tick.Stop();
         try { _inlineRecorderPreviewTimer?.Stop(); } catch { }
+        try { StopInlineRecorderWebcamPreview(); } catch { }
         try { StopInlineScreenRecording(); } catch { }
         try { videoView.Stop(); videoView.Close(); } catch { }
         base.OnClosed(e);
@@ -1931,7 +1936,6 @@ public partial class MainWindow : Window
         foreach (var m in _inlineRecorderMonitors) inlineRecorderSourceBox.Items.Add(m.FriendlyName);
         int saved = AppSettings.LastScreenRecorderMonitor;
         inlineRecorderSourceBox.SelectedIndex = saved >= 0 && saved < _inlineRecorderMonitors.Count ? saved + 1 : 0;
-        EnsureInlineRecorderCameraChoices();
 
         RefreshInlineRecorderDiag();
         CaptureInlineRecorderPreview();
@@ -1956,6 +1960,7 @@ public partial class MainWindow : Window
         }
 
         _inlineRecorderPreviewTimer?.Stop();
+        StopInlineRecorderWebcamPreview();
         screenRecorderPanel.Visibility = Visibility.Collapsed;
         UpdateEmptyStartPanel();
     }
@@ -1968,6 +1973,10 @@ public partial class MainWindow : Window
             status.Text = "Video recorder is already in the screen recording scene.";
             return;
         }
+
+        var picker = new VideoRecorderPickerWindow(_ff, _inlineRecorderWebcamDeviceName) { Owner = this };
+        if (picker.ShowDialog() != true) return;
+        _inlineRecorderWebcamDeviceName = picker.SelectedCameraName;
 
         double canvasW = inlineRecorderOverlayCanvas.ActualWidth > 1 ? inlineRecorderOverlayCanvas.ActualWidth : 640;
         double canvasH = inlineRecorderOverlayCanvas.ActualHeight > 1 ? inlineRecorderOverlayCanvas.ActualHeight : 360;
@@ -1987,106 +1996,9 @@ public partial class MainWindow : Window
         _inlineRecorderWebcamControl.Changed += _ => { };
         inlineRecorderOverlayCanvas.Children.Add(_inlineRecorderWebcamControl);
         Panel.SetZIndex(_inlineRecorderWebcamControl, 200);
-        inlineRecorderAddCameraBtn.Content = "Camera Added";
-        inlineRecorderAddCameraBtn.IsEnabled = false;
-        inlineRecorderRemoveCameraBtn.IsEnabled = true;
-        status.Text = "Camera added to the screen recording scene. Drag or resize it before Start.";
-    }
-
-    private void RemoveInlineRecorderWebcam()
-    {
-        if (_inlineRecorderWebcamControl != null)
-        {
-            inlineRecorderOverlayCanvas.Children.Remove(_inlineRecorderWebcamControl);
-            _inlineRecorderWebcamControl = null;
-        }
-        _inlineRecorderWebcamBlock = null;
-        inlineRecorderAddCameraBtn.Content = "Add Camera";
-        inlineRecorderAddCameraBtn.IsEnabled = true;
-        inlineRecorderRemoveCameraBtn.IsEnabled = false;
-        status.Text = "Camera removed from the screen recording scene.";
-    }
-
-    private void InlineRecorderAddCamera_Click(object sender, RoutedEventArgs e) => AddInlineRecorderWebcam();
-
-    private void InlineRecorderRemoveCamera_Click(object sender, RoutedEventArgs e) => RemoveInlineRecorderWebcam();
-
-    private void EnsureInlineRecorderCameraChoices()
-    {
-        if (inlineRecorderCameraBox.Items.Count == 0)
-        {
-            inlineRecorderCameraBox.Items.Add(DefaultWebcamDeviceName);
-            inlineRecorderCameraBox.Text = DefaultWebcamDeviceName;
-        }
-        if (_inlineRecorderCameraDevicesLoaded) return;
-        _inlineRecorderCameraDevicesLoaded = true;
-        _ = LoadInlineRecorderCameraDevicesAsync();
-    }
-
-    private async System.Threading.Tasks.Task LoadInlineRecorderCameraDevicesAsync()
-    {
-        try
-        {
-            var psi = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = _ff.FFmpegExe,
-                Arguments = "-hide_banner -list_devices true -f dshow -i dummy",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardError = true,
-                RedirectStandardOutput = true
-            };
-            using var proc = System.Diagnostics.Process.Start(psi);
-            if (proc == null) return;
-            var stderr = await proc.StandardError.ReadToEndAsync();
-            var stdout = await proc.StandardOutput.ReadToEndAsync();
-            await proc.WaitForExitAsync();
-            var devices = ParseDshowVideoDevices(stderr + "\n" + stdout);
-            if (devices.Count == 0) return;
-
-            Dispatcher.Invoke(() =>
-            {
-                var current = string.IsNullOrWhiteSpace(inlineRecorderCameraBox.Text)
-                    ? DefaultWebcamDeviceName
-                    : inlineRecorderCameraBox.Text;
-                inlineRecorderCameraBox.Items.Clear();
-                foreach (var device in devices) inlineRecorderCameraBox.Items.Add(device);
-                inlineRecorderCameraBox.Text = devices.Contains(current) ? current : devices[0];
-                status.Text = $"Found {devices.Count} camera device(s).";
-            });
-        }
-        catch
-        {
-            // Keep the editable fallback. Some ffmpeg builds localize or restrict dshow listing.
-        }
-    }
-
-    private static List<string> ParseDshowVideoDevices(string ffmpegOutput)
-    {
-        var devices = new List<string>();
-        var inVideoSection = false;
-        foreach (var raw in ffmpegOutput.Split('\n'))
-        {
-            var line = raw.Trim();
-            if (line.Contains("DirectShow video devices", StringComparison.OrdinalIgnoreCase))
-            {
-                inVideoSection = true;
-                continue;
-            }
-            if (line.Contains("DirectShow audio devices", StringComparison.OrdinalIgnoreCase))
-                inVideoSection = false;
-            if (!inVideoSection) continue;
-
-            var first = line.IndexOf('"');
-            var last = line.LastIndexOf('"');
-            if (first >= 0 && last > first)
-            {
-                var name = line.Substring(first + 1, last - first - 1);
-                if (!name.StartsWith("@device_", StringComparison.OrdinalIgnoreCase) && !devices.Contains(name))
-                    devices.Add(name);
-            }
-        }
-        return devices;
+        inlineRecorderStatus.Text = $"Camera layer: {_inlineRecorderWebcamDeviceName}. The blue box marks where the camera will appear in the recording.";
+        status.Text = $"Camera added: {_inlineRecorderWebcamDeviceName}. Drag or resize it before Start.";
+        StartInlineRecorderWebcamPreview();
     }
 
     private void InlineRecorderSource_Changed(object sender, SelectionChangedEventArgs e)
@@ -2105,8 +2017,8 @@ public partial class MainWindow : Window
         {
             var m = _inlineRecorderMonitors[idx - 1];
             inlineRecorderDiagText.Text = m.HasDpiScaling
-                ? $"Recording at full physical {m.PhysicalWidth}x{m.PhysicalHeight} via ddagrab (DXGI Desktop Duplication)."
-                : $"Recording at {m.Width}x{m.Height} via ddagrab (output_idx={m.Index}).";
+                ? $"Recording monitor area {m.Width}x{m.Height} via gdigrab. Windows scaling is active on this display."
+                : $"Recording monitor area {m.Width}x{m.Height} via gdigrab.";
         }
         else
         {
@@ -2204,6 +2116,10 @@ public partial class MainWindow : Window
 
         try
         {
+            StopInlineRecorderWebcamPreview();
+            bool hasCameraLayer = _inlineRecorderWebcamBlock != null;
+            _inlineRecorderLastError = "";
+            _inlineRecorderLogTail.Clear();
             _inlineRecorderProc = new System.Diagnostics.Process
             {
                 StartInfo = new System.Diagnostics.ProcessStartInfo
@@ -2218,9 +2134,13 @@ public partial class MainWindow : Window
                 },
                 EnableRaisingEvents = true
             };
+            _inlineRecorderProc.ErrorDataReceived += (_, ev) => CaptureInlineRecorderLog(ev.Data);
             _inlineRecorderProc.Start();
             _inlineRecorderProc.BeginErrorReadLine();
-            _inlineRecorderProc.BeginOutputReadLine();
+            if (hasCameraLayer)
+                _ = ReadMjpegPreviewAsync(_inlineRecorderProc.StandardOutput.BaseStream, System.Threading.CancellationToken.None);
+            else
+                _inlineRecorderProc.BeginOutputReadLine();
             inlineRecorderStartBtn.IsEnabled = false;
             inlineRecorderStopBtn.IsEnabled = true;
             closeInlineRecorderBtn.IsEnabled = false;
@@ -2237,7 +2157,6 @@ public partial class MainWindow : Window
 
     private string BuildInlineRecorderArgs(int fpsValue, string outputPath)
     {
-        var ci = System.Globalization.CultureInfo.InvariantCulture;
         bool useWebcam = _inlineRecorderWebcamBlock != null;
         var liveBlocks = GetInlineRecorderBlocks();
         int monIdx = inlineRecorderSourceBox.SelectedIndex;
@@ -2254,15 +2173,16 @@ public partial class MainWindow : Window
             var m = _inlineRecorderMonitors[monIdx - 1];
             AppSettings.LastScreenRecorderMonitor = m.Index;
             AppSettings.Save();
-            outputW = m.HasDpiScaling ? m.PhysicalWidth : m.Width;
-            outputH = m.HasDpiScaling ? m.PhysicalHeight : m.Height;
+            outputW = m.Width;
+            outputH = m.Height;
+            inputArgs += $"-f gdigrab -framerate {fpsValue} -offset_x {m.X} -offset_y {m.Y} -video_size {outputW}x{outputH} -i desktop ";
             if (useWebcam)
             {
-                inputArgs += $"-f dshow -framerate {fpsValue} -i video=\"{EscapeRecorderArg(SelectedInlineRecorderCameraDevice())}\" ";
-                webcamPad = "[0:v]";
+                inputArgs += $"-f dshow -framerate {fpsValue} -i video=\"{EscapeRecorderArg(_inlineRecorderWebcamDeviceName)}\" ";
+                webcamPad = "[1:v]";
             }
 
-            filter = $"ddagrab=output_idx={m.Index}:framerate={fpsValue},hwdownload,format=bgra,format=yuv420p[s0]";
+            filter = "[0:v]format=yuv420p[s0]";
             finalPad = "[s0]";
         }
         else
@@ -2274,7 +2194,7 @@ public partial class MainWindow : Window
             inputArgs += $"-f gdigrab -framerate {fpsValue} -i desktop ";
             if (useWebcam)
             {
-                inputArgs += $"-f dshow -framerate {fpsValue} -i video=\"{EscapeRecorderArg(SelectedInlineRecorderCameraDevice())}\" ";
+                inputArgs += $"-f dshow -framerate {fpsValue} -i video=\"{EscapeRecorderArg(_inlineRecorderWebcamDeviceName)}\" ";
                 webcamPad = "[1:v]";
             }
 
@@ -2298,12 +2218,15 @@ public partial class MainWindow : Window
             var (x, y, w, h) = ScaleInlineRecorderRect(_inlineRecorderWebcamBlock, outputW, outputH);
             string camPad = $"[cam{stage}]";
             string next = $"[s{stage++}]";
-            filters.Append($";{webcamPad}scale={w}:{h}{camPad};{finalPad}{camPad}overlay={x}:{y}{next}");
+            filters.Append($";{webcamPad}split[camrec][campreview];[campreview]fps=8,scale=320:-1[camout];[camrec]scale={w}:{h}{camPad};{finalPad}{camPad}overlay={x}:{y}{next}");
             finalPad = next;
         }
 
         var filterArg = filters.ToString();
-        return $"{inputArgs}-filter_complex \"{filterArg}\" -map \"{finalPad}\" -c:v libx264 -preset ultrafast -pix_fmt yuv420p \"{outputPath}\"";
+        var args = $"{inputArgs}-filter_complex \"{filterArg}\" -map \"{finalPad}\" -c:v libx264 -preset ultrafast -pix_fmt yuv420p \"{outputPath}\"";
+        if (useWebcam)
+            args += " -map \"[camout]\" -f image2pipe -vcodec mjpeg pipe:1";
+        return args;
     }
 
     private List<VideoBlock> GetInlineRecorderBlocks() =>
@@ -2337,11 +2260,209 @@ public partial class MainWindow : Window
 
     private static string EscapeRecorderArg(string value) => (value ?? "").Replace("\"", "\\\"");
 
-    private string SelectedInlineRecorderCameraDevice()
+    private void StartInlineRecorderWebcamPreview()
     {
-        var text = inlineRecorderCameraBox?.Text;
-        return string.IsNullOrWhiteSpace(text) ? DefaultWebcamDeviceName : text.Trim();
+        if (_inlineRecorderWebcamControl == null) return;
+        StopInlineRecorderWebcamPreview();
+        try
+        {
+            _inlineRecorderWebcamPreviewCts = new System.Threading.CancellationTokenSource();
+            _inlineRecorderWebcamPreviewProc = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = _ff.FFmpegExe,
+                    Arguments = $"-hide_banner -loglevel error -f dshow -i video=\"{EscapeRecorderArg(_inlineRecorderWebcamDeviceName)}\" -vf fps=8,scale=320:-1 -f image2pipe -vcodec mjpeg pipe:1",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                },
+                EnableRaisingEvents = true
+            };
+            _inlineRecorderWebcamPreviewProc.Start();
+            _ = ReadMjpegPreviewAsync(_inlineRecorderWebcamPreviewProc.StandardOutput.BaseStream,
+                _inlineRecorderWebcamPreviewCts.Token);
+        }
+        catch
+        {
+            _inlineRecorderWebcamControl.SetLivePreviewSource(null);
+        }
     }
+
+    private void StopInlineRecorderWebcamPreview()
+    {
+        try { _inlineRecorderWebcamPreviewCts?.Cancel(); } catch { }
+        if (_inlineRecorderWebcamPreviewProc != null)
+        {
+            try
+            {
+                if (!_inlineRecorderWebcamPreviewProc.HasExited)
+                    _inlineRecorderWebcamPreviewProc.Kill();
+            }
+            catch { }
+            try { _inlineRecorderWebcamPreviewProc.Dispose(); } catch { }
+        }
+        _inlineRecorderWebcamPreviewProc = null;
+        _inlineRecorderWebcamPreviewCts = null;
+    }
+
+    private async System.Threading.Tasks.Task ReadMjpegPreviewAsync(Stream stream, System.Threading.CancellationToken token)
+    {
+        var buffer = new byte[8192];
+        var bytes = new List<byte>(256 * 1024);
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                int read = await stream.ReadAsync(buffer, 0, buffer.Length, token);
+                if (read <= 0) break;
+                for (int i = 0; i < read; i++) bytes.Add(buffer[i]);
+
+                while (TryExtractJpeg(bytes, out var jpg))
+                {
+                    var image = BitmapSourceFromJpeg(jpg);
+                    Dispatcher.Invoke(() => _inlineRecorderWebcamControl?.SetLivePreviewSource(image));
+                }
+            }
+        }
+        catch
+        {
+            // Preview is best-effort; recording failures are handled by the recorder process.
+        }
+    }
+
+    private static bool TryExtractJpeg(List<byte> bytes, out byte[] jpg)
+    {
+        jpg = Array.Empty<byte>();
+        int start = -1;
+        for (int i = 0; i < bytes.Count - 1; i++)
+        {
+            if (bytes[i] == 0xFF && bytes[i + 1] == 0xD8)
+            {
+                start = i;
+                break;
+            }
+        }
+        if (start < 0)
+        {
+            if (bytes.Count > 4096) bytes.RemoveRange(0, bytes.Count - 2);
+            return false;
+        }
+
+        int end = -1;
+        for (int i = start + 2; i < bytes.Count - 1; i++)
+        {
+            if (bytes[i] == 0xFF && bytes[i + 1] == 0xD9)
+            {
+                end = i + 2;
+                break;
+            }
+        }
+        if (end < 0)
+        {
+            if (start > 0) bytes.RemoveRange(0, start);
+            return false;
+        }
+
+        jpg = bytes.GetRange(start, end - start).ToArray();
+        bytes.RemoveRange(0, end);
+        return true;
+    }
+
+    private static System.Windows.Media.Imaging.BitmapSource BitmapSourceFromJpeg(byte[] jpg)
+    {
+        using var ms = new MemoryStream(jpg);
+        var bmp = new System.Windows.Media.Imaging.BitmapImage();
+        bmp.BeginInit();
+        bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+        bmp.StreamSource = ms;
+        bmp.EndInit();
+        bmp.Freeze();
+        return bmp;
+    }
+
+    private void CaptureInlineRecorderLog(string? line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return;
+        lock (_inlineRecorderLogTail)
+        {
+            _inlineRecorderLogTail.Enqueue(line);
+            while (_inlineRecorderLogTail.Count > 16) _inlineRecorderLogTail.Dequeue();
+            _inlineRecorderLastError = string.Join(Environment.NewLine,
+                _inlineRecorderLogTail.Where(l =>
+                    !l.Contains("frame=", StringComparison.OrdinalIgnoreCase) &&
+                    !l.Contains("size=", StringComparison.OrdinalIgnoreCase) &&
+                    !l.Contains("time=", StringComparison.OrdinalIgnoreCase))
+                .TakeLast(8));
+        }
+    }
+
+    private string? DetectFirstDshowVideoDevice()
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = _ff.FFmpegExe,
+                Arguments = "-hide_banner -list_devices true -f dshow -i dummy",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true
+            };
+            using var proc = System.Diagnostics.Process.Start(psi);
+            if (proc == null) return null;
+            var output = proc.StandardError.ReadToEnd() + "\n" + proc.StandardOutput.ReadToEnd();
+            if (!proc.WaitForExit(3000))
+            {
+                try { proc.Kill(); } catch { }
+                return null;
+            }
+            return ParseFirstDshowVideoDevice(output);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? ParseFirstDshowVideoDevice(string ffmpegOutput)
+    {
+        var inVideoSection = false;
+        foreach (var raw in ffmpegOutput.Split('\n'))
+        {
+            var line = raw.Trim();
+            var first = line.IndexOf('"');
+            var last = line.LastIndexOf('"');
+            if (first >= 0 && last > first && line.Contains("(video)", StringComparison.OrdinalIgnoreCase))
+            {
+                var directName = line.Substring(first + 1, last - first - 1);
+                if (!directName.StartsWith("@device_", StringComparison.OrdinalIgnoreCase))
+                    return directName;
+            }
+
+            if (line.Contains("DirectShow video devices", StringComparison.OrdinalIgnoreCase))
+            {
+                inVideoSection = true;
+                continue;
+            }
+            if (line.Contains("DirectShow audio devices", StringComparison.OrdinalIgnoreCase))
+                inVideoSection = false;
+            if (!inVideoSection) continue;
+
+            first = line.IndexOf('"');
+            last = line.LastIndexOf('"');
+            if (first >= 0 && last > first)
+            {
+                var name = line.Substring(first + 1, last - first - 1);
+                if (!name.StartsWith("@device_", StringComparison.OrdinalIgnoreCase))
+                    return name;
+            }
+        }
+        return null;
+    }
+
 
     private void InlineRecorderStop_Click(object sender, RoutedEventArgs e)
     {
@@ -2355,7 +2476,11 @@ public partial class MainWindow : Window
         if (!File.Exists(outputPath))
         {
             inlineRecorderStatus.Text = "Recording stopped, but the output file was not created.";
-            MessageBox.Show("Recording finished but the file wasn't created: " + outputPath);
+            var detail = string.IsNullOrWhiteSpace(_inlineRecorderLastError)
+                ? ""
+                : "\n\nFFmpeg details:\n" + _inlineRecorderLastError;
+            MessageBox.Show("Recording finished but the file wasn't created:\n" + outputPath + detail,
+                "Screen Recording Failed", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
 

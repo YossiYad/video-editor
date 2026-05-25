@@ -678,19 +678,7 @@
                                     <TextBlock Text="OUTPUT FILE" Style="{DynamicResource FieldLabel}"/>
                                     <TextBox x:Name="inlineRecorderPathBox" TextWrapping="NoWrap" Margin="0,0,0,10"/>
 
-                                    <TextBlock Text="CAMERA LAYER" Style="{DynamicResource FieldLabel}"/>
-                                    <ComboBox x:Name="inlineRecorderCameraBox" IsEditable="True" Margin="0,0,0,6"/>
-                                    <Grid Margin="0,0,0,10">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="8"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Button Grid.Column="0" x:Name="inlineRecorderAddCameraBtn" Content="Add Camera" Style="{DynamicResource ToolButton}" Click="InlineRecorderAddCamera_Click" Height="30"/>
-                                        <Button Grid.Column="2" x:Name="inlineRecorderRemoveCameraBtn" Content="Remove" Style="{DynamicResource ToolButtonSmall}" Click="InlineRecorderRemoveCamera_Click" Height="30" IsEnabled="False"/>
-                                    </Grid>
-
-                                    <TextBlock Text="Use Add Hide Block from the sidebar for masks. Drag or resize layers on the preview before Start." Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,12"/>
+                                    <TextBlock Text="Use the sidebar before Start: Add Hide Block adds a mask, Video Recorder adds a camera layer." Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,12"/>
 
                                     <StackPanel Orientation="Horizontal">
                                         <Button x:Name="inlineRecorderStartBtn" Content="Start" Style="{DynamicResource PrimaryButton}" Click="InlineRecorderStart_Click" Height="34" MinWidth="96" Margin="0,0,8,0"/>
