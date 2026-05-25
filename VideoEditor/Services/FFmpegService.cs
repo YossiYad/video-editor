@@ -187,43 +187,45 @@ public class FFmpegService
         return RunAsync(args, duration, progress);
     }
 
-    public async Task AddTextAsync(string videoIn, string output, VideoEditor.Views.TextOverlayOptions opt, double duration, IProgress<double>? progress = null)
+    public Task AddTextAsync(string videoIn, string output, VideoEditor.Views.TextOverlayOptions opt, double duration, IProgress<double>? progress = null)
     {
-        var tempText = Path.Combine(Path.GetTempPath(), $"ve_text_{Guid.NewGuid():N}.txt");
-        await File.WriteAllTextAsync(tempText, opt.Text ?? "", new System.Text.UTF8Encoding(false));
-        try
+        var fontFile = ResolveDrawtextFont(opt.Bold, opt.Italic);
+        var parts = new List<string>
         {
-            var fontFile = ResolveDrawtextFont(opt.Bold, opt.Italic);
-            var parts = new List<string>
-            {
-                "drawtext=textfile=" + QuoteFilterPath(tempText),
-                "fontfile=" + QuoteFilterPath(fontFile),
-                "x=" + opt.X,
-                "y=" + opt.Y,
-                "fontsize=" + opt.FontSize,
-                "fontcolor=" + opt.FontColor
-            };
-            if (opt.BackgroundEnabled && opt.BackgroundOpacity > 0)
-            {
-                parts.Add("box=1");
-                parts.Add($"boxcolor={opt.BackgroundColor}@{opt.BackgroundOpacity.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}");
-                parts.Add("boxborderw=" + opt.BackgroundPadding);
-            }
-            var args = $"-y -i \"{videoIn}\" -vf \"{string.Join(":", parts)}\" -c:a copy \"{output}\"";
-            await RunAsync(args, duration, progress);
-        }
-        finally
+            "drawtext=text=" + EscapeDrawtextValue(opt.Text ?? "", isText: true),
+            "fontfile=" + EscapeDrawtextValue(fontFile.Replace('\\', '/'), isText: false),
+            "x=" + opt.X,
+            "y=" + opt.Y,
+            "fontsize=" + opt.FontSize,
+            "fontcolor=" + opt.FontColor
+        };
+        if (opt.BackgroundEnabled && opt.BackgroundOpacity > 0)
         {
-            try { File.Delete(tempText); } catch { }
+            parts.Add("box=1");
+            parts.Add($"boxcolor={opt.BackgroundColor}@{opt.BackgroundOpacity.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}");
+            parts.Add("boxborderw=" + opt.BackgroundPadding);
         }
+        var args = $"-y -i \"{videoIn}\" -vf \"{string.Join(":", parts)}\" -c:a copy \"{output}\"";
+        return RunAsync(args, duration, progress);
     }
 
-    // Inside libavfilter single-quoted strings, only \ and ' are special. Wrapping the path in
-    // single quotes lets ':' (drive letter) sit literally without breaking the kv-pair tokenizer.
-    private static string QuoteFilterPath(string p)
+    // Escape a value for the drawtext filter (libavfilter level-1 escaping). Backslash first,
+    // then the filter separator ':', the quote char ''', and drawtext's expansion-trigger '%'.
+    // For the text= arg specifically, real newlines become the literal two-char sequence "\n" so
+    // drawtext renders multi-line. Newline escape happens AFTER backslash escape so the
+    // backslash we add isn't itself doubled.
+    private static string EscapeDrawtextValue(string s, bool isText)
     {
-        var s = p.Replace("\\", "/").Replace("'", "\\'");
-        return "'" + s + "'";
+        var t = s ?? "";
+        t = t.Replace("\\", "\\\\");
+        t = t.Replace(":", "\\:");
+        t = t.Replace("'", "\\'");
+        if (isText)
+        {
+            t = t.Replace("%", "\\%");
+            t = t.Replace("\r\n", "\\n").Replace("\n", "\\n").Replace("\r", "\\n");
+        }
+        return t;
     }
 
     private static string ResolveDrawtextFont(bool bold, bool italic)
