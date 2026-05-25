@@ -225,8 +225,32 @@ public partial class MainWindow : Window
     {
         if (canvasHandlesLayer == null) return;
         var c = CanvasTargetClip();
-        canvasHandlesLayer.Visibility =
-            (c != null && !c.IsAudioOnly) ? Visibility.Visible : Visibility.Collapsed;
+        if (c == null || c.IsAudioOnly || c.VideoWidth <= 0 || c.VideoHeight <= 0 ||
+            videoStack.ActualWidth < 1 || videoStack.ActualHeight < 1)
+        {
+            canvasHandlesLayer.Visibility = Visibility.Collapsed;
+            return;
+        }
+        canvasHandlesLayer.Visibility = Visibility.Visible;
+
+        // Size the layer to match the *actual* displayed video, not the whole canvas.
+        // MediaElement uses Stretch=Uniform so the base displayed size is the source dimensions
+        // scaled by min(canvasW/srcW, canvasH/srcH); the user's CanvasScale multiplies that.
+        // When scale > 1 the displayed image is bigger than the canvas — clamp the layer to
+        // canvas size so handles stay inside the visible region.
+        double canvasW = videoStack.ActualWidth;
+        double canvasH = videoStack.ActualHeight;
+        double baseScale = Math.Min(canvasW / c.VideoWidth, canvasH / c.VideoHeight);
+        double dispW = c.VideoWidth * baseScale * c.CanvasScale;
+        double dispH = c.VideoHeight * baseScale * c.CanvasScale;
+        double layerW = Math.Min(dispW, canvasW);
+        double layerH = Math.Min(dispH, canvasH);
+        canvasHandlesLayer.Width = layerW;
+        canvasHandlesLayer.Height = layerH;
+        // Center in the canvas, then shift by the user's offset.
+        canvasHandlesLayer.RenderTransform = new TranslateTransform(
+            c.CanvasOffsetX * canvasW,
+            c.CanvasOffsetY * canvasH);
     }
 
     private void CanvasHandle_MouseDown(object sender, MouseButtonEventArgs e)
@@ -671,7 +695,12 @@ public partial class MainWindow : Window
         }
     }
 
-    private void VideoView_MediaOpened(object sender, RoutedEventArgs e) { }
+    private void VideoView_MediaOpened(object sender, RoutedEventArgs e)
+    {
+        // Video dimensions are first reliable here — RepositionCanvasHandles needs them to
+        // compute the actual displayed bounds.
+        RepositionCanvasHandles();
+    }
     private void VideoView_MediaFailed(object sender, ExceptionRoutedEventArgs e)
     {
         var fileName = _playingClip?.DisplayName ?? videoView.Source?.LocalPath ?? "(unknown)";

@@ -505,7 +505,9 @@
                                  Pinned to the 4 corners of the project canvas via alignment so
                                  they always render at the visible bounds — no measuring math.
                                  Hidden when no video clip is loaded. -->
-                            <Grid x:Name="canvasHandlesLayer" Background="Transparent" IsHitTestVisible="True" Visibility="Collapsed">
+                            <Grid x:Name="canvasHandlesLayer" Background="Transparent" IsHitTestVisible="True"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  Visibility="Collapsed">
                                 <!-- Dashed purple frame around the (visible) project canvas. -->
                                 <Border BorderBrush="{DynamicResource Accent}" BorderThickness="2"
                                         IsHitTestVisible="False" Margin="2"/>
