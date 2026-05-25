@@ -88,12 +88,19 @@ public static class AppSettings
     public static string LastTranscribeLanguage { get; set; } = "auto";
     /// <summary>"clip" | "all" - transcribe selected clip vs all video clips.</summary>
     public static string LastTranscribeSource { get; set; } = "clip";
+    /// <summary>"auto" | "he" | "en" | "ar" | "es" | "fr" | "ru" | "pt" | "de" — language to write the captions in.
+    /// "auto" keeps the same language as the audio; anything else asks the LLM to translate.</summary>
+    public static string LastCaptionLanguage { get; set; } = "auto";
 
     // ----- AI Captions -----
     /// <summary>"gemini" for now. Reserved for future expansion.</summary>
     public static string LlmProvider { get; set; } = "gemini";
     /// <summary>Free-form key paste. Persisted in settings.json next to the EXE (gitignored).</summary>
     public static string LlmApiKey { get; set; } = "";
+    /// <summary>Optional second Gemini key, from a DIFFERENT Google account. Used automatically
+    /// when the primary key returns a 429 quota-exceeded error — effectively doubles the free
+    /// tier. Empty = no fallback.</summary>
+    public static string LlmApiKeyFallback { get; set; } = "";
     /// <summary>The Gemini model that last answered 200 OK for this key. Auto-discovered by Test connection.</summary>
     public static string LlmModel { get; set; } = "gemini-2.5-flash";
     /// <summary>Count of Gemini requests made from this install today. Auto-resets at local midnight via <see cref="LlmUsageDate"/>.</summary>
@@ -149,9 +156,11 @@ public static class AppSettings
         public string? LastTranscribeModel { get; set; }
         public string? LastTranscribeLanguage { get; set; }
         public string? LastTranscribeSource { get; set; }
+        public string? LastCaptionLanguage { get; set; }
 
         public string? LlmProvider { get; set; }
         public string? LlmApiKey { get; set; }
+        public string? LlmApiKeyFallback { get; set; }
         public string? LlmModel { get; set; }
         public int LlmUsageToday { get; set; }
         public string? LlmUsageDate { get; set; }
@@ -207,8 +216,10 @@ public static class AppSettings
             if (!string.IsNullOrEmpty(d.LastTranscribeModel)) LastTranscribeModel = d.LastTranscribeModel;
             if (!string.IsNullOrEmpty(d.LastTranscribeLanguage)) LastTranscribeLanguage = d.LastTranscribeLanguage;
             if (!string.IsNullOrEmpty(d.LastTranscribeSource)) LastTranscribeSource = d.LastTranscribeSource;
+            if (!string.IsNullOrEmpty(d.LastCaptionLanguage)) LastCaptionLanguage = d.LastCaptionLanguage;
             if (!string.IsNullOrEmpty(d.LlmProvider)) LlmProvider = d.LlmProvider;
             if (d.LlmApiKey != null) LlmApiKey = d.LlmApiKey;
+            if (d.LlmApiKeyFallback != null) LlmApiKeyFallback = d.LlmApiKeyFallback;
             if (!string.IsNullOrEmpty(d.LlmModel)) LlmModel = d.LlmModel;
             LlmUsageToday = Math.Max(0, d.LlmUsageToday);
             if (!string.IsNullOrEmpty(d.LlmUsageDate)) LlmUsageDate = d.LlmUsageDate;
@@ -252,7 +263,9 @@ public static class AppSettings
                 LastTranscribeModel = LastTranscribeModel,
                 LastTranscribeLanguage = LastTranscribeLanguage,
                 LastTranscribeSource = LastTranscribeSource,
-                LlmProvider = LlmProvider, LlmApiKey = LlmApiKey, LlmModel = LlmModel,
+                LastCaptionLanguage = LastCaptionLanguage,
+                LlmProvider = LlmProvider, LlmApiKey = LlmApiKey, LlmApiKeyFallback = LlmApiKeyFallback,
+                LlmModel = LlmModel,
                 LlmUsageToday = LlmUsageToday, LlmUsageDate = LlmUsageDate,
                 DownloadsFolder = DownloadsFolder, CacheFolder = CacheFolder,
                 MaxCacheSize = MaxCacheSize, AutoCleanCache = AutoCleanCache,

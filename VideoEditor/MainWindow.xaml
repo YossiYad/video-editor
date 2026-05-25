@@ -71,7 +71,14 @@
                     <Button x:Name="prevClipBtn" Content="⏮" Width="28" Height="32" Style="{DynamicResource GhostButton}" Click="PrevClip_Click" FontSize="13" Padding="0" ToolTip="Previous clip"/>
                     <Button x:Name="back5Btn" Content="-5s" Width="32" Height="32" Style="{DynamicResource GhostButton}" Click="Back5_Click" FontSize="11" Padding="0" ToolTip="Back 5s (Shift+← for ±1s)"/>
                     <Button x:Name="playBtn" Content="▶" Width="42" Height="36" Style="{DynamicResource PrimaryButton}" Click="PlayBtn_Click" FontSize="16" Margin="3,0" ToolTip="Play (Space)"/>
-                    <Button x:Name="pauseBtn" Content="⏸" Width="28" Height="32" Style="{DynamicResource GhostButton}" Click="PauseBtn_Click" FontSize="13" Padding="0" ToolTip="Pause (Space)"/>
+                    <Button x:Name="pauseBtn" Width="28" Height="32" Style="{DynamicResource GhostButton}" Click="PauseBtn_Click" Padding="0" ToolTip="Pause (Space)">
+                        <!-- Pure-shape pause icon: two parallel bars. Avoids the ⏸ unicode glyph
+                             which Windows sometimes renders as a coloured emoji or weird square. -->
+                        <Grid Width="10" Height="13">
+                            <Rectangle Width="3" Height="13" Fill="{DynamicResource Text}" HorizontalAlignment="Left"/>
+                            <Rectangle Width="3" Height="13" Fill="{DynamicResource Text}" HorizontalAlignment="Right"/>
+                        </Grid>
+                    </Button>
                     <Button x:Name="stopBtn" Content="■" Width="28" Height="32" Style="{DynamicResource GhostButton}" Click="StopBtn_Click" FontSize="11" Padding="0" ToolTip="Stop"/>
                     <Button x:Name="fwd5Btn" Content="+5s" Width="32" Height="32" Style="{DynamicResource GhostButton}" Click="Fwd5_Click" FontSize="11" Padding="0" ToolTip="Forward 5s"/>
                     <Button x:Name="nextClipBtn" Content="⏭" Width="28" Height="32" Style="{DynamicResource GhostButton}" Click="NextClip_Click" FontSize="13" Padding="0" ToolTip="Next clip"/>
@@ -137,7 +144,9 @@
                         </StackPanel>
                     </Button>
                     <Button x:Name="settingsBtn" Style="{DynamicResource IconButton}" Click="Settings_Click" ToolTip="Settings  ·  ,">
-                        <TextBlock Text="⚙" FontSize="16" Foreground="{DynamicResource Text}"/>
+                        <!-- Settings glyph from Segoe MDL2 Assets — a real gear icon, not the
+                             ⚙ (U+2699) codepoint that Windows can render as a colourful flower. -->
+                        <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="15" Foreground="{DynamicResource Text}"/>
                     </Button>
 
                     <Grid Width="36" Height="36" Margin="6,0">

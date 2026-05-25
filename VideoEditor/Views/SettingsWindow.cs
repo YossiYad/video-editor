@@ -63,6 +63,7 @@ public class SettingsWindow : Window
         public bool AudioLoudnorm = true;
         public string LlmProvider = "gemini";
         public string LlmApiKey = "";
+        public string LlmApiKeyFallback = "";
         public string LlmModel = "gemini-2.5-flash";
 
         public static SettingsDraft FromCurrent() => new()
@@ -95,6 +96,7 @@ public class SettingsWindow : Window
             AudioLoudnorm = AppSettings.AudioLoudnorm,
             LlmProvider = AppSettings.LlmProvider,
             LlmApiKey = AppSettings.LlmApiKey,
+            LlmApiKeyFallback = AppSettings.LlmApiKeyFallback,
             LlmModel = AppSettings.LlmModel,
         };
     }
@@ -318,6 +320,7 @@ public class SettingsWindow : Window
         AppSettings.AudioLoudnorm = _draft.AudioLoudnorm;
         AppSettings.LlmProvider = _draft.LlmProvider;
         AppSettings.LlmApiKey = _draft.LlmApiKey;
+        AppSettings.LlmApiKeyFallback = _draft.LlmApiKeyFallback;
         AppSettings.LlmModel = _draft.LlmModel;
         AppSettings.Save();
 
@@ -650,6 +653,44 @@ public class SettingsWindow : Window
         p.Children.Add(MakeRow("API key",
             "Paste your Gemini API key — starts with AIza… · stored in settings.json next to the EXE",
             pwBox));
+
+        // Optional fallback key — used automatically if the primary returns 429 quota-exceeded.
+        var pwBox2 = new PasswordBox
+        {
+            Background = new SolidColorBrush(Bg2),
+            Foreground = new SolidColorBrush(Text),
+            BorderBrush = new SolidColorBrush(LineStrong),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(8, 5, 8, 5),
+            FontSize = 12.5,
+            FontFamily = new FontFamily("Consolas"),
+            Width = 280,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Password = _draft.LlmApiKeyFallback
+        };
+        pwBox2.PasswordChanged += (_, _) => { _draft.LlmApiKeyFallback = pwBox2.Password ?? ""; MarkDirty(); };
+        p.Children.Add(MakeRow("Fallback API key (optional)",
+            "Used automatically when the primary key hits its daily quota. MUST be from a DIFFERENT Google account — a key from the same account shares the same quota and won't help.",
+            pwBox2));
+
+        // Yellow warning card spelling out the "different account" rule.
+        var warn = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(0x20, 0xFF, 0xD4, 0x3B)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x60, 0xFF, 0xD4, 0x3B)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(12, 8, 12, 8),
+            Margin = new Thickness(0, 0, 0, 8)
+        };
+        warn.Child = new TextBlock
+        {
+            Text = VideoEditor.Services.Localization.T("⚠ The fallback key has to be from a SECOND Google account. Two keys from the same Google account share the same daily quota — adding a sibling key from the same account does NOT increase how many captions you can generate."),
+            Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xD4, 0x3B)),
+            FontSize = 11.5,
+            TextWrapping = TextWrapping.Wrap
+        };
+        p.Children.Add(warn);
 
         // Action buttons (Get key + Test connection).
         var actionGrid = new Grid { HorizontalAlignment = HorizontalAlignment.Right };

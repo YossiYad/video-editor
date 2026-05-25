@@ -133,20 +133,26 @@ public sealed class LlmCaptionService
         return s.Length > 200 ? s.Substring(0, 200) + "…" : s;
     }
 
+    /// <summary>Which key actually answered the latest GenerateOverlaysAsync — "primary" / "fallback".
+    /// Empty string before the first successful call.</summary>
+    public string LastUsedKey { get; private set; } = "";
+
     public async Task<List<TextOverlay>> GenerateOverlaysAsync(
         IList<SubtitleSegment> segments,
         int videoWidth, int videoHeight,
+        string? targetLanguage = null,
         IProgress<double>? progress = null,
         CancellationToken ct = default)
     {
-        var apiKey = AppSettings.LlmApiKey;
-        if (string.IsNullOrWhiteSpace(apiKey))
+        var primaryKey = AppSettings.LlmApiKey;
+        var fallbackKey = AppSettings.LlmApiKeyFallback;
+        if (string.IsNullOrWhiteSpace(primaryKey))
             throw new InvalidOperationException("Gemini API key is missing. Set it in Settings → AI Captions.");
         if (segments == null || segments.Count == 0)
             return new List<TextOverlay>();
 
         progress?.Report(0.05);
-        var prompt = BuildPrompt(segments);
+        var prompt = BuildPrompt(segments, targetLanguage);
         var body = new
         {
             contents = new[]
@@ -161,42 +167,42 @@ public sealed class LlmCaptionService
         };
         var json = JsonSerializer.Serialize(body);
 
-        // Probe order: prefer the model the user already validated in Settings
-        // (Test connection writes it to AppSettings.LlmModel), then the rest.
-        var probeOrder = new List<string>();
-        if (!string.IsNullOrEmpty(AppSettings.LlmModel)) probeOrder.Add(AppSettings.LlmModel);
-        foreach (var m in FallbackModels)
-            if (!probeOrder.Contains(m, StringComparer.OrdinalIgnoreCase)) probeOrder.Add(m);
-
         progress?.Report(0.2);
 
-        var perModelErrors = new List<string>();
+        // Try the primary key first; if it answers RESOURCE_EXHAUSTED (or any 429) and the
+        // user has a fallback configured, transparently switch to that key.
+        var keys = new List<(string key, string label)> { (primaryKey, "primary") };
+        if (!string.IsNullOrWhiteSpace(fallbackKey)) keys.Add((fallbackKey, "fallback"));
+
+        var perKeyErrors = new List<string>();
         string? replyText = null;
-        foreach (var model in probeOrder)
+        for (int k = 0; k < keys.Count; k++)
         {
             ct.ThrowIfCancellationRequested();
-            using var req = new HttpRequestMessage(HttpMethod.Post,
-                $"{EndpointFor(model)}?key={Uri.EscapeDataString(apiKey)}")
+            (string apiKey, string keyLabel) = keys[k];
+
+            string? text;
+            (replyText, text) = await TryGenerateWithKeyAsync(json, apiKey, keyLabel, ct);
+            if (replyText != null)
             {
-                Content = new StringContent(json, Encoding.UTF8, "application/json")
-            };
-            RecordRequest();
-            using var resp = await Http.SendAsync(req, ct);
-            var text = await resp.Content.ReadAsStringAsync(ct);
-            Log?.Invoke($"Gemini generate ({model}) → {(int)resp.StatusCode}");
-            if (resp.IsSuccessStatusCode)
-            {
-                replyText = ExtractFirstText(text);
-                LastUsedModel = model;
-                AppSettings.LlmModel = model;
-                AppSettings.Save();
+                LastUsedKey = keyLabel;
+                if (k > 0)
+                    Log?.Invoke($"Primary key exhausted — fell back to the secondary Google account.");
                 break;
             }
-            var msg = ExtractErrorMessage(text) ?? $"HTTP {(int)resp.StatusCode}";
-            perModelErrors.Add($"{model}: {Shorten(msg)}");
+
+            // Failed all models on this key. If the error was a quota issue AND a fallback
+            // key exists, loop; otherwise surface the first key's error.
+            perKeyErrors.Add($"[{keyLabel}] " + text);
+            bool quotaLike = text != null && (
+                text.Contains("RESOURCE_EXHAUSTED", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("quota", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("429"));
+            if (!quotaLike) break;   // not a quota issue — fallback won't help
         }
+
         if (replyText == null)
-            throw new Exception("All Gemini models refused the request:\n - " + string.Join("\n - ", perModelErrors));
+            throw new Exception("All Gemini keys refused the request:\n - " + string.Join("\n - ", perKeyErrors));
 
         progress?.Report(0.75);
         var reply = replyText ?? "";
@@ -211,10 +217,49 @@ public sealed class LlmCaptionService
         return overlays;
     }
 
+    /// <summary>Try every model in the fallback list with the given API key.
+    /// Returns (reply text, null) on first success or (null, combined error string) on failure.</summary>
+    private async Task<(string? Reply, string? CombinedError)> TryGenerateWithKeyAsync(
+        string json, string apiKey, string keyLabel, CancellationToken ct)
+    {
+        var probeOrder = new List<string>();
+        if (!string.IsNullOrEmpty(AppSettings.LlmModel)) probeOrder.Add(AppSettings.LlmModel);
+        foreach (var m in FallbackModels)
+            if (!probeOrder.Contains(m, StringComparer.OrdinalIgnoreCase)) probeOrder.Add(m);
+
+        var perModelErrors = new List<string>();
+        foreach (var model in probeOrder)
+        {
+            ct.ThrowIfCancellationRequested();
+            using var req = new HttpRequestMessage(HttpMethod.Post,
+                $"{EndpointFor(model)}?key={Uri.EscapeDataString(apiKey)}")
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+            RecordRequest();
+            using var resp = await Http.SendAsync(req, ct);
+            var text = await resp.Content.ReadAsStringAsync(ct);
+            Log?.Invoke($"Gemini generate [{keyLabel}/{model}] → {(int)resp.StatusCode}");
+            if (resp.IsSuccessStatusCode)
+            {
+                var reply = ExtractFirstText(text);
+                LastUsedModel = model;
+                AppSettings.LlmModel = model;
+                AppSettings.Save();
+                return (reply, null);
+            }
+            var msg = ExtractErrorMessage(text) ?? $"HTTP {(int)resp.StatusCode}";
+            perModelErrors.Add($"{model}: {Shorten(msg)}");
+        }
+        return (null, string.Join(" | ", perModelErrors));
+    }
+
     // ---------- prompt ----------
 
-    private static string BuildPrompt(IList<SubtitleSegment> segments)
+    private static string BuildPrompt(IList<SubtitleSegment> segments, string? targetLanguage = null)
     {
+        bool translate = !string.IsNullOrEmpty(targetLanguage) &&
+                         !targetLanguage!.Equals("auto", StringComparison.OrdinalIgnoreCase);
         var sb = new StringBuilder();
         sb.AppendLine("You are an expert short-form video editor (Reels / TikTok / Shorts) AND a careful");
         sb.AppendLine("transcription editor. The transcript below was produced by an automatic speech-");
@@ -229,8 +274,19 @@ public sealed class LlmCaptionService
         sb.AppendLine("   word that makes the sentence make sense). Treat song lyrics, idioms and");
         sb.AppendLine("   common Hebrew phrases as anchors — \"שוב חוזרים ללוודה הנקודה\" is gibberish;");
         sb.AppendLine("   the real lyric is \"שוב חוזרים לאותה הנקודה\".");
-        sb.AppendLine("2. Then convert the cleaned transcript into a sequence of short, punchy on-screen");
-        sb.AppendLine("   captions — \"kinetic typography\" style — that drive engagement.");
+        if (translate)
+        {
+            sb.AppendLine($"2. Translate the cleaned transcript into {targetLanguage}. Use natural,");
+            sb.AppendLine($"   idiomatic {targetLanguage} — not a word-for-word literal translation.");
+            sb.AppendLine("   Preserve names, places, numbers and brand names verbatim.");
+            sb.AppendLine("3. Then convert the translated text into a sequence of short, punchy on-screen");
+            sb.AppendLine("   captions — \"kinetic typography\" style — that drive engagement.");
+        }
+        else
+        {
+            sb.AppendLine("2. Then convert the cleaned transcript into a sequence of short, punchy on-screen");
+            sb.AppendLine("   captions — \"kinetic typography\" style — that drive engagement.");
+        }
         sb.AppendLine();
         sb.AppendLine("Rules (must follow):");
         sb.AppendLine("- Output STRICT JSON: an array of objects with exactly these keys: start, end, text, color.");
@@ -239,7 +295,15 @@ public sealed class LlmCaptionService
         sb.AppendLine("  what the transcript provides.");
         sb.AppendLine("- Caption ranges must NOT overlap and must be in chronological order.");
         sb.AppendLine("- Cover roughly the whole spoken duration; gaps between captions are fine.");
-        sb.AppendLine("- text: 3–7 words per caption (1–5 in Hebrew). Use the SAME language as the transcript — do not translate.");
+        if (translate)
+        {
+            sb.AppendLine($"- text: write every caption in {targetLanguage}. 3–7 words per caption");
+            sb.AppendLine("  (1–5 in Hebrew or other RTL scripts).");
+        }
+        else
+        {
+            sb.AppendLine("- text: 3–7 words per caption (1–5 in Hebrew). Use the SAME language as the transcript — do not translate.");
+        }
         sb.AppendLine("- Use real, well-formed words in that language. NEVER pass through obvious");
         sb.AppendLine("  gibberish from the input — fix it.");
         sb.AppendLine("- Capitalise for emphasis sparingly. Avoid ALL CAPS on every single line.");
