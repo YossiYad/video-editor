@@ -69,6 +69,18 @@ public static class AppSettings
     /// <summary>EBU R128 normalization. Wired in FFmpegService.RenderClipAsync.</summary>
     public static bool AudioLoudnorm { get; set; } = true;
 
+    /// <summary>
+    /// Output canvas preset key. See <c>ProjectFormats.All</c>.
+    /// "source" | "yt_1080p" | "reels_1080" | "square_1080" | "portrait_1080x1350" | "cinematic_2560x1080" | "custom"
+    /// </summary>
+    public static string TargetFormatPreset { get; set; } = "source";
+    public static int CustomTargetWidth { get; set; } = 1920;
+    public static int CustomTargetHeight { get; set; } = 1080;
+    /// <summary>"contain" | "cover" | "blur" — how source clips fill the target canvas at export.</summary>
+    public static string TargetFitMode { get; set; } = "contain";
+    /// <summary>boxblur sigma for the "blur" fit mode background.</summary>
+    public static int BlurredBgStrength { get; set; } = 20;
+
     // ----- Storage -----
     public static string DownloadsFolder { get; set; } = "";
     public static string CacheFolder { get; set; } = "";
@@ -107,6 +119,12 @@ public static class AppSettings
         public string? HardwareAccel { get; set; }
         public bool TwoPass { get; set; }
         public bool AudioLoudnorm { get; set; } = true;
+
+        public string? TargetFormatPreset { get; set; }
+        public int CustomTargetWidth { get; set; } = 1920;
+        public int CustomTargetHeight { get; set; } = 1080;
+        public string? TargetFitMode { get; set; }
+        public int BlurredBgStrength { get; set; } = 20;
 
         public string? DownloadsFolder { get; set; }
         public string? CacheFolder { get; set; }
@@ -151,6 +169,11 @@ public static class AppSettings
             if (!string.IsNullOrEmpty(d.HardwareAccel)) HardwareAccel = d.HardwareAccel;
             TwoPass = d.TwoPass;
             AudioLoudnorm = d.AudioLoudnorm;
+            if (!string.IsNullOrEmpty(d.TargetFormatPreset)) TargetFormatPreset = d.TargetFormatPreset;
+            CustomTargetWidth = Clamp(d.CustomTargetWidth, 16, 7680);
+            CustomTargetHeight = Clamp(d.CustomTargetHeight, 16, 4320);
+            if (!string.IsNullOrEmpty(d.TargetFitMode)) TargetFitMode = d.TargetFitMode;
+            BlurredBgStrength = Clamp(d.BlurredBgStrength, 0, 60);
             if (!string.IsNullOrEmpty(d.DownloadsFolder)) DownloadsFolder = d.DownloadsFolder;
             if (!string.IsNullOrEmpty(d.CacheFolder)) CacheFolder = d.CacheFolder;
             if (!string.IsNullOrEmpty(d.MaxCacheSize)) MaxCacheSize = d.MaxCacheSize;
@@ -185,6 +208,9 @@ public static class AppSettings
                 ExportCodec = ExportCodec, ExportContainer = ExportContainer,
                 ExportAudioBitrate = ExportAudioBitrate,
                 HardwareAccel = HardwareAccel, TwoPass = TwoPass, AudioLoudnorm = AudioLoudnorm,
+                TargetFormatPreset = TargetFormatPreset,
+                CustomTargetWidth = CustomTargetWidth, CustomTargetHeight = CustomTargetHeight,
+                TargetFitMode = TargetFitMode, BlurredBgStrength = BlurredBgStrength,
                 DownloadsFolder = DownloadsFolder, CacheFolder = CacheFolder,
                 MaxCacheSize = MaxCacheSize, AutoCleanCache = AutoCleanCache,
             };

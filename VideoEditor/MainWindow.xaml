@@ -42,6 +42,14 @@
                             <TextBlock x:Name="projFps" Text="29.97 fps" FontFamily="Consolas" FontSize="10.5" Foreground="{DynamicResource TextDim}"/>
                             <Ellipse Width="3" Height="3" Fill="{DynamicResource TextDim}" Margin="6,0" VerticalAlignment="Center"/>
                             <TextBlock Text="H.264" FontSize="10.5" Foreground="{DynamicResource TextDim}"/>
+                            <Button x:Name="changeFormatBtn" Style="{DynamicResource GhostButton}"
+                                    Padding="6,1" Margin="10,0,0,0" Click="ChangeFormat_Click"
+                                    ToolTip="Change project format">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="projTargetChip" Text="→ 1920×1080" FontFamily="Consolas" FontSize="10.5" Foreground="{DynamicResource AccentHover}"/>
+                                    <TextBlock Text=" ▾" FontSize="9" Foreground="{DynamicResource TextMute}" Margin="3,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
@@ -459,7 +467,8 @@
 
             <!-- ============ CENTER PREVIEW ============ -->
             <Grid Grid.Column="1" Background="{DynamicResource PreviewWrapBg}">
-                <Grid Margin="20,18,20,16" x:Name="videoContainer">
+                <Grid Margin="20,18,20,16" x:Name="videoContainerOuter" SizeChanged="VideoContainerOuter_SizeChanged">
+                    <Grid x:Name="videoContainer" HorizontalAlignment="Center" VerticalAlignment="Center">
                     <Border BorderBrush="{DynamicResource LineStrong}" BorderThickness="1" Background="Black" CornerRadius="6">
                         <Border.Effect>
                             <DropShadowEffect Color="Black" BlurRadius="36" ShadowDepth="0" Opacity="0.55"/>
@@ -498,6 +507,7 @@
                             </Border>
                         </Grid>
                     </Border>
+                </Grid>
                 </Grid>
             </Grid>
 
@@ -882,21 +892,32 @@
                                         </Border>
                                     </StackPanel>
 
-                                    <!-- Resolution / FPS -->
+                                    <!-- Project format (click chip to open picker) / FPS -->
                                     <Grid Margin="16,10,16,4">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel>
-                                            <TextBlock Text="RESOLUTION" Style="{DynamicResource FieldLabel}"/>
-                                            <ComboBox x:Name="exportResBox">
-                                                <ComboBoxItem Content="Source"  IsSelected="True"/>
-                                                <ComboBoxItem Content="3840 × 2160"/>
-                                                <ComboBoxItem Content="1920 × 1080"/>
-                                                <ComboBoxItem Content="1280 × 720"/>
-                                                <ComboBoxItem Content="1080 × 1920"/>
-                                            </ComboBox>
+                                            <TextBlock Text="PROJECT FORMAT" Style="{DynamicResource FieldLabel}"/>
+                                            <Button x:Name="inspectorFormatBtn" Click="ChangeFormat_Click"
+                                                    Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Line}"
+                                                    BorderThickness="1" Cursor="Hand" Height="28"
+                                                    HorizontalContentAlignment="Stretch" Padding="9,0">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock x:Name="inspectorFormatText" Grid.Column="0"
+                                                               Text="Source" FontFamily="Consolas" FontSize="11.5"
+                                                               Foreground="{DynamicResource Text}" VerticalAlignment="Center"
+                                                               TextAlignment="Left"/>
+                                                    <TextBlock Grid.Column="1" Text="▾" FontSize="9"
+                                                               Foreground="{DynamicResource TextMute}" VerticalAlignment="Center"
+                                                               Margin="6,0,0,0"/>
+                                                </Grid>
+                                            </Button>
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" Margin="6,0,0,0">
                                             <TextBlock Text="FPS" Style="{DynamicResource FieldLabel}"/>
@@ -907,6 +928,33 @@
                                             </ComboBox>
                                         </StackPanel>
                                     </Grid>
+
+                                    <!-- Fit mode -->
+                                    <StackPanel Margin="16,10,16,4">
+                                        <TextBlock Text="FIT" Style="{DynamicResource FieldLabel}"/>
+                                        <Border Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="6" Padding="3">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <RadioButton x:Name="fitContainBtn" Grid.Column="0" Style="{DynamicResource SegmentButton}"
+                                                             GroupName="FitMode" IsChecked="True" Content="Contain"
+                                                             Tag="contain" Checked="FitMode_Checked"/>
+                                                <RadioButton x:Name="fitCoverBtn"   Grid.Column="1" Style="{DynamicResource SegmentButton}"
+                                                             GroupName="FitMode" Content="Cover"
+                                                             Tag="cover" Checked="FitMode_Checked"/>
+                                                <RadioButton x:Name="fitBlurBtn"    Grid.Column="2" Style="{DynamicResource SegmentButton}"
+                                                             GroupName="FitMode" Content="Blur bg"
+                                                             Tag="blur" Checked="FitMode_Checked"/>
+                                            </Grid>
+                                        </Border>
+                                        <TextBlock x:Name="fitPreviewHint" Margin="0,4,0,0"
+                                                   Text="Preview shows the target canvas. Cover/Blur effects render on export."
+                                                   Foreground="{DynamicResource TextDim}" FontSize="10.5"
+                                                   TextWrapping="Wrap" Visibility="Collapsed"/>
+                                    </StackPanel>
 
                                     <!-- CRF -->
                                     <StackPanel Margin="16,12,16,4">

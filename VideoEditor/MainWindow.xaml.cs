@@ -37,6 +37,8 @@ public partial class MainWindow : Window
     // The audio bar of a clip currently selected on the timeline (separate from clip body selection)
     private VideoClip? _selectedAudio;
 
+    private bool _formatPickedThisSession;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -49,6 +51,7 @@ public partial class MainWindow : Window
         videoView.Volume = _masterVolume;
         videoView.ScrubbingEnabled = AppSettings.ScrubbingQuality != "smooth";
         timeline.FFmpeg = _ff;
+        InitFormatControls();
         // Re-apply on settings change at runtime
         AppSettings.Changed += () =>
         {
@@ -60,6 +63,9 @@ public partial class MainWindow : Window
                 timeline.FullRefresh();
                 if (_playingClip == null) volumeSlider.Value = AppSettings.DefaultMasterVolume;
                 videoView.ScrubbingEnabled = AppSettings.ScrubbingQuality != "smooth";
+                UpdateTopbarDims();
+                UpdateInspectorFormatText();
+                UpdatePreviewAspect();
             });
         };
 
@@ -129,6 +135,7 @@ public partial class MainWindow : Window
     private async System.Threading.Tasks.Task AddClipAsync(string path, double? insertAtSec = null)
     {
         status.Text = "Probing " + Path.GetFileName(path) + "...";
+        bool wasFirstVideo = !timeline.Clips.Any(c => !c.IsAudioOnly);
         try
         {
             var (w, h, d) = await _ff.ProbeAsync(path);
@@ -156,16 +163,114 @@ public partial class MainWindow : Window
             projectName.Text = Path.GetFileNameWithoutExtension(path);
             projDims.Text = $"{w}×{h}";
             UpdateStats();
+            UpdateTopbarDims();
+            UpdatePreviewAspect();
             if (timeline.Clips.Count == 1)
             {
                 LoadClipForPreview(clip, 0);
                 timeline.FitToView();
+            }
+            if (wasFirstVideo && !clip.IsAudioOnly && !_formatPickedThisSession)
+            {
+                _formatPickedThisSession = true;
+                ShowFormatPicker();
             }
         }
         catch (Exception ex)
         {
             status.Text = VideoEditor.Services.Localization.IsHebrew ? "ההוספה נכשלה: " + ex.Message : "Failed to add: " + ex.Message;
         }
+    }
+
+    // ===== Project format helpers =====
+
+    private void InitFormatControls()
+    {
+        var fit = AppSettings.TargetFitMode ?? "contain";
+        fitContainBtn.IsChecked = fit == "contain";
+        fitCoverBtn.IsChecked   = fit == "cover";
+        fitBlurBtn.IsChecked    = fit == "blur";
+        fitPreviewHint.Visibility = fit == "contain" ? Visibility.Collapsed : Visibility.Visible;
+        UpdateTopbarDims();
+        UpdateInspectorFormatText();
+        // Defer preview-aspect computation to first Loaded so the container has a real size
+        Loaded += (_, _) => UpdatePreviewAspect();
+    }
+
+    private void ShowFormatPicker()
+    {
+        var dlg = new VideoEditor.Views.ProjectFormatPickerWindow { Owner = this };
+        if (dlg.ShowDialog() == true)
+        {
+            AppSettings.TargetFormatPreset = dlg.SelectedPresetKey;
+            if (dlg.SelectedPresetKey == "custom")
+            {
+                AppSettings.CustomTargetWidth  = dlg.SelectedCustomWidth;
+                AppSettings.CustomTargetHeight = dlg.SelectedCustomHeight;
+            }
+            AppSettings.Save();
+            UpdateTopbarDims();
+            UpdateInspectorFormatText();
+            UpdatePreviewAspect();
+        }
+    }
+
+    private void ChangeFormat_Click(object sender, RoutedEventArgs e) => ShowFormatPicker();
+
+    private void FitMode_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.RadioButton rb && rb.Tag is string mode)
+        {
+            AppSettings.TargetFitMode = mode;
+            AppSettings.Save();
+            fitPreviewHint.Visibility = mode == "contain" ? Visibility.Collapsed : Visibility.Visible;
+        }
+    }
+
+    private void VideoContainerOuter_SizeChanged(object sender, SizeChangedEventArgs e) => UpdatePreviewAspect();
+
+    private void UpdatePreviewAspect()
+    {
+        if (videoContainerOuter == null || videoContainer == null) return;
+        var first = timeline.Clips.FirstOrDefault(c => !c.IsAudioOnly);
+        var (tw, th) = VideoEditor.Services.ProjectFormats.Resolve(AppSettings.TargetFormatPreset, first);
+        if (tw <= 0 || th <= 0) return;
+        double aw = videoContainerOuter.ActualWidth;
+        double ah = videoContainerOuter.ActualHeight;
+        if (aw <= 0 || ah <= 0) return;
+        double targetRatio = (double)tw / th;
+        double w, h;
+        if (aw / ah > targetRatio) { h = ah; w = h * targetRatio; }
+        else                       { w = aw; h = w / targetRatio; }
+        videoContainer.Width  = Math.Max(40, w);
+        videoContainer.Height = Math.Max(40, h);
+    }
+
+    private void UpdateTopbarDims()
+    {
+        if (projTargetChip == null) return;
+        var first = timeline.Clips.FirstOrDefault(c => !c.IsAudioOnly);
+        var (tw, th) = VideoEditor.Services.ProjectFormats.Resolve(AppSettings.TargetFormatPreset, first);
+        var p = VideoEditor.Services.ProjectFormats.Lookup(AppSettings.TargetFormatPreset);
+        var shortName = VideoEditor.Services.Localization.IsHebrew
+            ? VideoEditor.Services.Localization.T(p.ShortName)
+            : p.ShortName;
+        projTargetChip.Text = $"→ {tw}×{th} · {shortName}";
+        var fit = AppSettings.TargetFitMode ?? "contain";
+        var fitLabel = VideoEditor.Services.Localization.T(fit == "cover" ? "Cover" : fit == "blur" ? "Blur bg" : "Contain");
+        changeFormatBtn.ToolTip = $"{VideoEditor.Services.Localization.T("Change project format")} · {p.Label} ({fitLabel})";
+    }
+
+    private void UpdateInspectorFormatText()
+    {
+        if (inspectorFormatText == null) return;
+        var first = timeline.Clips.FirstOrDefault(c => !c.IsAudioOnly);
+        var (tw, th) = VideoEditor.Services.ProjectFormats.Resolve(AppSettings.TargetFormatPreset, first);
+        var p = VideoEditor.Services.ProjectFormats.Lookup(AppSettings.TargetFormatPreset);
+        var shortName = VideoEditor.Services.Localization.IsHebrew
+            ? VideoEditor.Services.Localization.T(p.ShortName)
+            : p.ShortName;
+        inspectorFormatText.Text = $"{shortName} · {tw}×{th}";
     }
 
     private void UpdateStats()
@@ -1297,11 +1402,12 @@ public partial class MainWindow : Window
         {
             // Export in timeline order
             var orderedClips = timeline.Clips.OrderBy(c => c.TimelineStart).ToList();
-            var first = orderedClips[0];
+            var firstVideo = orderedClips.FirstOrDefault(c => !c.IsAudioOnly);
+            var (tW, tH) = VideoEditor.Services.ProjectFormats.Resolve(AppSettings.TargetFormatPreset, firstVideo);
             await _ff.ExportProjectAsync(orderedClips, timeline.Blocks.ToList(),
-                first.VideoWidth, first.VideoHeight,
+                tW, tH,
                 overlayCanvas.ActualWidth, overlayCanvas.ActualHeight,
-                timeline.TotalSeconds, sfd.FileName, prog);
+                timeline.TotalSeconds, sfd.FileName, AppSettings.TargetFitMode, prog);
             status.Text = "Exported: " + sfd.FileName;
             progress.Value = 1;
             if (MessageBox.Show("Open output folder?", "Done", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
@@ -1610,13 +1716,13 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
         try
         {
             var orderedClips = timeline.Clips.OrderBy(x => x.TimelineStart).ToList();
-            var first = orderedClips[0];
+            var firstVideo = orderedClips.FirstOrDefault(c => !c.IsAudioOnly);
+            var (tW, tH) = VideoEditor.Services.ProjectFormats.Resolve(AppSettings.TargetFormatPreset, firstVideo);
             var prog1 = new Progress<double>(v => Dispatcher.Invoke(() => progress.Value = v * 0.8));
             await _ff.ExportProjectAsync(orderedClips, new List<VideoBlock>(),
-                first.VideoWidth > 0 ? first.VideoWidth : 1920,
-                first.VideoHeight > 0 ? first.VideoHeight : 1080,
+                tW, tH,
                 overlayCanvas.ActualWidth, overlayCanvas.ActualHeight,
-                timeline.TotalSeconds, tempVideo, prog1);
+                timeline.TotalSeconds, tempVideo, AppSettings.TargetFitMode, prog1);
 
             status.Text = "Extracting audio...";
             var prog2 = new Progress<double>(v => Dispatcher.Invoke(() => progress.Value = 0.8 + v * 0.2));
