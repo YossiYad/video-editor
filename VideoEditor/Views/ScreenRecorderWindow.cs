@@ -37,7 +37,7 @@ public class ScreenRecorderWindow : Window
         // buttons) fits without the ScrollViewer needing to scroll. WindowBuilder
         // defaults to NoResize; for the screen recorder we override to CanResize
         // so the user can drag the dialog wider for a roomier preview.
-        var ch = WindowBuilder.Build(this, icon, Title, sub, 920, webcam ? 460 : 860);
+        var ch = WindowBuilder.Build(this, icon, Title, sub, 920, webcam ? 560 : 860);
         if (!webcam)
         {
             ResizeMode = ResizeMode.CanResize;
@@ -50,6 +50,88 @@ public class ScreenRecorderWindow : Window
             Environment.GetFolderPath(Environment.SpecialFolder.MyVideos),
             webcam ? "webcam.mp4" : "screen.mp4"));
         ch.Body.Children.Add(path);
+
+        ComboBox? cameraBox = null;
+        if (webcam)
+        {
+            ch.Body.Children.Add(WindowBuilder.Lbl("Camera device"));
+            var cameraRow = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+            cameraRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            cameraRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            cameraBox = new ComboBox
+            {
+                IsEditable = true,
+                Background = WindowBuilder.Bg2,
+                Foreground = WindowBuilder.TextBr,
+                BorderBrush = WindowBuilder.Line,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(9, 6, 9, 6),
+                FontSize = 12.5,
+                MinHeight = 32
+            };
+            cameraBox.Items.Add("USB Video Device");
+            cameraBox.Text = "USB Video Device";
+            Grid.SetColumn(cameraBox, 0);
+            cameraRow.Children.Add(cameraBox);
+
+            var refreshCamerasBtn = new Button
+            {
+                Content = "Refresh",
+                MinWidth = 86,
+                Height = 32,
+                Margin = new Thickness(8, 0, 0, 0)
+            };
+            refreshCamerasBtn.Style = (Style)FindResource("ToolButton");
+            Grid.SetColumn(refreshCamerasBtn, 1);
+            cameraRow.Children.Add(refreshCamerasBtn);
+            ch.Body.Children.Add(cameraRow);
+
+            var cameraHint = new TextBlock
+            {
+                Text = "Pick a camera, or type the exact DirectShow device name if it is not listed.",
+                FontSize = 10.5,
+                Foreground = WindowBuilder.TextDim,
+                Margin = new Thickness(0, 0, 0, 10),
+                TextWrapping = TextWrapping.Wrap
+            };
+            ch.Body.Children.Add(cameraHint);
+
+            async void RefreshCameras()
+            {
+                refreshCamerasBtn.IsEnabled = false;
+                refreshCamerasBtn.Content = "Scanning...";
+                try
+                {
+                    var current = string.IsNullOrWhiteSpace(cameraBox.Text) ? "USB Video Device" : cameraBox.Text;
+                    var devices = await DetectDshowVideoDevicesAsync();
+                    cameraBox.Items.Clear();
+                    if (devices.Count == 0)
+                    {
+                        cameraBox.Items.Add(current);
+                        cameraBox.Text = current;
+                        cameraHint.Text = "No cameras were detected automatically. Type the DirectShow device name manually.";
+                    }
+                    else
+                    {
+                        foreach (var d in devices) cameraBox.Items.Add(d);
+                        cameraBox.Text = devices.Contains(current) ? current : devices[0];
+                        cameraHint.Text = $"Found {devices.Count} camera device(s). Pick one before recording.";
+                    }
+                }
+                catch
+                {
+                    cameraHint.Text = "Could not scan cameras. You can still type the DirectShow device name manually.";
+                }
+                finally
+                {
+                    refreshCamerasBtn.Content = "Refresh";
+                    refreshCamerasBtn.IsEnabled = true;
+                }
+            }
+            refreshCamerasBtn.Click += (_, _) => RefreshCameras();
+            Loaded += (_, _) => RefreshCameras();
+        }
 
         // Monitor picker — only shown for screen recording, not webcam.
         // Enumerates every attached display via Win32 EnumDisplayMonitors and offers
@@ -257,10 +339,22 @@ public class ScreenRecorderWindow : Window
                     MessageBox.Show("FPS must be between 1 and 120.");
                     return;
                 }
+
+                var outputPath = path.Text.Trim();
+                if (string.IsNullOrWhiteSpace(outputPath))
+                {
+                    MessageBox.Show("Choose an output file first.");
+                    return;
+                }
+                var outputDir = Path.GetDirectoryName(outputPath);
+                if (!string.IsNullOrWhiteSpace(outputDir)) Directory.CreateDirectory(outputDir);
+                path.Text = outputPath;
+
                 string args;
                 if (webcam)
                 {
-                    args = $"-y -f dshow -framerate {fpsValue} -i video=\"USB Video Device\" \"{path.Text}\"";
+                    var cameraName = string.IsNullOrWhiteSpace(cameraBox?.Text) ? "USB Video Device" : cameraBox.Text.Trim();
+                    args = $"-y -f dshow -framerate {fpsValue} -i video=\"{EscapeRecorderArg(cameraName)}\" -c:v libx264 -preset ultrafast -pix_fmt yuv420p \"{outputPath}\"";
                 }
                 else
                 {
@@ -284,14 +378,14 @@ public class ScreenRecorderWindow : Window
                         // pixel-format conversion afterwards so libx264 doesn't choke on
                         // ddagrab's native BGRA output.
                         args = $"-y -filter_complex \"ddagrab=output_idx={m.Index}:framerate={fpsValue},hwdownload,format=bgra,format=yuv420p[v]\" " +
-                               $"-map \"[v]\" -c:v libx264 -preset ultrafast \"{path.Text}\"";
+                               $"-map \"[v]\" -c:v libx264 -preset ultrafast \"{outputPath}\"";
                     }
                     else
                     {
                         AppSettings.LastScreenRecorderMonitor = -1;
                         AppSettings.Save();
                         // Entire virtual desktop: stick with gdigrab (multi-monitor span).
-                        args = $"-y -f gdigrab -framerate {fpsValue} -i desktop -c:v libx264 -preset ultrafast -pix_fmt yuv420p \"{path.Text}\"";
+                        args = $"-y -f gdigrab -framerate {fpsValue} -i desktop -c:v libx264 -preset ultrafast -pix_fmt yuv420p \"{outputPath}\"";
                     }
                 }
                 _proc = new Process
@@ -361,6 +455,55 @@ public class ScreenRecorderWindow : Window
         };
     }
 
+    private async System.Threading.Tasks.Task<List<string>> DetectDshowVideoDevicesAsync()
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = _ff.FFmpegExe,
+            Arguments = "-hide_banner -list_devices true -f dshow -i dummy",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true
+        };
+        using var proc = Process.Start(psi);
+        if (proc == null) return new List<string>();
+        var stderr = await proc.StandardError.ReadToEndAsync();
+        var stdout = await proc.StandardOutput.ReadToEndAsync();
+        await proc.WaitForExitAsync();
+        return ParseDshowVideoDevices(stderr + "\n" + stdout);
+    }
+
+    private static List<string> ParseDshowVideoDevices(string ffmpegOutput)
+    {
+        var devices = new List<string>();
+        var inVideoSection = false;
+        foreach (var raw in ffmpegOutput.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Contains("DirectShow video devices", StringComparison.OrdinalIgnoreCase))
+            {
+                inVideoSection = true;
+                continue;
+            }
+            if (line.Contains("DirectShow audio devices", StringComparison.OrdinalIgnoreCase))
+                inVideoSection = false;
+            if (!inVideoSection) continue;
+
+            var first = line.IndexOf('"');
+            var last = line.LastIndexOf('"');
+            if (first >= 0 && last > first)
+            {
+                var name = line.Substring(first + 1, last - first - 1);
+                if (!name.StartsWith("@device_", StringComparison.OrdinalIgnoreCase) && !devices.Contains(name))
+                    devices.Add(name);
+            }
+        }
+        return devices;
+    }
+
+    private static string EscapeRecorderArg(string value) => (value ?? "").Replace("\"", "\\\"");
+
     /// <summary>
     /// Capture the currently-selected monitor (or the whole virtual desktop) into
     /// a low-res BitmapSource and assign it to the preview Image. Runs ~6×/sec —
@@ -377,10 +520,12 @@ public class ScreenRecorderWindow : Window
             if (idx > 0 && idx - 1 < monitors.Count)
             {
                 var m = monitors[idx - 1];
-                // Use rcMonitor for position (matches CopyFromScreen's coordinate space)
-                // but if DPI scaling is in play, scale the size up to physical so the
-                // captured bitmap matches what the user actually sees on the monitor.
-                x = m.X; y = m.Y; w = m.Width; h = m.Height;
+                // Use the physical size when DPI scaling is enabled so the preview
+                // matches the full area ddagrab records for that monitor.
+                x = m.X;
+                y = m.Y;
+                w = m.HasDpiScaling ? m.PhysicalWidth : m.Width;
+                h = m.HasDpiScaling ? m.PhysicalHeight : m.Height;
             }
             else
             {
@@ -434,12 +579,15 @@ public class ScreenRecorderWindow : Window
 
     private void StopRecording()
     {
-        if (_proc == null || _proc.HasExited) return;
-        try { _proc.StandardInput.WriteLine("q"); } catch { }
-        if (!_proc.WaitForExit(4000))
+        if (_proc == null) return;
+        if (!_proc.HasExited)
         {
-            try { _proc.Kill(); } catch { }
-            _proc.WaitForExit(2000);
+            try { _proc.StandardInput.WriteLine("q"); } catch { }
+            if (!_proc.WaitForExit(4000))
+            {
+                try { _proc.Kill(); } catch { }
+                _proc.WaitForExit(2000);
+            }
         }
         try { _proc.Dispose(); } catch { }
         _proc = null;

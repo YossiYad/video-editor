@@ -601,6 +601,120 @@
                         </Grid>
                     </Border>
                 </Grid>
+
+                    <Border x:Name="emptyStartPanel"
+                            Background="#E60F121B"
+                            BorderBrush="{DynamicResource LineStrong}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="18"
+                            Width="520"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                        <StackPanel>
+                            <TextBlock Text="Start a project" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource Text}" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Pick the source you want to work from." FontSize="12" Foreground="{DynamicResource TextMute}" HorizontalAlignment="Center" Margin="0,5,0,16"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" Content="Open Files" Style="{DynamicResource PrimaryButton}" Click="OpenBtn_Click" Height="38"/>
+                                <Button Grid.Column="2" Content="Screen Record" Style="{DynamicResource ToolButton}" Click="ScreenRec_Click" Height="38"/>
+                                <Button Grid.Column="4" Content="Import URL" Style="{DynamicResource ToolButton}" Click="DownloadUrl_Click" Height="38"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border x:Name="screenRecorderPanel"
+                            Visibility="Collapsed"
+                            Background="{DynamicResource Bg1}"
+                            BorderBrush="{DynamicResource LineStrong}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="14"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Stretch"
+                            MaxWidth="980"
+                            MaxHeight="620">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0" Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse x:Name="inlineRecorderDot" Width="9" Height="9" Fill="{DynamicResource TextDim}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Screen Recorder" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource Text}"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="inlineRecorderStatus" Text="Choose a source, record, then edit the result on the timeline." FontSize="11.5" Foreground="{DynamicResource TextMute}" Margin="17,3,0,0"/>
+                                </StackPanel>
+                                <Button Grid.Column="1" x:Name="closeInlineRecorderBtn" Content="Close" Style="{DynamicResource ToolButtonSmall}" Click="CloseInlineRecorder_Click" Height="30" Padding="12,0"/>
+                            </Grid>
+
+                            <Grid Grid.Row="1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="260"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0" Margin="0,0,14,0">
+                                    <TextBlock Text="RECORDING SOURCE" Style="{DynamicResource FieldLabel}"/>
+                                    <ComboBox x:Name="inlineRecorderSourceBox" SelectionChanged="InlineRecorderSource_Changed" Margin="0,0,0,10"/>
+
+                                    <TextBlock Text="FRAME RATE (FPS)" Style="{DynamicResource FieldLabel}"/>
+                                    <TextBox x:Name="inlineRecorderFpsBox" Text="30" Width="90" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+
+                                    <TextBlock Text="OUTPUT FILE" Style="{DynamicResource FieldLabel}"/>
+                                    <TextBox x:Name="inlineRecorderPathBox" TextWrapping="NoWrap" Margin="0,0,0,10"/>
+
+                                    <TextBlock Text="CAMERA LAYER" Style="{DynamicResource FieldLabel}"/>
+                                    <ComboBox x:Name="inlineRecorderCameraBox" IsEditable="True" Margin="0,0,0,6"/>
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="8"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Button Grid.Column="0" x:Name="inlineRecorderAddCameraBtn" Content="Add Camera" Style="{DynamicResource ToolButton}" Click="InlineRecorderAddCamera_Click" Height="30"/>
+                                        <Button Grid.Column="2" x:Name="inlineRecorderRemoveCameraBtn" Content="Remove" Style="{DynamicResource ToolButtonSmall}" Click="InlineRecorderRemoveCamera_Click" Height="30" IsEnabled="False"/>
+                                    </Grid>
+
+                                    <TextBlock Text="Use Add Hide Block from the sidebar for masks. Drag or resize layers on the preview before Start." Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,12"/>
+
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="inlineRecorderStartBtn" Content="Start" Style="{DynamicResource PrimaryButton}" Click="InlineRecorderStart_Click" Height="34" MinWidth="96" Margin="0,0,8,0"/>
+                                        <Button x:Name="inlineRecorderStopBtn" Content="Stop + Add" Style="{DynamicResource ToolButton}" Click="InlineRecorderStop_Click" Height="34" MinWidth="112" IsEnabled="False"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <Border Grid.Column="1" Background="Black" BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="6" ClipToBounds="True">
+                                    <Grid>
+                                        <Image x:Name="inlineRecorderPreviewImage" Stretch="Uniform"/>
+                                        <Canvas x:Name="inlineRecorderOverlayCanvas" Background="Transparent"/>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+
+                            <TextBlock Grid.Row="2" x:Name="inlineRecorderDiagText"
+                                       Text=""
+                                       FontFamily="Consolas"
+                                       FontSize="10"
+                                       Foreground="{DynamicResource TextDim}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,10,0,0"/>
+                        </Grid>
+                    </Border>
                 </Grid>
             </Grid>
 
