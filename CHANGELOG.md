@@ -6,6 +6,83 @@ The latest signed Windows build is always available at
 
 ---
 
+## [v1.6.1] — 2026-05-26
+
+Polish on top of v1.6.0 — Screen Recorder fit, the new Export
+Destination picker, in-app User Guide refresh, and MainWindow layout
+tweaks.
+
+### Added
+- New `ExportDestinationWindow` — pre-export step that lets the user
+  pick where the finished video goes (save / share / both).
+
+### Changed
+- Screen Recorder dialog layout tightened so every section fits on
+  default-sized windows.
+- MainWindow sidebar / topbar minor reshuffles.
+- User Guide content updated to reflect the recorder + share-dialog
+  flows.
+
+---
+
+## [v1.6.0] — 2026-05-26
+
+Big upgrade to the screen-recording experience and post-export
+sharing.
+
+### Added — Screen Recorder
+- **Monitor picker**: dropdown listing every attached display via
+  Win32 EnumDisplayMonitors. Pick "Entire desktop (all monitors)" or
+  one specific monitor. Persists across runs.
+- **Live preview** in the recorder dialog, updating ~6×/sec via GDI
+  screen capture. Independent of ffmpeg's own capture so it can't
+  affect the recording.
+- **🔍 Enlarge button** opens the live preview in its own resizable
+  window — drag any edge to make it as big as your monitor.
+- **HiDPI-aware recording** via ffmpeg's `ddagrab` (Direct3D Desktop
+  Duplication). A 1920×1080 monitor at 150% Windows scaling now
+  records at its full 1920×1080 instead of the scaled 1280×720 that
+  legacy `gdigrab` saw. "Entire desktop" still uses gdigrab (it spans
+  multiple monitors).
+- **DirectShow camera scan**: webcam mode auto-detects USB cameras
+  and shows them in a dropdown with a Refresh button.
+- **Diagnostic** under the preview shows the exact rectangle being
+  captured plus physical resolution if DPI scaling is in play.
+
+### Added — ShareDialog (used after every recording + export)
+- "🎬 Open in editor" loads the file straight onto the timeline.
+- "📁 Open folder" reveals it in Explorer.
+- "Copy path" copies the path for pasting into web upload dialogs.
+- One-click upload-page openers for YouTube / TikTok / X / Instagram,
+  brand-coloured. Pre-copies the path + reveals the file so you can
+  drag it onto the page that opens.
+- Replaces the old "Open output folder?" MessageBox after export.
+
+### Added — UI polish
+- **Branded application icon** (purple gradient scissors-and-film-
+  strip "Video Editor Pro") visible in Explorer, taskbar, Alt+Tab and
+  the window titlebar.
+- **Self-contained single-file EXE** — bundles the native WPF DLLs
+  (D3DCompiler / PresentationNative / wpfgfx / PenImc / vcruntime)
+  inside the .exe so it runs from any folder with no companion files.
+
+### Fixed
+- Hide blocks now hide / show only when the playhead is in their
+  range — matches export, no more "block over the whole video at
+  every paused position".
+- ScreenRecorderWindow layout: previous SizeChanged growth handler
+  pushed Output file + Recording source out of the ScrollViewer's
+  view. Replaced with a fixed-height preview at a roomier default
+  window size.
+- Topbar ScrollViewer prevents the Export button from being clipped
+  on narrow windows.
+- AI Captions HTTP timeout raised from 2 → 10 minutes; the dialog
+  no longer falsely surfaces "Cancelled" when Gemini is just slow.
+- Hide block START/END inputs split into separate hours / minutes /
+  seconds / milliseconds fields with proper overflow rollover.
+
+---
+
 ## [v1.5.0] — 2026-05-25
 
 Major update: AI Captions, Canvas Transform, project formats, and lots of polish.
@@ -127,5 +204,7 @@ First public release.
 - Self-contained single-file Windows EXE — no installer, no admin
   rights, no .NET install required (~150 MB).
 
+[v1.6.1]: https://github.com/YossiYad/video-editor/releases/tag/v1.6.1
+[v1.6.0]: https://github.com/YossiYad/video-editor/releases/tag/v1.6.0
 [v1.5.0]: https://github.com/YossiYad/video-editor/releases/tag/v1.5.0
 [v1.0.0]: https://github.com/YossiYad/video-editor/releases/tag/v1.0.0

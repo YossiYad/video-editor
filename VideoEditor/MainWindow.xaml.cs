@@ -516,8 +516,8 @@ public partial class MainWindow : Window
 
     private void ConfigureUsabilityHints()
     {
-        btnScreenRec.ToolTip = "Open the screen recording scene. Use Add Hide Block or Video Recorder before Start.";
-        btnRecord.ToolTip = "Record webcam by itself, or add a camera layer when Screen Recorder is open.";
+        btnScreenRec.ToolTip = "Open the screen recording scene. Use Add Hide Block or Camera Recorder before Start.";
+        btnRecord.ToolTip = "Record from your camera by itself, or add a camera layer when Screen Recorder is open.";
         addBlockOverlayBtn.ToolTip = "Add a draggable hide block to the current video or screen recording scene.";
         deleteBlockBtn.ToolTip = "Delete the selected hide block.";
         btnTrim.ToolTip = "Select a clip, then trim its start/end.";
@@ -1845,19 +1845,40 @@ public partial class MainWindow : Window
     {
         if (timeline.Clips.Count == 0) { MessageBox.Show("Add at least one video clip."); return; }
         var ext = AppSettings.ExportContainer;
-        var sfd = new SaveFileDialog
+        var destinationDialog = new ExportDestinationWindow { Owner = this };
+        if (destinationDialog.ShowDialog() != true) return;
+
+        var publishAfterExport = destinationDialog.Destination == ExportDestination.Publish;
+        string outputPath;
+        if (publishAfterExport)
         {
-            FileName = "project_export." + ext,
-            DefaultExt = ext,
-            Filter = ext switch
+            var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "VideoEditorExports");
+            try { Directory.CreateDirectory(folder); }
+            catch (Exception ex)
             {
-                "mov" => "MOV|*.mov|MP4|*.mp4|MKV|*.mkv|WebM|*.webm",
-                "mkv" => "MKV|*.mkv|MP4|*.mp4|MOV|*.mov|WebM|*.webm",
-                "webm" => "WebM|*.webm|MP4|*.mp4|MOV|*.mov|MKV|*.mkv",
-                _ => "MP4|*.mp4|MOV|*.mov|MKV|*.mkv|WebM|*.webm"
+                MessageBox.Show("Cannot create export folder: " + ex.Message, "Export",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
             }
-        };
-        if (sfd.ShowDialog() != true) return;
+            outputPath = Path.Combine(folder, $"project_export_{DateTime.Now:yyyyMMdd_HHmmss}.{ext}");
+        }
+        else
+        {
+            var sfd = new SaveFileDialog
+            {
+                FileName = "project_export." + ext,
+                DefaultExt = ext,
+                Filter = ext switch
+                {
+                    "mov" => "MOV|*.mov|MP4|*.mp4|MKV|*.mkv|WebM|*.webm",
+                    "mkv" => "MKV|*.mkv|MP4|*.mp4|MOV|*.mov|WebM|*.webm",
+                    "webm" => "WebM|*.webm|MP4|*.mp4|MOV|*.mov|MKV|*.mkv",
+                    _ => "MP4|*.mp4|MOV|*.mov|MKV|*.mkv|WebM|*.webm"
+                }
+            };
+            if (sfd.ShowDialog() != true) return;
+            outputPath = sfd.FileName;
+        }
 
         status.Text = "Exporting...";
         progress.Value = 0;
@@ -1877,16 +1898,22 @@ public partial class MainWindow : Window
             await _ff.ExportProjectAsync(orderedClips, timeline.Blocks.ToList(),
                 tW, tH,
                 overlayCanvas.ActualWidth, overlayCanvas.ActualHeight,
-                timeline.TotalSeconds, sfd.FileName, AppSettings.TargetFitMode,
+                timeline.TotalSeconds, outputPath, AppSettings.TargetFitMode,
                 timeline.TextOverlays.ToList(), prog);
-            status.Text = "Exported: " + sfd.FileName;
+            status.Text = "Exported: " + outputPath;
             progress.Value = 1;
             progressLabel.Text = "Done";
+            if (!publishAfterExport)
+            {
+                MessageBox.Show("Export saved:\n" + outputPath, "Saved to files",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
             // Show the unified share / upload dialog. offerOpenInEditor=false because
             // the exported file IS the final output — re-loading it as a new clip
             // doesn't make sense here (unlike a screen recording).
-            new ShareDialog(sfd.FileName,
-                title: "Export complete",
+            new ShareDialog(outputPath,
+                title: publishAfterExport ? "Ready to publish" : "Saved to files",
                 subtitle: "Pick where to send it — your editor project is still open.",
                 offerOpenInEditor: false)
             { Owner = this }.ShowDialog();
@@ -1970,7 +1997,7 @@ public partial class MainWindow : Window
         ShowInlineScreenRecorder();
         if (_inlineRecorderWebcamControl != null)
         {
-            status.Text = "Video recorder is already in the screen recording scene.";
+            status.Text = "Camera recorder is already in the screen recording scene.";
             return;
         }
 
@@ -1990,7 +2017,7 @@ public partial class MainWindow : Window
             Height = h,
             Color = Color.FromRgb(0x25, 0x67, 0xFF),
             Mode = BlockMode.Solid,
-            Label = "Video Recorder"
+            Label = "Camera Recorder"
         };
         _inlineRecorderWebcamControl = new ResizableBlock(_inlineRecorderWebcamBlock);
         _inlineRecorderWebcamControl.Changed += _ => { };
