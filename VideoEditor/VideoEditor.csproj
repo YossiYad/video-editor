@@ -7,8 +7,13 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>VideoEditor</AssemblyName>
     <RootNamespace>VideoEditor</RootNamespace>
-    <ApplicationIcon></ApplicationIcon>
+    <ApplicationIcon>..\assets\icon.ico</ApplicationIcon>
     <Platforms>AnyCPU;x64</Platforms>
+    <!-- Bundle the native WPF DLLs (D3DCompiler / PresentationNative / wpfgfx /
+         PenImc / vcruntime) into the single-file EXE so it can run from a folder
+         that only contains VideoEditor.exe. They're extracted to a temp folder on
+         first launch. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,9 +21,14 @@
     <PackageReference Include="Xabe.FFmpeg.Downloader" Version="5.2.6" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="System.Speech" Version="8.0.0" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <Folder Include="Tools\" />
+    <!-- Bundle the .ico as a WPF Resource so MainWindow's Icon="icon.ico" binding
+         finds it at runtime (the ApplicationIcon csproj setting above is enough for
+         the EXE icon in Explorer, but the Window also wants its own copy). -->
+    <Resource Include="icon.ico" />
   </ItemGroup>
 </Project>

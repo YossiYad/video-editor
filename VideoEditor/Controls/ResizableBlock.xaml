@@ -5,6 +5,7 @@
     <Grid x:Name="root">
         <Rectangle x:Name="fill" Fill="Black" Opacity="1.0" Stroke="#FFD43B" StrokeThickness="2" StrokeDashArray="4,2"/>
         <Rectangle x:Name="patternFill" IsHitTestVisible="False" Visibility="Collapsed"/>
+        <Image x:Name="livePreviewImage" Stretch="UniformToFill" Visibility="Collapsed" IsHitTestVisible="False"/>
         <Border x:Name="modeBadge" Background="#CC000000" CornerRadius="3" Padding="5,1" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4" IsHitTestVisible="False">
             <TextBlock x:Name="modeBadgeText" Foreground="White" FontSize="9.5" FontWeight="Bold" FontFamily="Consolas" Text="SOLID"/>
         </Border>

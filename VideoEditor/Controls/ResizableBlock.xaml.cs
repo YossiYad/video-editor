@@ -15,6 +15,7 @@ public partial class ResizableBlock : UserControl
     public event Action<ResizableBlock>? Changed;
 
     private bool _selected;
+    private bool _livePreviewEnabled;
 
     public ResizableBlock(VideoBlock model)
     {
@@ -65,6 +66,24 @@ public partial class ResizableBlock : UserControl
         tlThumb.Visibility = trThumb.Visibility = blThumb.Visibility = brThumb.Visibility = sel ? Visibility.Visible : Visibility.Hidden;
     }
 
+    public void SetLivePreviewSource(ImageSource? source, string badge = "CAMERA")
+    {
+        _livePreviewEnabled = source != null;
+        livePreviewImage.Source = source;
+        livePreviewImage.Visibility = _livePreviewEnabled ? Visibility.Visible : Visibility.Collapsed;
+        patternFill.Visibility = _livePreviewEnabled ? Visibility.Collapsed : patternFill.Visibility;
+        modeBadgeText.Text = _livePreviewEnabled ? badge : modeBadgeText.Text;
+        if (_livePreviewEnabled)
+        {
+            fill.Fill = Brushes.Transparent;
+            fill.Opacity = 0;
+        }
+        else
+        {
+            ApplyModel();
+        }
+    }
+
     private void ApplyModel()
     {
         Canvas.SetLeft(this, Model.X);
@@ -74,6 +93,14 @@ public partial class ResizableBlock : UserControl
 
         // All modes are now FULLY OPAQUE in preview to match the exported result.
         // Each mode also gets a distinct visual pattern + badge so the user knows what will be applied.
+        if (_livePreviewEnabled)
+        {
+            fill.Fill = Brushes.Transparent;
+            fill.Opacity = 0;
+            patternFill.Visibility = Visibility.Collapsed;
+            modeBadgeText.Text = "CAMERA";
+            return;
+        }
         switch (Model.Mode)
         {
             case BlockMode.Solid:

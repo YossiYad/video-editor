@@ -400,9 +400,14 @@ public class FFmpegService
             string concatList = Path.Combine(Path.GetTempPath(), $"ve_concat_{Guid.NewGuid():N}.txt");
             File.WriteAllText(concatList, string.Join("\n", renderQueue.Select(t => $"file '{EscapeConcatPath(t)}'")));
 
+            var audioOnlyClips = clips
+                .Where(c => c.IsAudioOnly)
+                .OrderBy(c => c.TimelineStart)
+                .ToList();
             bool hasOverlays = textOverlays != null && textOverlays.Count > 0;
             bool hasBlocks = blocks.Count > 0;
-            bool extraStages = hasOverlays || hasBlocks;
+            bool hasAudioOnly = audioOnlyClips.Count > 0;
+            bool extraStages = hasOverlays || hasBlocks || hasAudioOnly;
 
             string concatOut = extraStages
                 ? Path.Combine(Path.GetTempPath(), $"ve_concat_{Guid.NewGuid():N}.mp4")
@@ -432,10 +437,22 @@ public class FFmpegService
 
             if (hasBlocks)
             {
-                await ApplyBlocksAsync(stageIn, output, blocks, targetW, targetH, canvasUiW, canvasUiH, totalDuration,
-                    new Progress<double>(p => progress?.Report(0.90 + p * 0.10)));
+                string blockOut = hasAudioOnly
+                    ? Path.Combine(Path.GetTempPath(), $"ve_blocks_{Guid.NewGuid():N}.mp4")
+                    : output;
+                if (blockOut != output) temps.Add(blockOut);
+
+                await ApplyBlocksAsync(stageIn, blockOut, blocks, targetW, targetH, canvasUiW, canvasUiH, totalDuration,
+                    new Progress<double>(p => progress?.Report(hasAudioOnly ? 0.90 + p * 0.05 : 0.90 + p * 0.10)));
+                stageIn = blockOut;
             }
-            else
+
+            if (hasAudioOnly)
+            {
+                await MixAudioOnlyClipsAsync(stageIn, output, audioOnlyClips, totalDuration,
+                    new Progress<double>(p => progress?.Report((hasBlocks ? 0.95 : 0.90) + p * (hasBlocks ? 0.05 : 0.10))));
+            }
+            else if (!hasBlocks)
             {
                 progress?.Report(1.0);
             }
@@ -443,6 +460,85 @@ public class FFmpegService
         finally
         {
             foreach (var t in temps) try { File.Delete(t); } catch { }
+        }
+    }
+
+    private async Task MixAudioOnlyClipsAsync(string videoIn, string output,
+        IList<VideoClip> audioClips, double totalDuration, IProgress<double>? progress)
+    {
+        if (audioClips.Count == 0)
+        {
+            await RunAsync($"-y -i \"{videoIn}\" -c copy \"{output}\"", totalDuration, progress);
+            return;
+        }
+
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        var args = new StringBuilder($"-y -i \"{videoIn}\" ");
+        args.Append($"-f lavfi -t {totalDuration.ToString(ci)} -i anullsrc=channel_layout=stereo:sample_rate=44100 ");
+        foreach (var clip in audioClips)
+            args.Append($"-i \"{clip.SourceFile}\" ");
+
+        bool hasBaseAudio = await HasAudioStreamAsync(videoIn);
+        var filters = new StringBuilder();
+        var mixInputs = new List<string>();
+
+        filters.Append($"[1:a]atrim=duration={totalDuration.ToString(ci)},asetpts=PTS-STARTPTS[silence];");
+        mixInputs.Add("[silence]");
+
+        if (hasBaseAudio)
+        {
+            filters.Append("[0:a]aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS[basea];");
+            mixInputs.Add("[basea]");
+        }
+
+        for (int i = 0; i < audioClips.Count; i++)
+        {
+            var clip = audioClips[i];
+            int inputIndex = i + 2;
+            double start = Math.Max(0, clip.InPoint);
+            double end = Math.Max(start + 0.01, clip.OutPoint);
+            int delayMs = Math.Max(0, (int)Math.Round(clip.TimelineStart * 1000.0));
+
+            var chain = new List<string>
+            {
+                $"atrim=start={start.ToString(ci)}:end={end.ToString(ci)}",
+                "asetpts=PTS-STARTPTS"
+            };
+            if (Math.Abs(clip.Speed - 1.0) > 0.01)
+                chain.Add(BuildAtempoFilter(Math.Max(0.01, clip.Speed)));
+            if (Math.Abs(clip.Volume - 1.0) > 0.01)
+                chain.Add($"volume={clip.Volume.ToString(ci)}");
+            chain.Add($"adelay={delayMs}:all=1");
+            chain.Add("aresample=async=1:first_pts=0");
+
+            string pad = $"[aud{i}]";
+            filters.Append($"[{inputIndex}:a]{string.Join(",", chain)}{pad};");
+            mixInputs.Add(pad);
+        }
+
+        filters.Append(string.Concat(mixInputs));
+        filters.Append($"amix=inputs={mixInputs.Count}:duration=first:dropout_transition=0,");
+        filters.Append("volume=1,aresample=async=1:first_pts=0[aout]");
+
+        int abps = AppSettings.ExportAudioBitrate;
+        args.Append($"-filter_complex \"{filters}\" -map 0:v:0 -map \"[aout]\" ");
+        args.Append($"-c:v copy -c:a aac -ar 44100 -ac 2 -b:a {abps}k ");
+        args.Append($"\"{output}\"");
+
+        await RunAsync(args.ToString(), totalDuration, progress);
+    }
+
+    private async Task<bool> HasAudioStreamAsync(string input)
+    {
+        try
+        {
+            var output = await RunAndCaptureAsync(FFprobeExe,
+                $"-v error -select_streams a:0 -show_entries stream=index -of csv=p=0 \"{input}\"");
+            return !string.IsNullOrWhiteSpace(output);
+        }
+        catch
+        {
+            return false;
         }
     }
 
