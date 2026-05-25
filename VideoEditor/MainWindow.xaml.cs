@@ -383,16 +383,23 @@ public partial class MainWindow : Window
     {
         var clip = timeline.GetClipAt(seconds);
         if (clip == null) { timeline.SetCurrent(seconds); return; }
+        timeline.SetCurrent(seconds);
+
         var withinClip = Math.Max(0, seconds - clip.TimelineStart) * clip.Speed;
         if (clip != _playingClip)
         {
+            // Source change is unavoidable heavy work — do it once, not coalesced.
             LoadClipForPreview(clip, withinClip);
         }
         else
         {
-            try { videoView.Position = TimeSpan.FromSeconds(clip.InPoint + withinClip); } catch { }
+            // Playhead drag fires Seek ~100×/sec. Writing videoView.Position that fast
+            // backs up the decoder queue (choppy audio, freezes). Route through the
+            // existing 35 ms scrub timer so we coalesce a burst of seeks into a single
+            // decode + Position write. Single-shot seeks (Back/Fwd buttons, click-on-
+            // ruler) still feel instant because there's only one call.
+            ScrubToClipFrame(clip, clip.InPoint + withinClip);
         }
-        timeline.SetCurrent(seconds);
     }
 
     private VideoClip? NextClipAfter(VideoClip c)
