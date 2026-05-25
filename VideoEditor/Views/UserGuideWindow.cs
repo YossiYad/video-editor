@@ -275,7 +275,7 @@ public class UserGuideWindow : Window
             "מקליט את המסך שלך לוידאו. בוחר אזור, לוחץ הקלטה, וזה נשמר לקובץ.\nRecord a region of your screen straight into a video file."));
         p.Children.Add(MakeToolCard("🎙 Text to Speech · טקסט לדיבור",
             "מקליד טקסט, האפליקציה מקריאה אותו בקול ושומרת כקובץ אודיו. שימושי לקריינות אוטומטית.\nType text, the app speaks it out loud and saves to an audio file — for auto-narration."));
-        p.Children.Add(MakeToolCard("🎥 Video Recorder · הקלטה ממצלמה",
+        p.Children.Add(MakeToolCard("🎥 Camera Recorder · הקלטה ממצלמה",
             "מקליט מהמצלמה של המחשב שלך (webcam).\nRecords from your webcam."));
 
         p.Children.Add(MakeGroupHeading("Transform & Trim · עריכה", "פעולות עריכה על הקליפ שנבחר  ·  Edit the selected clip"));

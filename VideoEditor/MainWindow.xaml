@@ -298,7 +298,7 @@
                                     <Border Width="22" Height="22" CornerRadius="4" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1">
                                         <TextBlock Text="🎥" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
-                                    <TextBlock Text="Video Recorder" Margin="9,0,0,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Camera Recorder" Margin="9,0,0,0" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
 
@@ -608,24 +608,18 @@
                             BorderThickness="1"
                             CornerRadius="8"
                             Padding="18"
-                            Width="520"
+                            Width="560"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center">
                         <StackPanel>
                             <TextBlock Text="Start a project" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource Text}" HorizontalAlignment="Center"/>
                             <TextBlock Text="Pick the source you want to work from." FontSize="12" Foreground="{DynamicResource TextMute}" HorizontalAlignment="Center" Margin="0,5,0,16"/>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="8"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="8"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Button Grid.Column="0" Content="Open Files" Style="{DynamicResource PrimaryButton}" Click="OpenBtn_Click" Height="38"/>
-                                <Button Grid.Column="2" Content="Screen Record" Style="{DynamicResource ToolButton}" Click="ScreenRec_Click" Height="38"/>
-                                <Button Grid.Column="4" Content="Import URL" Style="{DynamicResource ToolButton}" Click="DownloadUrl_Click" Height="38"/>
-                            </Grid>
+                            <UniformGrid Columns="2" Rows="2">
+                                <Button Content="Open Files" Style="{DynamicResource PrimaryButton}" Click="OpenBtn_Click" Height="38" Margin="0,0,6,6"/>
+                                <Button Content="Import URL" Style="{DynamicResource ToolButton}" Click="DownloadUrl_Click" Height="38" Margin="6,0,0,6"/>
+                                <Button Content="Screen Record" Style="{DynamicResource ToolButton}" Click="ScreenRec_Click" Height="38" Margin="0,6,6,0"/>
+                                <Button Content="Camera Record" Style="{DynamicResource ToolButton}" Click="Record_Click" Height="38" Margin="6,6,0,0"/>
+                            </UniformGrid>
                         </StackPanel>
                     </Border>
 
@@ -678,7 +672,7 @@
                                     <TextBlock Text="OUTPUT FILE" Style="{DynamicResource FieldLabel}"/>
                                     <TextBox x:Name="inlineRecorderPathBox" TextWrapping="NoWrap" Margin="0,0,0,10"/>
 
-                                    <TextBlock Text="Use the sidebar before Start: Add Hide Block adds a mask, Video Recorder adds a camera layer." Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,12"/>
+                                    <TextBlock Text="Use the sidebar before Start: Add Hide Block adds a mask, Camera Recorder adds a camera layer." Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,12"/>
 
                                     <StackPanel Orientation="Horizontal">
                                         <Button x:Name="inlineRecorderStartBtn" Content="Start" Style="{DynamicResource PrimaryButton}" Click="InlineRecorderStart_Click" Height="34" MinWidth="96" Margin="0,0,8,0"/>
