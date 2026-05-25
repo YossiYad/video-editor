@@ -9,6 +9,11 @@
     <RootNamespace>VideoEditor</RootNamespace>
     <ApplicationIcon></ApplicationIcon>
     <Platforms>AnyCPU;x64</Platforms>
+    <!-- Bundle the native WPF DLLs (D3DCompiler / PresentationNative / wpfgfx /
+         PenImc / vcruntime) into the single-file EXE so it can run from a folder
+         that only contains VideoEditor.exe. They're extracted to a temp folder on
+         first launch. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>
