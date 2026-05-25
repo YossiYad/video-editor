@@ -230,6 +230,7 @@ internal static class Localization
         ["Paste an API key first."] = "הדבק קודם מפתח API.",
         ["Contacting Gemini…"] = "מתחבר ל-Gemini…",
         ["OK — the key is valid."] = "OK — המפתח תקין.",
+        ["OK — using {0}"] = "OK — משתמש ב-{0}",
         ["Gemini answered but the response was unexpected."] = "Gemini ענה אך התשובה לא הייתה כצפוי.",
         ["Set your Gemini API key first — opening Settings…"] = "הגדר קודם את מפתח ה-Gemini — פותח את ההגדרות…",
         ["AI Captions added · {0} overlays — drag bars on the timeline to tweak."] = "כתוביות AI נוספו · {0} שכבות — גרור את הברים בציר הזמן כדי לשנות.",

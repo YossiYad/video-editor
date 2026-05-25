@@ -94,6 +94,8 @@ public static class AppSettings
     public static string LlmProvider { get; set; } = "gemini";
     /// <summary>Free-form key paste. Persisted in settings.json next to the EXE (gitignored).</summary>
     public static string LlmApiKey { get; set; } = "";
+    /// <summary>The Gemini model that last answered 200 OK for this key. Auto-discovered by Test connection.</summary>
+    public static string LlmModel { get; set; } = "gemini-2.5-flash";
 
     // ----- Storage -----
     public static string DownloadsFolder { get; set; } = "";
@@ -146,6 +148,7 @@ public static class AppSettings
 
         public string? LlmProvider { get; set; }
         public string? LlmApiKey { get; set; }
+        public string? LlmModel { get; set; }
 
         public string? DownloadsFolder { get; set; }
         public string? CacheFolder { get; set; }
@@ -200,6 +203,7 @@ public static class AppSettings
             if (!string.IsNullOrEmpty(d.LastTranscribeSource)) LastTranscribeSource = d.LastTranscribeSource;
             if (!string.IsNullOrEmpty(d.LlmProvider)) LlmProvider = d.LlmProvider;
             if (d.LlmApiKey != null) LlmApiKey = d.LlmApiKey;
+            if (!string.IsNullOrEmpty(d.LlmModel)) LlmModel = d.LlmModel;
             if (!string.IsNullOrEmpty(d.DownloadsFolder)) DownloadsFolder = d.DownloadsFolder;
             if (!string.IsNullOrEmpty(d.CacheFolder)) CacheFolder = d.CacheFolder;
             if (!string.IsNullOrEmpty(d.MaxCacheSize)) MaxCacheSize = d.MaxCacheSize;
@@ -240,7 +244,7 @@ public static class AppSettings
                 LastTranscribeModel = LastTranscribeModel,
                 LastTranscribeLanguage = LastTranscribeLanguage,
                 LastTranscribeSource = LastTranscribeSource,
-                LlmProvider = LlmProvider, LlmApiKey = LlmApiKey,
+                LlmProvider = LlmProvider, LlmApiKey = LlmApiKey, LlmModel = LlmModel,
                 DownloadsFolder = DownloadsFolder, CacheFolder = CacheFolder,
                 MaxCacheSize = MaxCacheSize, AutoCleanCache = AutoCleanCache,
             };

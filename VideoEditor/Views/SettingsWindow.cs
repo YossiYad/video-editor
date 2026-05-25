@@ -63,6 +63,7 @@ public class SettingsWindow : Window
         public bool AudioLoudnorm = true;
         public string LlmProvider = "gemini";
         public string LlmApiKey = "";
+        public string LlmModel = "gemini-2.5-flash";
 
         public static SettingsDraft FromCurrent() => new()
         {
@@ -94,6 +95,7 @@ public class SettingsWindow : Window
             AudioLoudnorm = AppSettings.AudioLoudnorm,
             LlmProvider = AppSettings.LlmProvider,
             LlmApiKey = AppSettings.LlmApiKey,
+            LlmModel = AppSettings.LlmModel,
         };
     }
 
@@ -316,6 +318,7 @@ public class SettingsWindow : Window
         AppSettings.AudioLoudnorm = _draft.AudioLoudnorm;
         AppSettings.LlmProvider = _draft.LlmProvider;
         AppSettings.LlmApiKey = _draft.LlmApiKey;
+        AppSettings.LlmModel = _draft.LlmModel;
         AppSettings.Save();
 
         if (!string.IsNullOrEmpty(AppSettings.LastSaveError))
@@ -707,7 +710,9 @@ public class SettingsWindow : Window
                 var ok = await svc.PingAsync(key);
                 if (ok)
                 {
-                    testResult.Text = VideoEditor.Services.Localization.T("OK — the key is valid.");
+                    _draft.LlmModel = svc.LastUsedModel ?? _draft.LlmModel;
+                    testResult.Text = VideoEditor.Services.Localization.T("OK — using {0}")
+                        .Replace("{0}", svc.LastUsedModel ?? "Gemini");
                     testResult.Foreground = new SolidColorBrush(Success);
                 }
                 else

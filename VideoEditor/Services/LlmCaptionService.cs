@@ -18,16 +18,36 @@ namespace VideoEditor.Services;
 /// </summary>
 public sealed class LlmCaptionService
 {
-    private const string GeminiEndpoint =
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+    /// <summary>
+    /// Models we will try, in preference order. Free-tier availability per
+    /// model varies wildly per Google project — newer keys often have 0 quota
+    /// on gemini-2.0-flash but plenty on 2.5-flash, and vice versa. We probe
+    /// the list and remember the first one that answers 200.
+    /// </summary>
+    private static readonly string[] FallbackModels =
+    {
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-flash",
+    };
+
+    private static string EndpointFor(string model) =>
+        $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent";
 
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(2) };
+
+    /// <summary>The model the most recent PingAsync / GenerateOverlaysAsync settled on.</summary>
+    public string? LastUsedModel { get; private set; }
 
     public event Action<string>? Log;
 
     /// <summary>
-    /// Sanity-check an API key with a tiny round-trip. Returns true if Gemini
-    /// answers 200 with a body that mentions OK.
+    /// Sanity-check an API key with a tiny round-trip. Tries each model in
+    /// <see cref="FallbackModels"/> and returns true on the first 200 OK.
+    /// On failure, throws with a combined error message so the user can see
+    /// which models were tried.
     /// </summary>
     public async Task<bool> PingAsync(string apiKey, CancellationToken ct = default)
     {
@@ -42,19 +62,44 @@ public sealed class LlmCaptionService
             generationConfig = new { temperature = 0.0 }
         };
         var json = JsonSerializer.Serialize(body);
-        using var req = new HttpRequestMessage(HttpMethod.Post,
-            $"{GeminiEndpoint}?key={Uri.EscapeDataString(apiKey)}")
+
+        var perModelErrors = new List<string>();
+        foreach (var model in FallbackModels)
         {
-            Content = new StringContent(json, Encoding.UTF8, "application/json")
-        };
-        using var resp = await Http.SendAsync(req, ct);
-        var text = await resp.Content.ReadAsStringAsync(ct);
-        Log?.Invoke($"Gemini ping → {(int)resp.StatusCode} {resp.StatusCode}");
-        if (!resp.IsSuccessStatusCode)
-            throw new Exception(ExtractErrorMessage(text) ?? $"HTTP {(int)resp.StatusCode}");
-        var replyText = ExtractFirstText(text);
-        return !string.IsNullOrEmpty(replyText) &&
-               replyText.IndexOf("OK", StringComparison.OrdinalIgnoreCase) >= 0;
+            ct.ThrowIfCancellationRequested();
+            using var req = new HttpRequestMessage(HttpMethod.Post,
+                $"{EndpointFor(model)}?key={Uri.EscapeDataString(apiKey)}")
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+            using var resp = await Http.SendAsync(req, ct);
+            var text = await resp.Content.ReadAsStringAsync(ct);
+            Log?.Invoke($"Gemini ping ({model}) → {(int)resp.StatusCode}");
+            if (resp.IsSuccessStatusCode)
+            {
+                var replyText = ExtractFirstText(text);
+                if (!string.IsNullOrEmpty(replyText) &&
+                    replyText.IndexOf("OK", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    LastUsedModel = model;
+                    AppSettings.LlmModel = model;
+                    AppSettings.Save();
+                    return true;
+                }
+            }
+            else
+            {
+                var msg = ExtractErrorMessage(text) ?? $"HTTP {(int)resp.StatusCode}";
+                perModelErrors.Add($"{model}: {Shorten(msg)}");
+            }
+        }
+        throw new Exception("All Gemini models rejected the key:\n - " + string.Join("\n - ", perModelErrors));
+    }
+
+    private static string Shorten(string s)
+    {
+        s = s.Replace('\n', ' ').Replace('\r', ' ').Trim();
+        return s.Length > 200 ? s.Substring(0, 200) + "…" : s;
     }
 
     public async Task<List<TextOverlay>> GenerateOverlaysAsync(
@@ -84,21 +129,45 @@ public sealed class LlmCaptionService
             }
         };
         var json = JsonSerializer.Serialize(body);
-        using var req = new HttpRequestMessage(HttpMethod.Post,
-            $"{GeminiEndpoint}?key={Uri.EscapeDataString(apiKey)}")
-        {
-            Content = new StringContent(json, Encoding.UTF8, "application/json")
-        };
+
+        // Probe order: prefer the model the user already validated in Settings
+        // (Test connection writes it to AppSettings.LlmModel), then the rest.
+        var probeOrder = new List<string>();
+        if (!string.IsNullOrEmpty(AppSettings.LlmModel)) probeOrder.Add(AppSettings.LlmModel);
+        foreach (var m in FallbackModels)
+            if (!probeOrder.Contains(m, StringComparer.OrdinalIgnoreCase)) probeOrder.Add(m);
+
         progress?.Report(0.2);
 
-        using var resp = await Http.SendAsync(req, ct);
-        var text = await resp.Content.ReadAsStringAsync(ct);
-        Log?.Invoke($"Gemini generate → {(int)resp.StatusCode}");
-        if (!resp.IsSuccessStatusCode)
-            throw new Exception(ExtractErrorMessage(text) ?? $"Gemini HTTP {(int)resp.StatusCode}");
+        var perModelErrors = new List<string>();
+        string? replyText = null;
+        foreach (var model in probeOrder)
+        {
+            ct.ThrowIfCancellationRequested();
+            using var req = new HttpRequestMessage(HttpMethod.Post,
+                $"{EndpointFor(model)}?key={Uri.EscapeDataString(apiKey)}")
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+            using var resp = await Http.SendAsync(req, ct);
+            var text = await resp.Content.ReadAsStringAsync(ct);
+            Log?.Invoke($"Gemini generate ({model}) → {(int)resp.StatusCode}");
+            if (resp.IsSuccessStatusCode)
+            {
+                replyText = ExtractFirstText(text);
+                LastUsedModel = model;
+                AppSettings.LlmModel = model;
+                AppSettings.Save();
+                break;
+            }
+            var msg = ExtractErrorMessage(text) ?? $"HTTP {(int)resp.StatusCode}";
+            perModelErrors.Add($"{model}: {Shorten(msg)}");
+        }
+        if (replyText == null)
+            throw new Exception("All Gemini models refused the request:\n - " + string.Join("\n - ", perModelErrors));
 
         progress?.Report(0.75);
-        var reply = ExtractFirstText(text) ?? "";
+        var reply = replyText ?? "";
         var items = ParseLlmCaptions(reply);
         if (items.Count == 0)
             throw new Exception("Gemini returned no caption items. Try again or change the source.");
