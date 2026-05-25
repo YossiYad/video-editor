@@ -412,7 +412,7 @@ public class ProjectFormatPickerWindow : Window
             RadiusX = 2, RadiusY = 2,
             Margin = new Thickness(0, 0, 0, 4)
         });
-        // 4:5 portrait post — width ≈ 76, height ≈ 95
+        // 4:5 portrait post - width ≈ 76, height ≈ 95
         inner.Children.Add(new Border
         {
             Width = 76, Height = 95,

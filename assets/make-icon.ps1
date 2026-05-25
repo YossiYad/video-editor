@@ -1,5 +1,5 @@
 # Generates a multi-resolution .ico from icon-source.png.
-# Sizes: 16 / 24 / 32 / 48 / 64 / 128 / 256 — what Windows Explorer needs.
+# Sizes: 16 / 24 / 32 / 48 / 64 / 128 / 256 - what Windows Explorer needs.
 # Each frame is a PNG-compressed entry (Windows Vista+ supports this).
 
 Add-Type -AssemblyName System.Drawing

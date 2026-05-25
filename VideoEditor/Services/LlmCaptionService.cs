@@ -20,7 +20,7 @@ public sealed class LlmCaptionService
 {
     /// <summary>
     /// Models we will try, in preference order. Free-tier availability per
-    /// model varies wildly per Google project — newer keys often have 0 quota
+    /// model varies wildly per Google project - newer keys often have 0 quota
     /// on gemini-2.0-flash but plenty on 2.5-flash, and vice versa. We probe
     /// the list and remember the first one that answers 200.
     /// </summary>
@@ -133,7 +133,7 @@ public sealed class LlmCaptionService
         return s.Length > 200 ? s.Substring(0, 200) + "…" : s;
     }
 
-    /// <summary>Which key actually answered the latest GenerateOverlaysAsync — "primary" / "fallback".
+    /// <summary>Which key actually answered the latest GenerateOverlaysAsync - "primary" / "fallback".
     /// Empty string before the first successful call.</summary>
     public string LastUsedKey { get; private set; } = "";
 
@@ -187,7 +187,7 @@ public sealed class LlmCaptionService
             {
                 LastUsedKey = keyLabel;
                 if (k > 0)
-                    Log?.Invoke($"Primary key exhausted — fell back to the secondary Google account.");
+                    Log?.Invoke($"Primary key exhausted - fell back to the secondary Google account.");
                 break;
             }
 
@@ -198,7 +198,7 @@ public sealed class LlmCaptionService
                 text.Contains("RESOURCE_EXHAUSTED", StringComparison.OrdinalIgnoreCase) ||
                 text.Contains("quota", StringComparison.OrdinalIgnoreCase) ||
                 text.Contains("429"));
-            if (!quotaLike) break;   // not a quota issue — fallback won't help
+            if (!quotaLike) break;   // not a quota issue - fallback won't help
         }
 
         if (replyText == null)
@@ -263,35 +263,35 @@ public sealed class LlmCaptionService
         var sb = new StringBuilder();
         sb.AppendLine("You are an expert short-form video editor (Reels / TikTok / Shorts) AND a careful");
         sb.AppendLine("transcription editor. The transcript below was produced by an automatic speech-");
-        sb.AppendLine("to-text model (whisper.cpp). It will contain mis-heard words — especially in Hebrew,");
+        sb.AppendLine("to-text model (whisper.cpp). It will contain mis-heard words - especially in Hebrew,");
         sb.AppendLine("where similar-sounding letters are easily confused (ב/ו, ם/ן, ת/ט, ק/כ, ה/ע) and");
         sb.AppendLine("Whisper sometimes drops words or runs two together.");
         sb.AppendLine();
         sb.AppendLine("Your job:");
         sb.AppendLine("1. Read the whole transcript and figure out what is ACTUALLY being said.");
         sb.AppendLine("   Fix obvious misrecognitions using the surrounding context (a sentence about");
-        sb.AppendLine("   a recipe shouldn't suddenly contain a nonsense word — replace it with the");
+        sb.AppendLine("   a recipe shouldn't suddenly contain a nonsense word - replace it with the");
         sb.AppendLine("   word that makes the sentence make sense). Treat song lyrics, idioms and");
-        sb.AppendLine("   common Hebrew phrases as anchors — \"שוב חוזרים ללוודה הנקודה\" is gibberish;");
+        sb.AppendLine("   common Hebrew phrases as anchors - \"שוב חוזרים ללוודה הנקודה\" is gibberish;");
         sb.AppendLine("   the real lyric is \"שוב חוזרים לאותה הנקודה\".");
         if (translate)
         {
             sb.AppendLine($"2. Translate the cleaned transcript into {targetLanguage}. Use natural,");
-            sb.AppendLine($"   idiomatic {targetLanguage} — not a word-for-word literal translation.");
+            sb.AppendLine($"   idiomatic {targetLanguage} - not a word-for-word literal translation.");
             sb.AppendLine("   Preserve names, places, numbers and brand names verbatim.");
             sb.AppendLine("3. Then convert the translated text into a sequence of short, punchy on-screen");
-            sb.AppendLine("   captions — \"kinetic typography\" style — that drive engagement.");
+            sb.AppendLine("   captions - \"kinetic typography\" style - that drive engagement.");
         }
         else
         {
             sb.AppendLine("2. Then convert the cleaned transcript into a sequence of short, punchy on-screen");
-            sb.AppendLine("   captions — \"kinetic typography\" style — that drive engagement.");
+            sb.AppendLine("   captions - \"kinetic typography\" style - that drive engagement.");
         }
         sb.AppendLine();
         sb.AppendLine("Rules (must follow):");
         sb.AppendLine("- Output STRICT JSON: an array of objects with exactly these keys: start, end, text, color.");
         sb.AppendLine("- Times are seconds (number) measured from 0. Keep them close to the original");
-        sb.AppendLine("  timing — you may split a noisy long segment but do not invent timing far from");
+        sb.AppendLine("  timing - you may split a noisy long segment but do not invent timing far from");
         sb.AppendLine("  what the transcript provides.");
         sb.AppendLine("- Caption ranges must NOT overlap and must be in chronological order.");
         sb.AppendLine("- Cover roughly the whole spoken duration; gaps between captions are fine.");
@@ -302,12 +302,12 @@ public sealed class LlmCaptionService
         }
         else
         {
-            sb.AppendLine("- text: 3–7 words per caption (1–5 in Hebrew). Use the SAME language as the transcript — do not translate.");
+            sb.AppendLine("- text: 3–7 words per caption (1–5 in Hebrew). Use the SAME language as the transcript - do not translate.");
         }
         sb.AppendLine("- Use real, well-formed words in that language. NEVER pass through obvious");
-        sb.AppendLine("  gibberish from the input — fix it.");
+        sb.AppendLine("  gibberish from the input - fix it.");
         sb.AppendLine("- Capitalise for emphasis sparingly. Avoid ALL CAPS on every single line.");
-        sb.AppendLine("- color: pick from this small palette to stay consistent — \"white\", \"yellow\", \"cyan\", \"red\".");
+        sb.AppendLine("- color: pick from this small palette to stay consistent - \"white\", \"yellow\", \"cyan\", \"red\".");
         sb.AppendLine("  Use \"white\" most of the time; switch colour only for emphasis on key words or numbers.");
         sb.AppendLine("- Do NOT wrap the JSON in markdown / code fences. Return raw JSON only.");
         sb.AppendLine();

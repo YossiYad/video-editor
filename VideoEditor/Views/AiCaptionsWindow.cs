@@ -42,11 +42,11 @@ public class AiCaptionsWindow : Window
     private static readonly string[] LanguageKeys  = { "auto",        "he",     "en"      };
     private static readonly string[] ModelItems =
     {
-        "Tiny — fastest (75 MB)",
-        "Base — balanced (140 MB)",
-        "Small — better Hebrew (470 MB)",
-        "Medium — very accurate (1.5 GB)",
-        "Large v3 Turbo — best Hebrew (800 MB, recommended)"
+        "Tiny - fastest (75 MB)",
+        "Base - balanced (140 MB)",
+        "Small - better Hebrew (470 MB)",
+        "Medium - very accurate (1.5 GB)",
+        "Large v3 Turbo - best Hebrew (800 MB, recommended)"
     };
     private static readonly string[] ModelKeys =
     {
@@ -72,7 +72,7 @@ public class AiCaptionsWindow : Window
         "he", "en", "ar", "es", "fr", "ru", "pt", "de"
     };
     /// <summary>Human label of the requested caption language, for the LLM prompt.
-    /// "Hebrew", "English", etc. — paired with <see cref="CaptionLanguageKeys"/>.</summary>
+    /// "Hebrew", "English", etc. - paired with <see cref="CaptionLanguageKeys"/>.</summary>
     private static readonly string[] CaptionLanguageNames =
     {
         "auto",
@@ -129,7 +129,7 @@ public class AiCaptionsWindow : Window
         _captionLangBox.SelectedIndex = capLangIdx;
         ch.Body.Children.Add(_captionLangBox);
 
-        // Daily Gemini-request counter — Google's free tier is ~1500 req/day per key,
+        // Daily Gemini-request counter - Google's free tier is ~1500 req/day per key,
         // and the count survives across runs in settings.json.
         var usedToday = LlmCaptionService.GetUsageToday();
         var usageBadge = new TextBlock
@@ -143,7 +143,7 @@ public class AiCaptionsWindow : Window
         };
         ch.Body.Children.Add(usageBadge);
 
-        // Phase line: "Step 1/3 — Transcribing…"
+        // Phase line: "Step 1/3 - Transcribing…"
         _phaseText = new TextBlock
         {
             Text = "",
@@ -238,7 +238,7 @@ public class AiCaptionsWindow : Window
             whisper.Log += line => Dispatcher.Invoke(() => { _statusText.Text = line; });
 
             // ---- Phase 1: transcribe (0 → 0.60) ----
-            _phaseText.Text = Localization.T("Step 1/3 — Transcribing audio");
+            _phaseText.Text = Localization.T("Step 1/3 - Transcribing audio");
             int idx = 0;
             foreach (var clip in clipsToProcess)
             {
@@ -269,10 +269,10 @@ public class AiCaptionsWindow : Window
             }
 
             if (allSegments.Count == 0)
-                throw new Exception(Localization.T("Whisper produced no segments — is there spoken audio?"));
+                throw new Exception(Localization.T("Whisper produced no segments - is there spoken audio?"));
 
             // ---- Phase 2: ask Gemini (0.60 → 0.95) ----
-            _phaseText.Text = Localization.T("Step 2/3 — Generating captions with Gemini");
+            _phaseText.Text = Localization.T("Step 2/3 - Generating captions with Gemini");
             _statusText.Text = Localization.T("Sending {0} segments to Gemini…").Replace("{0}", allSegments.Count.ToString());
             var llm = new LlmCaptionService();
             llm.Log += line => Dispatcher.Invoke(() => { _statusText.Text = line; });
@@ -285,7 +285,7 @@ public class AiCaptionsWindow : Window
                 captionLangName, llmProgress, _cts.Token);
 
             // ---- Phase 3: hand back (0.95 → 1.0) ----
-            _phaseText.Text = Localization.T("Step 3/3 — Applying overlays");
+            _phaseText.Text = Localization.T("Step 3/3 - Applying overlays");
             _progress.Value = 1.0;
             Result = overlays;
             _statusText.Text = Localization.T("Done · {0} overlays generated.").Replace("{0}", overlays.Count.ToString());
@@ -295,7 +295,7 @@ public class AiCaptionsWindow : Window
         }
         catch (OperationCanceledException)
         {
-            // Distinguish user-clicked-Stop from an HttpClient timeout — both
+            // Distinguish user-clicked-Stop from an HttpClient timeout - both
             // surface as OperationCanceledException, but only the first one
             // had its CT actually flipped.
             if (_cts?.IsCancellationRequested == true)
@@ -305,7 +305,7 @@ public class AiCaptionsWindow : Window
             }
             else
             {
-                _statusText.Text = Localization.T("Gemini took too long to respond. Try a shorter clip or run AI Captions again — Whisper's output is cached for this run.");
+                _statusText.Text = Localization.T("Gemini took too long to respond. Try a shorter clip or run AI Captions again - Whisper's output is cached for this run.");
                 _statusText.Foreground = Brushes.OrangeRed;
             }
         }

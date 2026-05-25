@@ -40,7 +40,7 @@ public partial class Timeline : UserControl
     public event Action<TextOverlay, string>? TextOverlayContextAction;
     /// <summary>Fires when a single overlay's properties / timing change (timeline-bar drag or picker save).
     /// MainWindow uses this to mark only that overlay's preview control as dirty rather than restyling
-    /// every overlay on every Tick — a big difference when there are ~40 AI-generated captions.</summary>
+    /// every overlay on every Tick - a big difference when there are ~40 AI-generated captions.</summary>
     public event Action<TextOverlay>? TextOverlayChanged;
     public event Action<VideoClip, double>? ClipScrubPreview;
     public event Action<VideoClip>? ClipEdgeDragEnded;

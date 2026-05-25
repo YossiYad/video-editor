@@ -32,10 +32,10 @@ public static class MonitorInfo
 
         public string FriendlyName =>
             HasDpiScaling
-                ? $"Monitor {Index + 1} — {PhysicalWidth}×{PhysicalHeight}" +
+                ? $"Monitor {Index + 1} - {PhysicalWidth}×{PhysicalHeight}" +
                   $" (scaled to {Width}×{Height})" +
                   (IsPrimary ? " · primary" : "")
-                : $"Monitor {Index + 1} — {Width}×{Height}" +
+                : $"Monitor {Index + 1} - {Width}×{Height}" +
                   (IsPrimary ? " (primary)" : "");
     }
 

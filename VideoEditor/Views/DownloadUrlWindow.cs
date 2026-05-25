@@ -157,17 +157,17 @@ public class DownloadUrlWindow : Window
         }
         if (DownloadService.LooksLikeStreamingSite(url))
         {
-            _detectionText.Text = "🎬 Streaming site detected — will use yt-dlp";
+            _detectionText.Text = "🎬 Streaming site detected - will use yt-dlp";
             _detectionDot.Fill = new SolidColorBrush(Color.FromRgb(0x8B, 0x5C, 0xFF));
         }
         else if (DownloadService.LooksLikeDirectFile(url))
         {
-            _detectionText.Text = "📦 Direct video file — will use HTTP download";
+            _detectionText.Text = "📦 Direct video file - will use HTTP download";
             _detectionDot.Fill = new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50));
         }
         else
         {
-            _detectionText.Text = "🤔 Unknown format — will try yt-dlp as fallback";
+            _detectionText.Text = "🤔 Unknown format - will try yt-dlp as fallback";
             _detectionDot.Fill = new SolidColorBrush(Color.FromRgb(0xFF, 0xD4, 0x3B));
         }
     }

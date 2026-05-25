@@ -457,7 +457,7 @@ public class SettingsWindow : Window
         var p = MakePanel("Player", "Playback engine & seek behavior. Changes apply immediately.");
         p.Children.Add(MakeRow("Default volume", $"Currently {_draft.DefaultMasterVolume}% - applied when you press Save",
             MakeSliderBound(0, 100, _draft.DefaultMasterVolume, v => { _draft.DefaultMasterVolume = v; MarkDirty(); })));
-        p.Children.Add(MakeRow("Back / Forward step", $"Currently {_draft.BackForwardSeconds}s —” for the -5s/+5s buttons",
+        p.Children.Add(MakeRow("Back / Forward step", $"Currently {_draft.BackForwardSeconds}s -” for the -5s/+5s buttons",
             MakeSliderBound(1, 60, _draft.BackForwardSeconds, v => { _draft.BackForwardSeconds = v; MarkDirty(); })));
 
         var scrubItems = new[] { "Smooth (low quality)", "Balanced (default)", "Frame-accurate" };
@@ -485,9 +485,9 @@ public class SettingsWindow : Window
         var p = MakePanel("Editor", "Clip dragging behavior and defaults. Most changes apply immediately.");
         p.Children.Add(MakeRow("Ripple-abut clips on drop", "OFF (default) = free dragging with gaps allowed · ON = old behavior where clips snap together",
             MakeToggleBound(_draft.RippleMode, v => { _draft.RippleMode = v; MarkDirty(); })));
-        p.Children.Add(MakeRow("Magnetic snap threshold", $"Currently {_draft.SnapThreshold:0.##}s —” within this distance a dragged clip snaps to a neighbour's edge",
+        p.Children.Add(MakeRow("Magnetic snap threshold", $"Currently {_draft.SnapThreshold:0.##}s -” within this distance a dragged clip snaps to a neighbour's edge",
             MakeSliderBound(0, 50, (int)(_draft.SnapThreshold * 10), v => { _draft.SnapThreshold = v / 10.0; MarkDirty(); })));
-        p.Children.Add(MakeRow("Initial zoom", $"Currently {_draft.InitialPixelsPerSecond} px/sec —” default zoom level for new projects",
+        p.Children.Add(MakeRow("Initial zoom", $"Currently {_draft.InitialPixelsPerSecond} px/sec -” default zoom level for new projects",
             MakeSliderBound(8, 200, _draft.InitialPixelsPerSecond, v => { _draft.InitialPixelsPerSecond = v; MarkDirty(); })));
         p.Children.Add(MakeRow("Show waveform per clip", "Auto-generate audio waveforms in A1 lane",
             MakeToggleBound(_draft.ShowWaveformPerClip, v => { _draft.ShowWaveformPerClip = v; MarkDirty(); })));
@@ -499,7 +499,7 @@ public class SettingsWindow : Window
         p.Children.Add(MakeRow("Thumbnails per clip", "Number of frame previews to render in V1 lane",
             MakeComboBound(thumbLabels, thumbIdx, idx => { _draft.ThumbnailsPerClip = thumbOptions[idx]; MarkDirty(); })));
 
-        p.Children.Add(MakeRow("Default block opacity", $"Currently {_draft.DefaultBlockOpacity}% —” opacity of new hide blocks",
+        p.Children.Add(MakeRow("Default block opacity", $"Currently {_draft.DefaultBlockOpacity}% -” opacity of new hide blocks",
             MakeSliderBound(0, 100, _draft.DefaultBlockOpacity, v => { _draft.DefaultBlockOpacity = v; MarkDirty(); })));
         return WrapSection(p);
     }
@@ -536,11 +536,11 @@ public class SettingsWindow : Window
         var hwKeys = new[] { "cpu", "nvenc", "qsv", "amf" };
         var hwIdx = Array.IndexOf(hwKeys, _draft.HardwareAccel);
         if (hwIdx < 0) hwIdx = 0;
-        p.Children.Add(MakeRow("Hardware accel", "GPU encoder —” much faster export if your GPU supports it",
+        p.Children.Add(MakeRow("Hardware accel", "GPU encoder -” much faster export if your GPU supports it",
             MakeComboBound(hwItems, hwIdx, idx => { _draft.HardwareAccel = hwKeys[idx]; MarkDirty(); })));
         p.Children.Add(MakeRow("2-pass encoding", "Slower, better bitrate distribution (coming soon)",
             MakeToggleBound(_draft.TwoPass, v => { _draft.TwoPass = v; MarkDirty(); })));
-        p.Children.Add(MakeRow("Audio loudnorm", "EBU R128 normalization —” uniform loudness across all clips",
+        p.Children.Add(MakeRow("Audio loudnorm", "EBU R128 normalization -” uniform loudness across all clips",
             MakeToggleBound(_draft.AudioLoudnorm, v => { _draft.AudioLoudnorm = v; MarkDirty(); })));
         return WrapSection(p);
     }
@@ -611,7 +611,7 @@ public class SettingsWindow : Window
     }
     private UIElement BuildFFmpeg()
     {
-        var p = MakePanel("FFmpeg", "Backend binaries —” set paths and verify encoders.");
+        var p = MakePanel("FFmpeg", "Backend binaries -” set paths and verify encoders.");
         p.Children.Add(MakeRow("ffmpeg.exe path", "Used for encoding & filters", MakeFolderPath(@"%APPDIR%\ffmpeg\ffmpeg.exe")));
         p.Children.Add(MakeRow("ffprobe.exe path", "Used to read media metadata", MakeFolderPath(@"%APPDIR%\ffmpeg\ffprobe.exe")));
         p.Children.Add(MakeRow("yt-dlp.exe path", "Used for streaming-site URL imports", MakeFolderPath(@"%APPDIR%\ffmpeg\yt-dlp.exe")));
@@ -630,12 +630,12 @@ public class SettingsWindow : Window
         var p = MakePanel("AI Captions",
             "Auto-generate short on-screen captions from the spoken audio. Uses Google Gemini (free tier).");
 
-        // Provider — locked to Gemini for v1, dropdown shape kept for future swap.
+        // Provider - locked to Gemini for v1, dropdown shape kept for future swap.
         p.Children.Add(MakeRow("Provider",
             "Google Gemini · free tier (1500 requests/day on gemini-2.0-flash)",
             MakeComboBound(new[] { "Google Gemini" }, 0, _ => { })));
 
-        // API key — masked input (PasswordBox).
+        // API key - masked input (PasswordBox).
         var pwBox = new PasswordBox
         {
             Background = new SolidColorBrush(Bg2),
@@ -651,10 +651,10 @@ public class SettingsWindow : Window
         };
         pwBox.PasswordChanged += (_, _) => { _draft.LlmApiKey = pwBox.Password ?? ""; MarkDirty(); };
         p.Children.Add(MakeRow("API key",
-            "Paste your Gemini API key — starts with AIza… · stored in settings.json next to the EXE",
+            "Paste your Gemini API key - starts with AIza… · stored in settings.json next to the EXE",
             pwBox));
 
-        // Optional fallback key — used automatically if the primary returns 429 quota-exceeded.
+        // Optional fallback key - used automatically if the primary returns 429 quota-exceeded.
         var pwBox2 = new PasswordBox
         {
             Background = new SolidColorBrush(Bg2),
@@ -670,7 +670,7 @@ public class SettingsWindow : Window
         };
         pwBox2.PasswordChanged += (_, _) => { _draft.LlmApiKeyFallback = pwBox2.Password ?? ""; MarkDirty(); };
         p.Children.Add(MakeRow("Fallback API key (optional)",
-            "Used automatically when the primary key hits its daily quota. MUST be from a DIFFERENT Google account — a key from the same account shares the same quota and won't help.",
+            "Used automatically when the primary key hits its daily quota. MUST be from a DIFFERENT Google account - a key from the same account shares the same quota and won't help.",
             pwBox2));
 
         // Yellow warning card spelling out the "different account" rule.
@@ -685,7 +685,7 @@ public class SettingsWindow : Window
         };
         warn.Child = new TextBlock
         {
-            Text = VideoEditor.Services.Localization.T("⚠ The fallback key has to be from a SECOND Google account. Two keys from the same Google account share the same daily quota — adding a sibling key from the same account does NOT increase how many captions you can generate."),
+            Text = VideoEditor.Services.Localization.T("⚠ The fallback key has to be from a SECOND Google account. Two keys from the same Google account share the same daily quota - adding a sibling key from the same account does NOT increase how many captions you can generate."),
             Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xD4, 0x3B)),
             FontSize = 11.5,
             TextWrapping = TextWrapping.Wrap
@@ -752,7 +752,7 @@ public class SettingsWindow : Window
                 if (ok)
                 {
                     _draft.LlmModel = svc.LastUsedModel ?? _draft.LlmModel;
-                    testResult.Text = VideoEditor.Services.Localization.T("OK — using {0}")
+                    testResult.Text = VideoEditor.Services.Localization.T("OK - using {0}")
                         .Replace("{0}", svc.LastUsedModel ?? "Gemini");
                     testResult.Foreground = new SolidColorBrush(Success);
                 }
@@ -777,7 +777,7 @@ public class SettingsWindow : Window
             "Open Google AI Studio · ping the API with your key",
             actionGrid));
 
-        // Usage counter — local count of Gemini requests this install has made today.
+        // Usage counter - local count of Gemini requests this install has made today.
         // (Google does not expose remaining-quota via API. The free-tier daily limit
         // varies per Google account; ~1500 for the Flash models is the common default.)
         var usageGrid = new Grid { HorizontalAlignment = HorizontalAlignment.Right };
@@ -1000,7 +1000,7 @@ public class SettingsWindow : Window
         };
         logo.Child = new TextBlock { Text = "▶", FontSize = 38, FontWeight = FontWeights.Bold, Foreground = System.Windows.Media.Brushes.White, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         stack.Children.Add(logo);
-        stack.Children.Add(new TextBlock { Text = "VideoEditor —” Pro", FontSize = 18, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Text), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) });
+        stack.Children.Add(new TextBlock { Text = "VideoEditor -” Pro", FontSize = 18, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Text), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) });
         stack.Children.Add(new TextBlock { Text = "WPF · FFmpeg · yt-dlp · React UI design", FontSize = 11, Foreground = new SolidColorBrush(TextDim), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) });
         stack.Children.Add(new TextBlock { Text = "MIT License · YossiYad/video-editor", FontSize = 11, FontFamily = new FontFamily("Consolas"), Foreground = new SolidColorBrush(TextMute), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 0) });
         card.Child = stack;
