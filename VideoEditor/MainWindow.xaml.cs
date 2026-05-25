@@ -105,8 +105,6 @@ public partial class MainWindow : Window
         };
         overlayCanvas.MouseLeftButtonDown += OverlayCanvas_BackgroundClick;
         WirePreviewCanvasTransformGestures();
-        BuildCanvasResizeHandles();
-        canvasHandlesLayer.SizeChanged += (_, _) => RepositionCanvasHandles();
     }
 
     // ===== Direct manipulation of the canvas transform =====
@@ -213,111 +211,33 @@ public partial class MainWindow : Window
 
     // ===== Corner resize handles =====
     //
-    // Four squares pinned to the corners of the *transformed* clip bounds inside the
-    // preview canvas. Dragging a handle scales the clip uniformly from the centre of
-    // the canvas — distance-from-centre at drag-start vs. now sets the new scale.
-    // The handles are also shown for trivial click-to-resize: every handle reports
-    // hover and uses the diagonal resize cursor.
+    // Four 20×20 squares pinned to the four corners of the project canvas via XAML
+    // alignment, so they don't depend on the Canvas's measured size (which is fragile).
+    // Dragging any handle scales the clip uniformly from the canvas centre — the new
+    // scale = startScale × (currentDistFromCentre / startDistFromCentre).
 
-    private readonly System.Collections.Generic.List<Border> _canvasHandles = new();
-    private System.Windows.Shapes.Rectangle? _canvasFrame;
     private bool _handleDragActive;
-    private Point _handleDragCentre;       // centre of the canvas in canvas-layer coords
-    private double _handleDragStartDist;   // distance from centre to mouse at drag start
+    private Point _handleDragCentre;
+    private double _handleDragStartDist;
     private double _handleDragStartScale;
-
-    private void BuildCanvasResizeHandles()
-    {
-        if (canvasHandlesLayer == null) return;
-        canvasHandlesLayer.Children.Clear();
-        _canvasHandles.Clear();
-        // Dashed purple frame around the clip's transformed bounds — a clear visual cue
-        // that the clip is in "edit canvas" mode. Sits below the corner handles in z-order.
-        _canvasFrame = new System.Windows.Shapes.Rectangle
-        {
-            Stroke = new SolidColorBrush(Color.FromRgb(0x8B, 0x5C, 0xFF)),
-            StrokeThickness = 2,
-            StrokeDashArray = new System.Windows.Media.DoubleCollection { 6, 4 },
-            Fill = System.Windows.Media.Brushes.Transparent,
-            IsHitTestVisible = false
-        };
-        canvasHandlesLayer.Children.Add(_canvasFrame);
-        // Tag each handle with which corner it's on so the cursor can hint resize direction.
-        var corners = new[] { "tl", "tr", "bl", "br" };
-        foreach (var corner in corners)
-        {
-            var h = new Border
-            {
-                Width = 20, Height = 20,
-                CornerRadius = new CornerRadius(4),
-                Background = new SolidColorBrush(Colors.White),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0x8B, 0x5C, 0xFF)),
-                BorderThickness = new Thickness(3),
-                Tag = corner,
-                Cursor = corner is "tl" or "br" ? Cursors.SizeNWSE : Cursors.SizeNESW,
-                Effect = new System.Windows.Media.Effects.DropShadowEffect
-                {
-                    Color = Color.FromRgb(0x8B, 0x5C, 0xFF), BlurRadius = 12, ShadowDepth = 0, Opacity = 0.8
-                }
-            };
-            h.MouseLeftButtonDown += Handle_MouseDown;
-            h.MouseMove += Handle_MouseMove;
-            h.MouseLeftButtonUp += Handle_MouseUp;
-            canvasHandlesLayer.Children.Add(h);
-            _canvasHandles.Add(h);
-        }
-        canvasHandlesLayer.Visibility = Visibility.Collapsed;
-    }
 
     private void RepositionCanvasHandles()
     {
-        if (canvasHandlesLayer == null || _canvasHandles.Count != 4) return;
+        if (canvasHandlesLayer == null) return;
         var c = CanvasTargetClip();
-        bool show = c != null && !c.IsAudioOnly && canvasHandlesLayer.ActualWidth > 1 && canvasHandlesLayer.ActualHeight > 1;
-        canvasHandlesLayer.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        if (!show || c == null) return;
-
-        // Layer covers the same area as the videoView. The actual displayed clip
-        // (after Stretch=Uniform inside the project-format videoContainer) is the
-        // whole layer scaled by CanvasScale, then shifted by CanvasOffset × layer size.
-        double w = canvasHandlesLayer.ActualWidth;
-        double h = canvasHandlesLayer.ActualHeight;
-        const double handleSize = 20.0;
-        double cw = w * c.CanvasScale;
-        double ch = h * c.CanvasScale;
-        double cx = (w - cw) / 2 + c.CanvasOffsetX * w + cw / 2;  // centre of transformed clip
-        double cy = (h - ch) / 2 + c.CanvasOffsetY * h + ch / 2;
-        // Clamp the handles to stay inside the visible canvas — easier to grab when the
-        // user has zoomed in very far (transformed corners may be off-screen otherwise).
-        double left   = Math.Max(2, Math.Min(w - handleSize - 2, cx - cw / 2));
-        double right  = Math.Max(2, Math.Min(w - handleSize - 2, cx + cw / 2 - handleSize));
-        double top    = Math.Max(2, Math.Min(h - handleSize - 2, cy - ch / 2));
-        double bottom = Math.Max(2, Math.Min(h - handleSize - 2, cy + ch / 2 - handleSize));
-        Canvas.SetLeft(_canvasHandles[0], left);  Canvas.SetTop(_canvasHandles[0], top);
-        Canvas.SetLeft(_canvasHandles[1], right); Canvas.SetTop(_canvasHandles[1], top);
-        Canvas.SetLeft(_canvasHandles[2], left);  Canvas.SetTop(_canvasHandles[2], bottom);
-        Canvas.SetLeft(_canvasHandles[3], right); Canvas.SetTop(_canvasHandles[3], bottom);
-        // Dashed frame matches the *unclamped* transformed clip bounds so it's still
-        // meaningful at extreme zoom levels (frame can extend off-canvas; ClipToBounds
-        // on videoStack hides the part that's outside).
-        if (_canvasFrame != null)
-        {
-            double fLeft = cx - cw / 2, fTop = cy - ch / 2;
-            _canvasFrame.Width = Math.Max(0, cw);
-            _canvasFrame.Height = Math.Max(0, ch);
-            Canvas.SetLeft(_canvasFrame, fLeft);
-            Canvas.SetTop(_canvasFrame, fTop);
-        }
+        canvasHandlesLayer.Visibility =
+            (c != null && !c.IsAudioOnly) ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void Handle_MouseDown(object sender, MouseButtonEventArgs e)
+    private void CanvasHandle_MouseDown(object sender, MouseButtonEventArgs e)
     {
         var c = CanvasTargetClip();
-        if (c == null) return;
-        if (sender is not Border h) return;
-        double w = canvasHandlesLayer.ActualWidth, hh = canvasHandlesLayer.ActualHeight;
+        if (c == null || sender is not Border h) return;
+        // Centre of the visible project canvas — handles drag relative to this point.
+        double w = canvasHandlesLayer.ActualWidth;
+        double hh = canvasHandlesLayer.ActualHeight;
         if (w < 1 || hh < 1) return;
-        _handleDragCentre = new Point(w / 2 + c.CanvasOffsetX * w, hh / 2 + c.CanvasOffsetY * hh);
+        _handleDragCentre = new Point(w / 2, hh / 2);
         var mp = e.GetPosition(canvasHandlesLayer);
         _handleDragStartDist = Math.Max(8, Distance(mp, _handleDragCentre));
         _handleDragStartScale = c.CanvasScale;
@@ -326,7 +246,7 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void Handle_MouseMove(object sender, MouseEventArgs e)
+    private void CanvasHandle_MouseMove(object sender, MouseEventArgs e)
     {
         if (!_handleDragActive) return;
         var c = CanvasTargetClip();
@@ -338,7 +258,7 @@ public partial class MainWindow : Window
         UpdateInspectorCanvasFields();
     }
 
-    private void Handle_MouseUp(object sender, MouseButtonEventArgs e)
+    private void CanvasHandle_MouseUp(object sender, MouseButtonEventArgs e)
     {
         if (!_handleDragActive) return;
         _handleDragActive = false;

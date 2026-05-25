@@ -502,9 +502,46 @@
                                           MediaFailed="VideoView_MediaFailed"/>
                             <Canvas x:Name="overlayCanvas" Background="Transparent"/>
                             <!-- Resize handles for the per-clip canvas transform.
-                                 Populated and positioned in code-behind so they stay on the corners
-                                 of the *transformed* video bounds. Hidden when no clip is selected. -->
-                            <Canvas x:Name="canvasHandlesLayer" Background="Transparent" IsHitTestVisible="True"/>
+                                 Pinned to the 4 corners of the project canvas via alignment so
+                                 they always render at the visible bounds — no measuring math.
+                                 Hidden when no video clip is loaded. -->
+                            <Grid x:Name="canvasHandlesLayer" Background="Transparent" IsHitTestVisible="True" Visibility="Collapsed">
+                                <!-- Dashed purple frame around the (visible) project canvas. -->
+                                <Border BorderBrush="{DynamicResource Accent}" BorderThickness="2"
+                                        IsHitTestVisible="False" Margin="2"/>
+                                <Border x:Name="canvasHandleTL" Width="20" Height="20"
+                                        HorizontalAlignment="Left" VerticalAlignment="Top"
+                                        Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="3"
+                                        CornerRadius="4" Cursor="SizeNWSE"
+                                        MouseLeftButtonDown="CanvasHandle_MouseDown"
+                                        MouseMove="CanvasHandle_MouseMove"
+                                        MouseLeftButtonUp="CanvasHandle_MouseUp"
+                                        Tag="tl"/>
+                                <Border x:Name="canvasHandleTR" Width="20" Height="20"
+                                        HorizontalAlignment="Right" VerticalAlignment="Top"
+                                        Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="3"
+                                        CornerRadius="4" Cursor="SizeNESW"
+                                        MouseLeftButtonDown="CanvasHandle_MouseDown"
+                                        MouseMove="CanvasHandle_MouseMove"
+                                        MouseLeftButtonUp="CanvasHandle_MouseUp"
+                                        Tag="tr"/>
+                                <Border x:Name="canvasHandleBL" Width="20" Height="20"
+                                        HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                        Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="3"
+                                        CornerRadius="4" Cursor="SizeNESW"
+                                        MouseLeftButtonDown="CanvasHandle_MouseDown"
+                                        MouseMove="CanvasHandle_MouseMove"
+                                        MouseLeftButtonUp="CanvasHandle_MouseUp"
+                                        Tag="bl"/>
+                                <Border x:Name="canvasHandleBR" Width="20" Height="20"
+                                        HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                        Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="3"
+                                        CornerRadius="4" Cursor="SizeNWSE"
+                                        MouseLeftButtonDown="CanvasHandle_MouseDown"
+                                        MouseMove="CanvasHandle_MouseMove"
+                                        MouseLeftButtonUp="CanvasHandle_MouseUp"
+                                        Tag="br"/>
+                            </Grid>
 
                             <!-- HUD strip -->
                             <Border VerticalAlignment="Bottom" Background="#CC0A0C12" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="12,7">
