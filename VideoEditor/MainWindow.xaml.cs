@@ -1835,8 +1835,14 @@ public partial class MainWindow : Window
             status.Text = "Exported: " + sfd.FileName;
             progress.Value = 1;
             progressLabel.Text = "Done";
-            if (MessageBox.Show("Open output folder?", "Done", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
-                RevealInExplorer(sfd.FileName);
+            // Show the unified share / upload dialog. offerOpenInEditor=false because
+            // the exported file IS the final output — re-loading it as a new clip
+            // doesn't make sense here (unlike a screen recording).
+            new ShareDialog(sfd.FileName,
+                title: "Export complete",
+                subtitle: "Pick where to send it — your editor project is still open.",
+                offerOpenInEditor: false)
+            { Owner = this }.ShowDialog();
         }
         catch (Exception ex)
         {
@@ -1850,7 +1856,15 @@ public partial class MainWindow : Window
 
     private VideoClip? CurrentClip() => _selectedClip ?? _playingClip ?? (timeline.Clips.Count > 0 ? timeline.Clips[0] : null);
 
-    private void ScreenRec_Click(object s, RoutedEventArgs e) => new ScreenRecorderWindow(_ff) { Owner = this }.ShowDialog();
+    private void ScreenRec_Click(object s, RoutedEventArgs e) => OpenScreenRecorder(webcam: false);
+    private void OpenScreenRecorder(bool webcam)
+    {
+        var dlg = new ScreenRecorderWindow(_ff, webcam) { Owner = this };
+        dlg.ShowDialog();
+        // "Open in editor" path — user chose to keep editing the recording.
+        if (!string.IsNullOrEmpty(dlg.OpenInEditorPath) && File.Exists(dlg.OpenInEditorPath))
+            AddFiles(new[] { dlg.OpenInEditorPath });
+    }
     private void Tts_Click(object s, RoutedEventArgs e) => new TextToSpeechWindow() { Owner = this }.ShowDialog();
     private async void Merge_Click(object s, RoutedEventArgs e)
     {
@@ -1858,7 +1872,7 @@ public partial class MainWindow : Window
         SaveBtn_Click(s, e);
         await System.Threading.Tasks.Task.CompletedTask;
     }
-    private void Record_Click(object s, RoutedEventArgs e) => new ScreenRecorderWindow(_ff, true) { Owner = this }.ShowDialog();
+    private void Record_Click(object s, RoutedEventArgs e) => OpenScreenRecorder(webcam: true);
 
     private void Settings_Click(object s, RoutedEventArgs e) => new SettingsWindow() { Owner = this }.ShowDialog();
 

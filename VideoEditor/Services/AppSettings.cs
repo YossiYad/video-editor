@@ -88,6 +88,10 @@ public static class AppSettings
     public static string LastTranscribeLanguage { get; set; } = "auto";
     /// <summary>"clip" | "all" - transcribe selected clip vs all video clips.</summary>
     public static string LastTranscribeSource { get; set; } = "clip";
+    /// <summary>Last monitor index picked in the Screen Recorder. -1 = whole virtual desktop (default),
+    /// 0..N = a specific monitor. Reset to -1 automatically if the saved index is no longer valid
+    /// (e.g. user unplugged the monitor).</summary>
+    public static int LastScreenRecorderMonitor { get; set; } = -1;
     /// <summary>"auto" | "he" | "en" | "ar" | "es" | "fr" | "ru" | "pt" | "de" — language to write the captions in.
     /// "auto" keeps the same language as the audio; anything else asks the LLM to translate.</summary>
     public static string LastCaptionLanguage { get; set; } = "auto";
@@ -157,6 +161,7 @@ public static class AppSettings
         public string? LastTranscribeLanguage { get; set; }
         public string? LastTranscribeSource { get; set; }
         public string? LastCaptionLanguage { get; set; }
+        public int LastScreenRecorderMonitor { get; set; } = -1;
 
         public string? LlmProvider { get; set; }
         public string? LlmApiKey { get; set; }
@@ -217,6 +222,7 @@ public static class AppSettings
             if (!string.IsNullOrEmpty(d.LastTranscribeLanguage)) LastTranscribeLanguage = d.LastTranscribeLanguage;
             if (!string.IsNullOrEmpty(d.LastTranscribeSource)) LastTranscribeSource = d.LastTranscribeSource;
             if (!string.IsNullOrEmpty(d.LastCaptionLanguage)) LastCaptionLanguage = d.LastCaptionLanguage;
+            LastScreenRecorderMonitor = d.LastScreenRecorderMonitor;
             if (!string.IsNullOrEmpty(d.LlmProvider)) LlmProvider = d.LlmProvider;
             if (d.LlmApiKey != null) LlmApiKey = d.LlmApiKey;
             if (d.LlmApiKeyFallback != null) LlmApiKeyFallback = d.LlmApiKeyFallback;
@@ -264,6 +270,7 @@ public static class AppSettings
                 LastTranscribeLanguage = LastTranscribeLanguage,
                 LastTranscribeSource = LastTranscribeSource,
                 LastCaptionLanguage = LastCaptionLanguage,
+                LastScreenRecorderMonitor = LastScreenRecorderMonitor,
                 LlmProvider = LlmProvider, LlmApiKey = LlmApiKey, LlmApiKeyFallback = LlmApiKeyFallback,
                 LlmModel = LlmModel,
                 LlmUsageToday = LlmUsageToday, LlmUsageDate = LlmUsageDate,
