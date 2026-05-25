@@ -736,6 +736,48 @@ public class SettingsWindow : Window
             "Open Google AI Studio · ping the API with your key",
             actionGrid));
 
+        // Usage counter — local count of Gemini requests this install has made today.
+        // (Google does not expose remaining-quota via API. The free-tier daily limit
+        // varies per Google account; ~1500 for the Flash models is the common default.)
+        var usageGrid = new Grid { HorizontalAlignment = HorizontalAlignment.Right };
+        usageGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
+        usageGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var usageText = new TextBlock
+        {
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Text),
+            VerticalAlignment = VerticalAlignment.Center,
+            TextAlignment = TextAlignment.Right
+        };
+        void RefreshUsage()
+        {
+            var used = LlmCaptionService.GetUsageToday();
+            usageText.Text = VideoEditor.Services.Localization.T("{0} requests today")
+                .Replace("{0}", used.ToString());
+            if (used >= 1400) usageText.Foreground = new SolidColorBrush(Warn);
+            else if (used >= 1000) usageText.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xC1, 0x07));
+            else usageText.Foreground = new SolidColorBrush(Text);
+        }
+        RefreshUsage();
+        Grid.SetColumn(usageText, 0);
+        usageGrid.Children.Add(usageText);
+
+        var refreshBtn = MakeButton("Refresh", false);
+        refreshBtn.Margin = new Thickness(8, 0, 0, 0);
+        refreshBtn.Click += (_, _) =>
+        {
+            AppSettings.Load();
+            RefreshUsage();
+        };
+        Grid.SetColumn(refreshBtn, 1);
+        usageGrid.Children.Add(refreshBtn);
+
+        p.Children.Add(MakeRow("Usage today",
+            "Counted by this app · Google free tier is ~1500 requests/day, resets at midnight",
+            usageGrid));
+
         // Numbered guide card.
         var guide = new Border
         {

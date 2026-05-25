@@ -98,6 +98,20 @@ public class AiCaptionsWindow : Window
         _modelBox.SelectedIndex = modelIdx;
         ch.Body.Children.Add(_modelBox);
 
+        // Daily Gemini-request counter — Google's free tier is ~1500 req/day per key,
+        // and the count survives across runs in settings.json.
+        var usedToday = LlmCaptionService.GetUsageToday();
+        var usageBadge = new TextBlock
+        {
+            Text = Localization.T("Gemini · {0} requests today (free tier ~1500/day)")
+                .Replace("{0}", usedToday.ToString()),
+            Foreground = usedToday >= 1400 ? Brushes.OrangeRed : WindowBuilder.TextDim,
+            FontSize = 11,
+            Margin = new Thickness(0, 14, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+        ch.Body.Children.Add(usageBadge);
+
         // Phase line: "Step 1/3 — Transcribing…"
         _phaseText = new TextBlock
         {

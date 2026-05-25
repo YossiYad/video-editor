@@ -38,6 +38,31 @@ public sealed class LlmCaptionService
 
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(2) };
 
+    /// <summary>Daily request counter. Reads AppSettings.LlmUsageToday and auto-resets
+    /// when the local date rolls over. Counts attempts (not successes) because failed
+    /// requests still consume Google's free-tier quota.</summary>
+    public static int RecordRequest()
+    {
+        var today = DateTime.Now.ToString("yyyy-MM-dd");
+        if (!string.Equals(AppSettings.LlmUsageDate, today, StringComparison.Ordinal))
+        {
+            AppSettings.LlmUsageDate = today;
+            AppSettings.LlmUsageToday = 0;
+        }
+        AppSettings.LlmUsageToday++;
+        AppSettings.Save();
+        return AppSettings.LlmUsageToday;
+    }
+
+    /// <summary>Returns the count of requests made today by this install. 0 if it's a new day.</summary>
+    public static int GetUsageToday()
+    {
+        var today = DateTime.Now.ToString("yyyy-MM-dd");
+        if (!string.Equals(AppSettings.LlmUsageDate, today, StringComparison.Ordinal))
+            return 0;
+        return AppSettings.LlmUsageToday;
+    }
+
     /// <summary>The model the most recent PingAsync / GenerateOverlaysAsync settled on.</summary>
     public string? LastUsedModel { get; private set; }
 
@@ -72,6 +97,7 @@ public sealed class LlmCaptionService
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             };
+            RecordRequest();
             using var resp = await Http.SendAsync(req, ct);
             var text = await resp.Content.ReadAsStringAsync(ct);
             Log?.Invoke($"Gemini ping ({model}) → {(int)resp.StatusCode}");
@@ -149,6 +175,7 @@ public sealed class LlmCaptionService
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             };
+            RecordRequest();
             using var resp = await Http.SendAsync(req, ct);
             var text = await resp.Content.ReadAsStringAsync(ct);
             Log?.Invoke($"Gemini generate ({model}) → {(int)resp.StatusCode}");

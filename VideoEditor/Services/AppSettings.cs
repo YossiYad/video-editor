@@ -96,6 +96,10 @@ public static class AppSettings
     public static string LlmApiKey { get; set; } = "";
     /// <summary>The Gemini model that last answered 200 OK for this key. Auto-discovered by Test connection.</summary>
     public static string LlmModel { get; set; } = "gemini-2.5-flash";
+    /// <summary>Count of Gemini requests made from this install today. Auto-resets at local midnight via <see cref="LlmUsageDate"/>.</summary>
+    public static int LlmUsageToday { get; set; } = 0;
+    /// <summary>ISO date (yyyy-MM-dd) the counter applies to. Used to detect "new day" and reset.</summary>
+    public static string LlmUsageDate { get; set; } = "";
 
     // ----- Storage -----
     public static string DownloadsFolder { get; set; } = "";
@@ -149,6 +153,8 @@ public static class AppSettings
         public string? LlmProvider { get; set; }
         public string? LlmApiKey { get; set; }
         public string? LlmModel { get; set; }
+        public int LlmUsageToday { get; set; }
+        public string? LlmUsageDate { get; set; }
 
         public string? DownloadsFolder { get; set; }
         public string? CacheFolder { get; set; }
@@ -204,6 +210,8 @@ public static class AppSettings
             if (!string.IsNullOrEmpty(d.LlmProvider)) LlmProvider = d.LlmProvider;
             if (d.LlmApiKey != null) LlmApiKey = d.LlmApiKey;
             if (!string.IsNullOrEmpty(d.LlmModel)) LlmModel = d.LlmModel;
+            LlmUsageToday = Math.Max(0, d.LlmUsageToday);
+            if (!string.IsNullOrEmpty(d.LlmUsageDate)) LlmUsageDate = d.LlmUsageDate;
             if (!string.IsNullOrEmpty(d.DownloadsFolder)) DownloadsFolder = d.DownloadsFolder;
             if (!string.IsNullOrEmpty(d.CacheFolder)) CacheFolder = d.CacheFolder;
             if (!string.IsNullOrEmpty(d.MaxCacheSize)) MaxCacheSize = d.MaxCacheSize;
@@ -245,6 +253,7 @@ public static class AppSettings
                 LastTranscribeLanguage = LastTranscribeLanguage,
                 LastTranscribeSource = LastTranscribeSource,
                 LlmProvider = LlmProvider, LlmApiKey = LlmApiKey, LlmModel = LlmModel,
+                LlmUsageToday = LlmUsageToday, LlmUsageDate = LlmUsageDate,
                 DownloadsFolder = DownloadsFolder, CacheFolder = CacheFolder,
                 MaxCacheSize = MaxCacheSize, AutoCleanCache = AutoCleanCache,
             };
