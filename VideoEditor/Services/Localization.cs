@@ -248,6 +248,7 @@ internal static class Localization
         ["Whisper produced no segments — is there spoken audio?"] = "Whisper לא הפיק מקטעים — האם יש דיבור בסרטון?",
         ["Done · {0} overlays generated."] = "סיים · {0} שכבות נוצרו.",
         ["Cancelled."] = "בוטל.",
+        ["Gemini took too long to respond. Try a shorter clip or run AI Captions again — Whisper's output is cached for this run."] = "Gemini לקח יותר מדי זמן לענות. נסה קליפ קצר יותר או הרץ שוב — Whisper לא צריך לרוץ מחדש.",
         ["Stop"] = "עצור",
         ["Generate"] = "צור",
     };

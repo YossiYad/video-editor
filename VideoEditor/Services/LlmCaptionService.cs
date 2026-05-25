@@ -36,7 +36,12 @@ public sealed class LlmCaptionService
     private static string EndpointFor(string model) =>
         $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent";
 
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(2) };
+    // 2 minutes was too tight for ~4-minute videos: Gemini 2.5-flash's
+    // "thinking" budget on a 40-segment prompt + Hebrew correction can run
+    // ~1.5 minutes by itself, and slow uplinks push it over. 10 minutes is
+    // generous but every request is single-shot so we'd rather wait than
+    // surface a fake "Cancelled."
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(10) };
 
     /// <summary>Daily request counter. Reads AppSettings.LlmUsageToday and auto-resets
     /// when the local date rolls over. Counts attempts (not successes) because failed

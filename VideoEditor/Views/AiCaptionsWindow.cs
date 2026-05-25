@@ -259,8 +259,19 @@ public class AiCaptionsWindow : Window
         }
         catch (OperationCanceledException)
         {
-            _statusText.Text = Localization.T("Cancelled.");
-            _statusText.Foreground = WindowBuilder.TextMute;
+            // Distinguish user-clicked-Stop from an HttpClient timeout — both
+            // surface as OperationCanceledException, but only the first one
+            // had its CT actually flipped.
+            if (_cts?.IsCancellationRequested == true)
+            {
+                _statusText.Text = Localization.T("Cancelled.");
+                _statusText.Foreground = WindowBuilder.TextMute;
+            }
+            else
+            {
+                _statusText.Text = Localization.T("Gemini took too long to respond. Try a shorter clip or run AI Captions again — Whisper's output is cached for this run.");
+                _statusText.Foreground = Brushes.OrangeRed;
+            }
         }
         catch (Exception ex)
         {
