@@ -138,6 +138,8 @@ internal static class Localization
         ["Cover whole timeline"] = "כיסוי כל ציר הזמן",
         ["START (s)"] = "התחלה (שניות)",
         ["END (s)"] = "סיום (שניות)",
+        ["START"] = "התחלה",
+        ["END"] = "סיום",
         ["TRIM — IN / OUT"] = "חיתוך — התחלה / סוף",
         ["SPEED"] = "מהירות",
         ["VOLUME"] = "עוצמת קול",

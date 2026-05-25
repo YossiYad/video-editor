@@ -541,9 +541,34 @@ public partial class MainWindow : Window
         strengthSlider.Value = b.BlurStrength;
         strengthLabel.Text = ((int)b.BlurStrength).ToString();
         wholeCheck.IsChecked = b.CoversWholeVideo;
-        startBox.Text = b.StartSeconds.ToString("0.###");
-        endBox.Text = b.EndSeconds.ToString("0.###");
+        FillHmsBoxes(b.StartSeconds, startH, startM, startS);
+        FillHmsBoxes(b.EndSeconds, endH, endM, endS);
         _suppress = false;
+    }
+
+    private static void FillHmsBoxes(double totalSeconds, TextBox hBox, TextBox mBox, TextBox sBox)
+    {
+        if (totalSeconds < 0) totalSeconds = 0;
+        var h = (int)(totalSeconds / 3600);
+        var m = (int)((totalSeconds - h * 3600) / 60);
+        var s = totalSeconds - h * 3600 - m * 60;
+        hBox.Text = h.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        mBox.Text = m.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        sBox.Text = s.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static double ReadHmsBoxes(TextBox hBox, TextBox mBox, TextBox sBox)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var any = System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowThousands;
+        double h = 0, m = 0, s = 0;
+        double.TryParse(hBox.Text, any, inv, out h);
+        double.TryParse(mBox.Text, any, inv, out m);
+        double.TryParse(sBox.Text, any, inv, out s);
+        if (h < 0) h = 0;
+        if (m < 0) m = 0;
+        if (s < 0) s = 0;
+        return h * 3600 + m * 60 + s;
     }
 
     private void SelectClip(VideoClip? c)
@@ -660,8 +685,8 @@ public partial class MainWindow : Window
     {
         if (_selectedBlock == null) return;
         _suppress = true;
-        startBox.Text = _selectedBlock.StartSeconds.ToString("0.###");
-        endBox.Text = _selectedBlock.EndSeconds.ToString("0.###");
+        FillHmsBoxes(_selectedBlock.StartSeconds, startH, startM, startS);
+        FillHmsBoxes(_selectedBlock.EndSeconds, endH, endM, endS);
         wholeCheck.IsChecked = _selectedBlock.CoversWholeVideo;
         _suppress = false;
     }
@@ -704,8 +729,10 @@ public partial class MainWindow : Window
     private void StartEnd_Changed(object sender, TextChangedEventArgs e)
     {
         if (_suppress || _selectedBlock == null) return;
-        if (double.TryParse(startBox.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var s)) _selectedBlock.StartSeconds = Math.Max(0, s);
-        if (double.TryParse(endBox.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var en)) _selectedBlock.EndSeconds = Math.Min(timeline.TotalSeconds, Math.Max(_selectedBlock.StartSeconds + 0.1, en));
+        var startTotal = ReadHmsBoxes(startH, startM, startS);
+        var endTotal = ReadHmsBoxes(endH, endM, endS);
+        _selectedBlock.StartSeconds = Math.Max(0, startTotal);
+        _selectedBlock.EndSeconds = Math.Min(timeline.TotalSeconds, Math.Max(_selectedBlock.StartSeconds + 0.1, endTotal));
         if (_selectedBlock.EndSeconds < timeline.TotalSeconds || _selectedBlock.StartSeconds > 0) _selectedBlock.CoversWholeVideo = false;
     }
 
