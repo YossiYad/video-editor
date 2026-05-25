@@ -170,6 +170,19 @@ internal static class Localization
         (AppSettings.Language == "auto" &&
          System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "he");
 
+    private static Dictionary<string, string>? _heToEn;
+    private static Dictionary<string, string> HeToEn
+    {
+        get
+        {
+            if (_heToEn != null) return _heToEn;
+            var d = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var kv in He) d[kv.Value] = kv.Key;
+            _heToEn = d;
+            return d;
+        }
+    }
+
     public static string T(string text)
     {
         if (!IsHebrew) return text;
@@ -177,9 +190,19 @@ internal static class Localization
         return text;
     }
 
+    private static string Translate(string text, bool toHebrew)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        if (toHebrew)
+        {
+            return He.TryGetValue(text, out var he) ? he : text;
+        }
+        return HeToEn.TryGetValue(text, out var en) ? en : text;
+    }
+
     public static void TranslateTree(DependencyObject root)
     {
-        if (!IsHebrew) return;
+        bool toHebrew = IsHebrew;
         var seen = new HashSet<DependencyObject>();
 
         void Recurse(DependencyObject? node)
@@ -187,14 +210,14 @@ internal static class Localization
             if (node == null || !seen.Add(node)) return;
 
             if (node is TextBlock tb && !string.IsNullOrEmpty(tb.Text))
-                tb.Text = T(tb.Text);
+                tb.Text = Translate(tb.Text, toHebrew);
             else if (node is HeaderedContentControl hc && hc.Header is string hs)
-                hc.Header = T(hs);
+                hc.Header = Translate(hs, toHebrew);
             else if (node is ContentControl cc && cc.Content is string s)
-                cc.Content = T(s);
+                cc.Content = Translate(s, toHebrew);
 
             if (node is FrameworkElement fe && fe.ToolTip is string tip)
-                fe.ToolTip = T(tip);
+                fe.ToolTip = Translate(tip, toHebrew);
 
             foreach (var child in LogicalTreeHelper.GetChildren(node))
                 if (child is DependencyObject d) Recurse(d);
