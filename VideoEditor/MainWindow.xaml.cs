@@ -1610,11 +1610,42 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
     }
     private async void AddText_Click(object s, RoutedEventArgs e)
     {
-        var c = CurrentClip(); if (c == null) return;
-        var dlg = new AddTextWindow() { Owner = this };
-        if (dlg.ShowDialog() != true) return;
+        var c = CurrentClip();
+        if (c == null) { MessageBox.Show("Select a clip first."); return; }
+
+        var tempFrame = Path.Combine(Path.GetTempPath(), $"text_frame_{Guid.NewGuid():N}.jpg");
+        try
+        {
+            double frameTime;
+            if (timeline.CurrentSeconds >= c.TimelineStart && timeline.CurrentSeconds <= c.TimelineStart + c.EffectiveDuration)
+            {
+                var withinClip = (timeline.CurrentSeconds - c.TimelineStart) * c.Speed;
+                frameTime = c.InPoint + withinClip;
+            }
+            else
+            {
+                frameTime = c.InPoint + (c.OutPoint - c.InPoint) / 2;
+            }
+            status.Text = "Extracting preview frame...";
+            await _ff.ExtractFrameAsync(c.SourceFile, tempFrame, frameTime);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Failed to extract preview: " + ex.Message);
+            return;
+        }
+
+        var picker = new TextOverlayPickerWindow(tempFrame,
+            c.VideoWidth > 0 ? c.VideoWidth : 1920,
+            c.VideoHeight > 0 ? c.VideoHeight : 1080)
+        { Owner = this };
+        var ok = picker.ShowDialog() == true;
+        try { File.Delete(tempFrame); } catch { }
+        if (!ok || string.IsNullOrWhiteSpace(picker.Result.Text)) return;
+
+        var opt = picker.Result;
         await ApplyDestructiveOpAsync(c, async (input, output, prog) =>
-            await _ff.AddTextAsync(input, output, dlg.TextValue, dlg.X, dlg.Y, dlg.FontSize, dlg.ColorHex, c.OriginalDuration, prog));
+            await _ff.AddTextAsync(input, output, opt, c.OriginalDuration, prog));
     }
     private async void RemoveLogo_Click(object s, RoutedEventArgs e)
     {
