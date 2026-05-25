@@ -6,6 +6,29 @@ The latest signed Windows build is always available at
 
 ---
 
+## [Unreleased]
+
+### Added
+- **AI Camera Background** in the Camera Recorder - free, fully local
+  "virtual background" powered by the MODNet portrait-matting model
+  (ONNX, CPU). When you record yourself you can now:
+  - **Blur** the background (Zoom-style),
+  - **Remove** the background entirely (transparent WebM/VP9 output you
+    can overlay on a screen recording in the timeline),
+  - **Replace** it with a flat colour, or
+  - **Replace** it with your own image.
+  The model (~25 MB) downloads once on first use, just like FFmpeg and
+  the Whisper models. Nothing leaves your machine and there is no API
+  key. A live preview shows the effect while you pick a camera.
+
+### Changed
+- **Smoother recordings** - camera and screen captures now force a
+  constant frame rate (`-fps_mode cfr`) and the camera input gets a
+  larger real-time buffer (`-rtbufsize`), fixing the slow / stuttering
+  playback some setups produced.
+
+---
+
 ## [v1.6.2] - 2026-05-26
 
 Polish + release-prep pass on top of v1.6.1.

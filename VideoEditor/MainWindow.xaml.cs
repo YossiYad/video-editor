@@ -2205,7 +2205,7 @@ public partial class MainWindow : Window
             inputArgs += $"-f gdigrab -framerate {fpsValue} -offset_x {m.X} -offset_y {m.Y} -video_size {outputW}x{outputH} -i desktop ";
             if (useWebcam)
             {
-                inputArgs += $"-f dshow -framerate {fpsValue} -i video=\"{EscapeRecorderArg(_inlineRecorderWebcamDeviceName)}\" ";
+                inputArgs += $"-f dshow -rtbufsize 200M -framerate {fpsValue} -i video=\"{EscapeRecorderArg(_inlineRecorderWebcamDeviceName)}\" ";
                 webcamPad = "[1:v]";
             }
 
@@ -2221,7 +2221,7 @@ public partial class MainWindow : Window
             inputArgs += $"-f gdigrab -framerate {fpsValue} -i desktop ";
             if (useWebcam)
             {
-                inputArgs += $"-f dshow -framerate {fpsValue} -i video=\"{EscapeRecorderArg(_inlineRecorderWebcamDeviceName)}\" ";
+                inputArgs += $"-f dshow -rtbufsize 200M -framerate {fpsValue} -i video=\"{EscapeRecorderArg(_inlineRecorderWebcamDeviceName)}\" ";
                 webcamPad = "[1:v]";
             }
 
@@ -2250,7 +2250,7 @@ public partial class MainWindow : Window
         }
 
         var filterArg = filters.ToString();
-        var args = $"{inputArgs}-filter_complex \"{filterArg}\" -map \"{finalPad}\" -c:v libx264 -preset ultrafast -pix_fmt yuv420p \"{outputPath}\"";
+        var args = $"{inputArgs}-filter_complex \"{filterArg}\" -map \"{finalPad}\" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -fps_mode cfr -r {fpsValue} \"{outputPath}\"";
         if (useWebcam)
             args += " -map \"[camout]\" -f image2pipe -vcodec mjpeg pipe:1";
         return args;
