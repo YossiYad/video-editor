@@ -4,6 +4,7 @@
         xmlns:ctl="clr-namespace:VideoEditor.Controls"
         Title="VideoEditor — Pro" Height="900" Width="1440"
         MinHeight="640" MinWidth="1280"
+        Icon="icon.ico"
         Background="{DynamicResource Bg0}"
         WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI, Heebo"
