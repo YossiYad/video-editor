@@ -138,6 +138,11 @@ public class FFmpegService
     private static string EscapeConcatPath(string path)
         => path.Replace("\\", "\\\\").Replace("'", "'\\''");
 
+    // libavfilter parses the subtitles= filter path through 2 layers (filter graph + libass).
+    // Backslashes need 4 (\\\\), colons 2 (\\:), single quotes 2 (\\').
+    private static string EscapeFilterPath(string path)
+        => path.Replace("\\", "\\\\\\\\").Replace(":", "\\\\:").Replace("'", "\\\\'");
+
     public Task StabilizeAsync(string input, string output, double duration, IProgress<double>? progress = null)
     {
         var trf = Path.Combine(Path.GetTempPath(), $"trf_{Guid.NewGuid()}.trf");
@@ -302,7 +307,9 @@ public class FFmpegService
 
     public async Task ExportProjectAsync(IList<VideoClip> clips, IList<VideoBlock> blocks,
         int canvasVideoW, int canvasVideoH, double canvasUiW, double canvasUiH,
-        double totalDuration, string output, IProgress<double>? progress = null)
+        double totalDuration, string output,
+        string? subtitlesSrtPath = null,
+        IProgress<double>? progress = null)
     {
         if (clips.Count == 0) throw new Exception("No clips.");
         var temps = new List<string>();
@@ -317,8 +324,9 @@ public class FFmpegService
             var videoClips = clips.Where(c => !c.IsAudioOnly).OrderBy(c => c.TimelineStart).ToList();
             if (videoClips.Count == 0) throw new Exception("No video clips to export.");
 
+            bool burnSubs = !string.IsNullOrEmpty(subtitlesSrtPath) && File.Exists(subtitlesSrtPath);
+
             // Pass 1: render each clip + insert black filler for real gaps in the timeline.
-            // Black is only inserted when clips don't abut (gap > 0.1s), so seamless joins stay seamless.
             const double gapEpsilon = 0.1;
             var renderQueue = new List<string>();
             double prevEnd = 0;
@@ -344,21 +352,43 @@ public class FFmpegService
             string concatList = Path.Combine(Path.GetTempPath(), $"ve_concat_{Guid.NewGuid():N}.txt");
             File.WriteAllText(concatList, string.Join("\n", renderQueue.Select(t => $"file '{EscapeConcatPath(t)}'")));
 
-            string concatOut = blocks.Count > 0
+            // The concat output becomes the final file ONLY when no extra stages follow.
+            bool extraStages = burnSubs || blocks.Count > 0;
+            string concatOut = extraStages
                 ? Path.Combine(Path.GetTempPath(), $"ve_concat_{Guid.NewGuid():N}.mp4")
                 : output;
 
             var concatArgs = $"-y -f concat -safe 0 -i \"{concatList}\" -c copy \"{concatOut}\"";
             await RunAsync(concatArgs, totalDuration, null);
-            progress?.Report(0.85);
+            progress?.Report(0.78);
 
             try { File.Delete(concatList); } catch { }
 
+            string stageIn = concatOut;
+
+            if (burnSubs)
+            {
+                string subOut = blocks.Count > 0
+                    ? Path.Combine(Path.GetTempPath(), $"ve_subbed_{Guid.NewGuid():N}.mp4")
+                    : output;
+                if (subOut != output) temps.Add(subOut);
+
+                var esc = EscapeFilterPath(subtitlesSrtPath!);
+                // Alignment=2 is bottom-center; MarginV moves it above the very bottom.
+                var style = "FontName=Heebo,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,Shadow=0,Alignment=2,MarginV=40";
+                var args = $"-y -i \"{stageIn}\" -vf \"subtitles='{esc}':force_style='{style}'\" -c:a copy \"{subOut}\"";
+                await RunAsync(args, totalDuration, new Progress<double>(p => progress?.Report(0.78 + p * 0.10)));
+
+                if (stageIn != output) { try { File.Delete(stageIn); } catch { } }
+                stageIn = subOut;
+                progress?.Report(0.88);
+            }
+
             if (blocks.Count > 0)
             {
-                await ApplyBlocksAsync(concatOut, output, blocks, targetW, targetH, canvasUiW, canvasUiH, totalDuration,
-                    new Progress<double>(p => progress?.Report(0.85 + p * 0.15)));
-                try { File.Delete(concatOut); } catch { }
+                await ApplyBlocksAsync(stageIn, output, blocks, targetW, targetH, canvasUiW, canvasUiH, totalDuration,
+                    new Progress<double>(p => progress?.Report(0.88 + p * 0.12)));
+                if (stageIn != output) { try { File.Delete(stageIn); } catch { } }
             }
             else
             {

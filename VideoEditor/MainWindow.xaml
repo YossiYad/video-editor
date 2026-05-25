@@ -376,6 +376,22 @@
 
                             <!-- Audio -->
                             <TextBlock Text="AUDIO" Style="{DynamicResource GroupLabel}"/>
+                            <Button x:Name="btnTranscribe" Style="{DynamicResource SidebarToolButton}" Click="Transcribe_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <Border Width="22" Height="22" CornerRadius="4" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1">
+                                        <TextBlock Text="📝" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <TextBlock Text="Transcribe video" Margin="9,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="btnEditSubtitles" Style="{DynamicResource SidebarToolButton}" Click="EditSubtitles_Click" Visibility="Collapsed">
+                                <StackPanel Orientation="Horizontal">
+                                    <Border Width="22" Height="22" CornerRadius="4" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1">
+                                        <TextBlock Text="✎" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <TextBlock Text="Edit subtitles" Margin="9,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
                             <Button x:Name="btnAddAudio" Style="{DynamicResource SidebarToolButton}" Click="AddAudio_Click">
                                 <StackPanel Orientation="Horizontal">
                                     <Border Width="22" Height="22" CornerRadius="4" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1">
@@ -471,6 +487,16 @@
                                           MediaEnded="VideoView_MediaEnded"
                                           MediaFailed="VideoView_MediaFailed"/>
                             <Canvas x:Name="overlayCanvas" Background="Transparent"/>
+
+                            <!-- Live subtitle overlay (bottom-center; hidden when no segment is active) -->
+                            <TextBlock x:Name="subtitleOverlay" Text="" VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                                       Margin="20,0,20,72" FontSize="22" FontWeight="Bold" Foreground="White"
+                                       TextAlignment="Center" TextWrapping="Wrap" MaxWidth="900"
+                                       IsHitTestVisible="False" Visibility="Collapsed">
+                                <TextBlock.Effect>
+                                    <DropShadowEffect Color="Black" BlurRadius="6" ShadowDepth="0" Opacity="0.9"/>
+                                </TextBlock.Effect>
+                            </TextBlock>
 
                             <!-- HUD strip -->
                             <Border VerticalAlignment="Bottom" Background="#CC0A0C12" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="12,7">

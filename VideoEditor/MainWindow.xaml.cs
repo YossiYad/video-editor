@@ -37,6 +37,8 @@ public partial class MainWindow : Window
     // The audio bar of a clip currently selected on the timeline (separate from clip body selection)
     private VideoClip? _selectedAudio;
 
+    private readonly List<SubtitleSegment> _subtitles = new();
+
     public MainWindow()
     {
         InitializeComponent();
@@ -333,6 +335,7 @@ public partial class MainWindow : Window
             var withinClip = (mediaPos - _playingClip.InPoint) / Math.Max(0.01, _playingClip.Speed);
             timeline.SetCurrent(clipStart + withinClip);
             UpdateBlockVisibility();
+            UpdateSubtitleOverlay(clipStart + withinClip);
             UpdateTimeDisplays();
         }
         catch (Exception ex)
@@ -1298,10 +1301,23 @@ public partial class MainWindow : Window
             // Export in timeline order
             var orderedClips = timeline.Clips.OrderBy(c => c.TimelineStart).ToList();
             var first = orderedClips[0];
-            await _ff.ExportProjectAsync(orderedClips, timeline.Blocks.ToList(),
-                first.VideoWidth, first.VideoHeight,
-                overlayCanvas.ActualWidth, overlayCanvas.ActualHeight,
-                timeline.TotalSeconds, sfd.FileName, prog);
+            string? subSrtPath = null;
+            if (_subtitles.Count > 0)
+            {
+                subSrtPath = Path.Combine(Path.GetTempPath(), $"ve_subs_{Guid.NewGuid():N}.srt");
+                WhisperService.WriteSrt(_subtitles, subSrtPath);
+            }
+            try
+            {
+                await _ff.ExportProjectAsync(orderedClips, timeline.Blocks.ToList(),
+                    first.VideoWidth, first.VideoHeight,
+                    overlayCanvas.ActualWidth, overlayCanvas.ActualHeight,
+                    timeline.TotalSeconds, sfd.FileName, subSrtPath, prog);
+            }
+            finally
+            {
+                if (subSrtPath != null) { try { File.Delete(subSrtPath); } catch { } }
+            }
             status.Text = "Exported: " + sfd.FileName;
             progress.Value = 1;
             if (MessageBox.Show("Open output folder?", "Done", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
@@ -1344,6 +1360,71 @@ public partial class MainWindow : Window
     }
 
 private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { Owner = this }.ShowDialog();
+
+    private void Transcribe_Click(object s, RoutedEventArgs e)
+    {
+        if (timeline.Clips.Count == 0 || !timeline.Clips.Any(c => !c.IsAudioOnly))
+        {
+            MessageBox.Show("Add a video clip first.", "Transcribe", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        var dlg = new TranscribeWindow(_selectedClip, timeline.Clips) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+
+        _subtitles.Clear();
+        _subtitles.AddRange(dlg.Segments);
+        UpdateEditSubtitlesButton();
+        OpenSubtitleEditor();
+    }
+
+    private void EditSubtitles_Click(object s, RoutedEventArgs e) => OpenSubtitleEditor();
+
+    private void OpenSubtitleEditor()
+    {
+        if (_subtitles.Count == 0) return;
+        var editor = new SubtitleEditorWindow(_subtitles) { Owner = this };
+        if (editor.ShowDialog() == true)
+        {
+            _subtitles.Clear();
+            _subtitles.AddRange(editor.Segments);
+            status.Text = _subtitles.Count > 0
+                ? $"Subtitles ready · {_subtitles.Count} segments — will burn into export"
+                : "Subtitles cleared";
+            UpdateSubtitleOverlay(timeline.CurrentSeconds);
+            UpdateEditSubtitlesButton();
+        }
+    }
+
+    private void UpdateEditSubtitlesButton()
+    {
+        if (btnEditSubtitles == null) return;
+        btnEditSubtitles.Visibility = _subtitles.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateSubtitleOverlay(double currentSec)
+    {
+        if (subtitleOverlay == null) return;
+        if (_subtitles.Count == 0)
+        {
+            if (subtitleOverlay.Visibility != Visibility.Collapsed) subtitleOverlay.Visibility = Visibility.Collapsed;
+            return;
+        }
+        SubtitleSegment? active = null;
+        for (int i = 0; i < _subtitles.Count; i++)
+        {
+            var s = _subtitles[i];
+            if (currentSec >= s.StartSeconds && currentSec <= s.EndSeconds) { active = s; break; }
+        }
+        if (active != null)
+        {
+            if (subtitleOverlay.Text != active.Text) subtitleOverlay.Text = active.Text;
+            if (subtitleOverlay.Visibility != Visibility.Visible) subtitleOverlay.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            if (subtitleOverlay.Visibility != Visibility.Collapsed) subtitleOverlay.Visibility = Visibility.Collapsed;
+        }
+    }
 
     private async void DownloadUrl_Click(object s, RoutedEventArgs e)
     {
@@ -1616,7 +1697,7 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
                 first.VideoWidth > 0 ? first.VideoWidth : 1920,
                 first.VideoHeight > 0 ? first.VideoHeight : 1080,
                 overlayCanvas.ActualWidth, overlayCanvas.ActualHeight,
-                timeline.TotalSeconds, tempVideo, prog1);
+                timeline.TotalSeconds, tempVideo, null, prog1);
 
             status.Text = "Extracting audio...";
             var prog2 = new Progress<double>(v => Dispatcher.Invoke(() => progress.Value = 0.8 + v * 0.2));

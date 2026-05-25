@@ -69,6 +69,14 @@ public static class AppSettings
     /// <summary>EBU R128 normalization. Wired in FFmpegService.RenderClipAsync.</summary>
     public static bool AudioLoudnorm { get; set; } = true;
 
+    // ----- Transcription -----
+    /// <summary>"tiny" | "base" | "small" - default whisper model.</summary>
+    public static string LastTranscribeModel { get; set; } = "base";
+    /// <summary>"auto" | "he" | "en" - last picked transcription language.</summary>
+    public static string LastTranscribeLanguage { get; set; } = "auto";
+    /// <summary>"clip" | "all" - transcribe selected clip vs all video clips.</summary>
+    public static string LastTranscribeSource { get; set; } = "clip";
+
     // ----- Storage -----
     public static string DownloadsFolder { get; set; } = "";
     public static string CacheFolder { get; set; } = "";
@@ -107,6 +115,10 @@ public static class AppSettings
         public string? HardwareAccel { get; set; }
         public bool TwoPass { get; set; }
         public bool AudioLoudnorm { get; set; } = true;
+
+        public string? LastTranscribeModel { get; set; }
+        public string? LastTranscribeLanguage { get; set; }
+        public string? LastTranscribeSource { get; set; }
 
         public string? DownloadsFolder { get; set; }
         public string? CacheFolder { get; set; }
@@ -151,6 +163,9 @@ public static class AppSettings
             if (!string.IsNullOrEmpty(d.HardwareAccel)) HardwareAccel = d.HardwareAccel;
             TwoPass = d.TwoPass;
             AudioLoudnorm = d.AudioLoudnorm;
+            if (!string.IsNullOrEmpty(d.LastTranscribeModel)) LastTranscribeModel = d.LastTranscribeModel;
+            if (!string.IsNullOrEmpty(d.LastTranscribeLanguage)) LastTranscribeLanguage = d.LastTranscribeLanguage;
+            if (!string.IsNullOrEmpty(d.LastTranscribeSource)) LastTranscribeSource = d.LastTranscribeSource;
             if (!string.IsNullOrEmpty(d.DownloadsFolder)) DownloadsFolder = d.DownloadsFolder;
             if (!string.IsNullOrEmpty(d.CacheFolder)) CacheFolder = d.CacheFolder;
             if (!string.IsNullOrEmpty(d.MaxCacheSize)) MaxCacheSize = d.MaxCacheSize;
@@ -185,6 +200,9 @@ public static class AppSettings
                 ExportCodec = ExportCodec, ExportContainer = ExportContainer,
                 ExportAudioBitrate = ExportAudioBitrate,
                 HardwareAccel = HardwareAccel, TwoPass = TwoPass, AudioLoudnorm = AudioLoudnorm,
+                LastTranscribeModel = LastTranscribeModel,
+                LastTranscribeLanguage = LastTranscribeLanguage,
+                LastTranscribeSource = LastTranscribeSource,
                 DownloadsFolder = DownloadsFolder, CacheFolder = CacheFolder,
                 MaxCacheSize = MaxCacheSize, AutoCleanCache = AutoCleanCache,
             };
