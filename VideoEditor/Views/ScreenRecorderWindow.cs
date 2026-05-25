@@ -163,12 +163,12 @@ public class ScreenRecorderWindow : Window
                 {
                     var m = monitors[idx - 1];
                     diagText.Text = m.HasDpiScaling
-                        ? $"Capturing rect [x={m.X}, y={m.Y}, w={m.Width}, h={m.Height}] · physical {m.PhysicalWidth}×{m.PhysicalHeight} (DPI-scaled view)"
-                        : $"Capturing rect [x={m.X}, y={m.Y}, w={m.Width}, h={m.Height}]";
+                        ? $"Recording at full physical {m.PhysicalWidth}×{m.PhysicalHeight} via ddagrab (DXGI Desktop Duplication) · preview is the DPI-scaled view"
+                        : $"Recording at {m.Width}×{m.Height} via ddagrab (output_idx={m.Index})";
                 }
                 else
                 {
-                    diagText.Text = $"Capturing entire virtual desktop · " +
+                    diagText.Text = $"Recording entire virtual desktop via gdigrab · " +
                         $"x={(int)SystemParameters.VirtualScreenLeft}, " +
                         $"y={(int)SystemParameters.VirtualScreenTop}, " +
                         $"w={(int)SystemParameters.VirtualScreenWidth}, " +
@@ -264,26 +264,35 @@ public class ScreenRecorderWindow : Window
                 }
                 else
                 {
-                    // gdigrab is DPI-unaware, so it sees coords in the SCALED (virtual)
-                    // coordinate space. Use rcMonitor (X / Y / Width / Height) for offset
-                    // — NOT the physical dimensions — and pass the matching size. ffmpeg
-                    // captures the whole monitor at scaled resolution; the resulting file
-                    // is then the same pixel size the user sees on screen.
-                    string sourceArgs;
+                    // For specific-monitor capture, use ddagrab — ffmpeg's modern Desktop
+                    // Duplication API (DXGI) source. Unlike the legacy gdigrab, ddagrab is
+                    // DPI-aware and captures at PHYSICAL pixel resolution, so a 1920×1080
+                    // monitor displayed via 150% Windows scaling is recorded at the full
+                    // 1920×1080 — not the 1280×720 logical size gdigrab would see.
+                    //
+                    // For "Entire desktop (all monitors)" we still use gdigrab because
+                    // ddagrab is per-monitor only.
                     int monIdx = monitorBox?.SelectedIndex ?? 0;
                     if (monIdx > 0 && monIdx - 1 < monitors.Count)
                     {
                         var m = monitors[monIdx - 1];
                         AppSettings.LastScreenRecorderMonitor = m.Index;
-                        sourceArgs = $"-offset_x {m.X} -offset_y {m.Y} -video_size {m.Width}x{m.Height} -i desktop";
+                        AppSettings.Save();
+                        // ddagrab uses lavfi virtual input; output_idx is the DXGI output
+                        // index which maps to monitors in attach order (matches our
+                        // MonitorInfo.Index for typical multi-monitor setups). Add a
+                        // pixel-format conversion afterwards so libx264 doesn't choke on
+                        // ddagrab's native BGRA output.
+                        args = $"-y -filter_complex \"ddagrab=output_idx={m.Index}:framerate={fpsValue},hwdownload,format=bgra,format=yuv420p[v]\" " +
+                               $"-map \"[v]\" -c:v libx264 -preset ultrafast \"{path.Text}\"";
                     }
                     else
                     {
                         AppSettings.LastScreenRecorderMonitor = -1;
-                        sourceArgs = "-i desktop";
+                        AppSettings.Save();
+                        // Entire virtual desktop: stick with gdigrab (multi-monitor span).
+                        args = $"-y -f gdigrab -framerate {fpsValue} -i desktop -c:v libx264 -preset ultrafast -pix_fmt yuv420p \"{path.Text}\"";
                     }
-                    AppSettings.Save();
-                    args = $"-y -f gdigrab -framerate {fpsValue} {sourceArgs} -c:v libx264 -preset ultrafast -pix_fmt yuv420p \"{path.Text}\"";
                 }
                 _proc = new Process
                 {
@@ -368,6 +377,9 @@ public class ScreenRecorderWindow : Window
             if (idx > 0 && idx - 1 < monitors.Count)
             {
                 var m = monitors[idx - 1];
+                // Use rcMonitor for position (matches CopyFromScreen's coordinate space)
+                // but if DPI scaling is in play, scale the size up to physical so the
+                // captured bitmap matches what the user actually sees on the monitor.
                 x = m.X; y = m.Y; w = m.Width; h = m.Height;
             }
             else
