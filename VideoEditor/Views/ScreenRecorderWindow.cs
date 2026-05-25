@@ -89,7 +89,33 @@ public class ScreenRecorderWindow : Window
         Border? previewFrame = null;
         if (!webcam)
         {
-            ch.Body.Children.Add(WindowBuilder.Lbl("Live preview"));
+            // Preview header row: "LIVE PREVIEW" label + "🔍 Enlarge" button on the right.
+            var previewHeader = new Grid { Margin = new Thickness(0, 12, 0, 5) };
+            previewHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            previewHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var previewLbl = new TextBlock
+            {
+                Text = "LIVE PREVIEW",
+                FontSize = 10.5,
+                FontWeight = FontWeights.Bold,
+                Foreground = WindowBuilder.TextDim,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(previewLbl, 0);
+            previewHeader.Children.Add(previewLbl);
+            var enlargeBtn = new Button
+            {
+                Content = "🔍 Enlarge",
+                MinWidth = 96,
+                Height = 26,
+                FontSize = 11,
+                Padding = new Thickness(8, 2, 8, 2)
+            };
+            enlargeBtn.Style = (Style)FindResource("ToolButton");
+            Grid.SetColumn(enlargeBtn, 1);
+            previewHeader.Children.Add(enlargeBtn);
+            ch.Body.Children.Add(previewHeader);
+
             previewFrame = new Border
             {
                 Background = System.Windows.Media.Brushes.Black,
@@ -110,7 +136,7 @@ public class ScreenRecorderWindow : Window
             ch.Body.Children.Add(previewFrame);
             ch.Body.Children.Add(new TextBlock
             {
-                Text = "Preview updates 6×/sec. Drag the window wider for a bigger preview. The recording itself captures at the FPS above.",
+                Text = "Preview updates 6×/sec. Click 🔍 Enlarge for a full-window preview, or drag the dialog wider. The recording itself captures at the FPS above.",
                 FontSize = 10.5,
                 Foreground = WindowBuilder.TextDim,
                 Margin = new Thickness(0, 0, 0, 4),
@@ -125,6 +151,39 @@ public class ScreenRecorderWindow : Window
             // Refresh once whenever the user changes the chosen monitor.
             if (monitorBox != null)
                 monitorBox.SelectionChanged += (_, _) => CaptureMonitorPreview(monitorBox, monitors);
+
+            // Pop the live preview out into a separate full-window viewer that the
+            // user can maximise / resize freely. The same _previewImage.Source is
+            // pushed by the same DispatcherTimer, so both Images mirror in real time.
+            enlargeBtn.Click += (_, _) =>
+            {
+                var bigWin = new Window
+                {
+                    Title = "Live Preview - " + (monitorBox?.SelectedItem?.ToString() ?? "Desktop"),
+                    Width = 1280,
+                    Height = 760,
+                    MinWidth = 320,
+                    MinHeight = 200,
+                    Background = System.Windows.Media.Brushes.Black,
+                    Owner = this,
+                    WindowStartupLocation = WindowStartupLocation.CenterOwner
+                };
+                var bigImage = new System.Windows.Controls.Image { Stretch = Stretch.Uniform };
+                bigWin.Content = bigImage;
+                // Drive the second image from the same timer tick so both views are
+                // always in sync. Unsubscribe when the popped-out window closes so
+                // we don't leak the handler.
+                EventHandler bigTick = (_, _) =>
+                {
+                    if (_previewImage?.Source is BitmapSource s) bigImage.Source = s;
+                };
+                if (_previewTimer != null) _previewTimer.Tick += bigTick;
+                bigWin.Closed += (_, _) =>
+                {
+                    if (_previewTimer != null) _previewTimer.Tick -= bigTick;
+                };
+                bigWin.Show();
+            };
         }
 
         // Recording status indicator
