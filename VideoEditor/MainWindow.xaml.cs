@@ -84,6 +84,10 @@ public partial class MainWindow : Window
         timeline.ClipEdgeDragEnded += c => { /* leave preview at the trim point */ };
         timeline.AudioSelected += OnAudioSelected;
         timeline.AudioContextAction += OnAudioContextAction;
+        timeline.TextOverlaySelected += o => { /* selection visual handled by Timeline */ };
+        timeline.TextOverlayContextAction += OnTextOverlayContext;
+        timeline.TextOverlayChanged += o => _textOverlayDirty.Add(o);
+        timeline.TextOverlaysChanged += () => UpdateStats();
         timeline.ClipsChanged += () =>
         {
             if (timeline.Clips.Count > 0 && _playingClip == null) LoadClipForPreview(timeline.Clips[0], 0);
@@ -92,9 +96,202 @@ public partial class MainWindow : Window
         };
         timeline.BlocksChanged += () => UpdateStats();
 
-        overlayCanvas.SizeChanged += (_, _) => RepositionOverlay();
+        overlayCanvas.SizeChanged += (_, _) =>
+        {
+            RepositionOverlay();
+            // Scale of every text-overlay preview control depends on canvas size — mark all dirty
+            // so the next tick re-styles + re-places them. Cheap because it only happens on resize.
+            foreach (var ov in timeline.TextOverlays) _textOverlayDirty.Add(ov);
+        };
         overlayCanvas.MouseLeftButtonDown += OverlayCanvas_BackgroundClick;
+        WirePreviewCanvasTransformGestures();
     }
+
+    // ===== Direct manipulation of the canvas transform =====
+    //
+    // - Click and drag inside the preview to pan the selected clip on the canvas.
+    // - Scroll the mouse wheel inside the preview to zoom in/out (Ctrl+Scroll = finer step).
+    // - Double-click resets the clip to "fit the canvas exactly" (scale=1, offset=0,0).
+    //
+    // Behaviour is no-op when no video clip is selected.
+    private bool _canvasDragActive;
+    private Point _canvasDragStartMouse;
+    private double _canvasDragStartOffX;
+    private double _canvasDragStartOffY;
+
+    private void WirePreviewCanvasTransformGestures()
+    {
+        if (videoView == null) return;
+        videoView.MouseLeftButtonDown += PreviewCanvas_MouseDown;
+        videoView.MouseMove += PreviewCanvas_MouseMove;
+        videoView.MouseLeftButtonUp += PreviewCanvas_MouseUp;
+        videoView.MouseWheel += PreviewCanvas_MouseWheel;
+        videoView.MouseRightButtonDown += PreviewCanvas_MouseRight;
+        videoView.Cursor = Cursors.SizeAll;
+    }
+
+    private VideoClip? CanvasTargetClip() =>
+        _selectedClip != null && !_selectedClip.IsAudioOnly ? _selectedClip : _playingClip;
+
+    private void PreviewCanvas_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        var c = CanvasTargetClip();
+        if (c == null) return;
+        if (e.ClickCount >= 2)
+        {
+            c.CanvasScale = 1.0;
+            c.CanvasOffsetX = 0;
+            c.CanvasOffsetY = 0;
+            ApplyClipTransform(c);
+            UpdateInspectorCanvasFields();
+            e.Handled = true;
+            return;
+        }
+        _canvasDragActive = true;
+        _canvasDragStartMouse = e.GetPosition(videoView);
+        _canvasDragStartOffX = c.CanvasOffsetX;
+        _canvasDragStartOffY = c.CanvasOffsetY;
+        videoView.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void PreviewCanvas_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_canvasDragActive) return;
+        var c = CanvasTargetClip();
+        if (c == null) return;
+        var p = e.GetPosition(videoView);
+        double w = videoView.ActualWidth, h = videoView.ActualHeight;
+        if (w < 1 || h < 1) return;
+        c.CanvasOffsetX = _canvasDragStartOffX + (p.X - _canvasDragStartMouse.X) / w;
+        c.CanvasOffsetY = _canvasDragStartOffY + (p.Y - _canvasDragStartMouse.Y) / h;
+        ApplyClipTransform(c);
+        UpdateInspectorCanvasFields();
+    }
+
+    private void PreviewCanvas_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_canvasDragActive) return;
+        _canvasDragActive = false;
+        videoView.ReleaseMouseCapture();
+        e.Handled = true;
+    }
+
+    private void PreviewCanvas_MouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        var c = CanvasTargetClip();
+        if (c == null) return;
+        double step = (Keyboard.Modifiers & ModifierKeys.Control) != 0 ? 0.02 : 0.08;
+        double delta = e.Delta > 0 ? step : -step;
+        c.CanvasScale = Math.Max(0.1, Math.Min(6.0, c.CanvasScale * (1 + delta)));
+        ApplyClipTransform(c);
+        UpdateInspectorCanvasFields();
+        e.Handled = true;
+    }
+
+    private void PreviewCanvas_MouseRight(object sender, MouseButtonEventArgs e)
+    {
+        // Right-click to reset, mirrors double-click but easier on touchpads.
+        var c = CanvasTargetClip();
+        if (c == null) return;
+        c.CanvasScale = 1.0;
+        c.CanvasOffsetX = 0;
+        c.CanvasOffsetY = 0;
+        ApplyClipTransform(c);
+        UpdateInspectorCanvasFields();
+        e.Handled = true;
+    }
+
+    private Action? _updateInspectorCanvasFields;
+    private void UpdateInspectorCanvasFields()
+    {
+        _updateInspectorCanvasFields?.Invoke();
+        RepositionCanvasHandles();
+    }
+
+    // ===== Corner resize handles =====
+    //
+    // Four 20×20 squares pinned to the four corners of the project canvas via XAML
+    // alignment, so they don't depend on the Canvas's measured size (which is fragile).
+    // Dragging any handle scales the clip uniformly from the canvas centre — the new
+    // scale = startScale × (currentDistFromCentre / startDistFromCentre).
+
+    private bool _handleDragActive;
+    private Point _handleDragCentre;
+    private double _handleDragStartDist;
+    private double _handleDragStartScale;
+
+    private void RepositionCanvasHandles()
+    {
+        if (canvasHandlesLayer == null) return;
+        var c = CanvasTargetClip();
+        if (c == null || c.IsAudioOnly || c.VideoWidth <= 0 || c.VideoHeight <= 0 ||
+            videoStack.ActualWidth < 1 || videoStack.ActualHeight < 1)
+        {
+            canvasHandlesLayer.Visibility = Visibility.Collapsed;
+            return;
+        }
+        canvasHandlesLayer.Visibility = Visibility.Visible;
+
+        // Size the layer to match the *actual* displayed video, not the whole canvas.
+        // MediaElement uses Stretch=Uniform so the base displayed size is the source dimensions
+        // scaled by min(canvasW/srcW, canvasH/srcH); the user's CanvasScale multiplies that.
+        // When scale > 1 the displayed image is bigger than the canvas — clamp the layer to
+        // canvas size so handles stay inside the visible region.
+        double canvasW = videoStack.ActualWidth;
+        double canvasH = videoStack.ActualHeight;
+        double baseScale = Math.Min(canvasW / c.VideoWidth, canvasH / c.VideoHeight);
+        double dispW = c.VideoWidth * baseScale * c.CanvasScale;
+        double dispH = c.VideoHeight * baseScale * c.CanvasScale;
+        double layerW = Math.Min(dispW, canvasW);
+        double layerH = Math.Min(dispH, canvasH);
+        canvasHandlesLayer.Width = layerW;
+        canvasHandlesLayer.Height = layerH;
+        // Center in the canvas, then shift by the user's offset.
+        canvasHandlesLayer.RenderTransform = new TranslateTransform(
+            c.CanvasOffsetX * canvasW,
+            c.CanvasOffsetY * canvasH);
+    }
+
+    private void CanvasHandle_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        var c = CanvasTargetClip();
+        if (c == null || sender is not Border h) return;
+        // Centre of the visible project canvas — handles drag relative to this point.
+        double w = canvasHandlesLayer.ActualWidth;
+        double hh = canvasHandlesLayer.ActualHeight;
+        if (w < 1 || hh < 1) return;
+        _handleDragCentre = new Point(w / 2, hh / 2);
+        var mp = e.GetPosition(canvasHandlesLayer);
+        _handleDragStartDist = Math.Max(8, Distance(mp, _handleDragCentre));
+        _handleDragStartScale = c.CanvasScale;
+        _handleDragActive = true;
+        h.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void CanvasHandle_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_handleDragActive) return;
+        var c = CanvasTargetClip();
+        if (c == null) return;
+        var mp = e.GetPosition(canvasHandlesLayer);
+        double dist = Math.Max(4, Distance(mp, _handleDragCentre));
+        c.CanvasScale = _handleDragStartScale * (dist / _handleDragStartDist);
+        ApplyClipTransform(c);
+        UpdateInspectorCanvasFields();
+    }
+
+    private void CanvasHandle_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_handleDragActive) return;
+        _handleDragActive = false;
+        if (sender is Border h) h.ReleaseMouseCapture();
+        e.Handled = true;
+    }
+
+    private static double Distance(Point a, Point b) =>
+        Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y));
 
     protected override void OnClosed(EventArgs e)
     {
@@ -244,6 +441,13 @@ public partial class MainWindow : Window
         else                       { w = aw; h = w / targetRatio; }
         videoContainer.Width  = Math.Max(40, w);
         videoContainer.Height = Math.Max(40, h);
+        // The videoView's actual size just changed → the ScaleTransform pivot and
+        // TranslateTransform amount baked into RenderTransform are wrong. Re-apply
+        // the transform so it tracks the new size, and refresh the handles.
+        if (_playingClip != null)
+            Dispatcher.BeginInvoke(new Action(() => ApplyClipTransform(_playingClip)),
+                System.Windows.Threading.DispatcherPriority.Loaded);
+        RepositionCanvasHandles();
     }
 
     private void UpdateTopbarDims()
@@ -348,6 +552,9 @@ public partial class MainWindow : Window
             videoView.SpeedRatio = clip.Speed;
             videoView.Volume = _masterVolume * clip.Volume;
             ApplyClipTransform(clip);
+            // Show resize handles as soon as a clip is loaded — even before the user
+            // explicitly selects it in the timeline.
+            Dispatcher.BeginInvoke(new Action(RepositionCanvasHandles), System.Windows.Threading.DispatcherPriority.Loaded);
             if (!_isPlaying)
             {
                 videoView.Play();
@@ -362,27 +569,53 @@ public partial class MainWindow : Window
 
     private void ApplyClipTransform(VideoClip clip)
     {
+        // Any transform change should also slide the handles to the new corners.
+        Dispatcher.BeginInvoke(new Action(RepositionCanvasHandles), System.Windows.Threading.DispatcherPriority.Loaded);
+        double cx = videoView.ActualWidth / 2, cy = videoView.ActualHeight / 2;
         var tg = new TransformGroup();
-        tg.Children.Add(new ScaleTransform(clip.FlipH ? -1 : 1, clip.FlipV ? -1 : 1, videoView.ActualWidth / 2, videoView.ActualHeight / 2));
+        // 1) flip around centre
+        double sx = clip.FlipH ? -1 : 1;
+        double sy = clip.FlipV ? -1 : 1;
+        // 2) user canvas zoom multiplies the flip scale
+        sx *= clip.CanvasScale;
+        sy *= clip.CanvasScale;
+        tg.Children.Add(new ScaleTransform(sx, sy, cx, cy));
         if (clip.RotateDegrees != 0)
-            tg.Children.Add(new RotateTransform(clip.RotateDegrees, videoView.ActualWidth / 2, videoView.ActualHeight / 2));
+            tg.Children.Add(new RotateTransform(clip.RotateDegrees, cx, cy));
+        // 3) user canvas offset, expressed as a fraction of canvas size
+        if (Math.Abs(clip.CanvasOffsetX) > 0.001 || Math.Abs(clip.CanvasOffsetY) > 0.001)
+        {
+            tg.Children.Add(new TranslateTransform(
+                clip.CanvasOffsetX * videoView.ActualWidth,
+                clip.CanvasOffsetY * videoView.ActualHeight));
+        }
         videoView.RenderTransform = tg;
     }
 
     private void SeekTo(double seconds)
     {
         var clip = timeline.GetClipAt(seconds);
-        if (clip == null) { timeline.SetCurrent(seconds); return; }
+        if (clip == null) { timeline.SetCurrent(seconds); UpdateBlockVisibility(); return; }
+        timeline.SetCurrent(seconds);
+
         var withinClip = Math.Max(0, seconds - clip.TimelineStart) * clip.Speed;
         if (clip != _playingClip)
         {
+            // Source change is unavoidable heavy work — do it once, not coalesced.
             LoadClipForPreview(clip, withinClip);
         }
         else
         {
-            try { videoView.Position = TimeSpan.FromSeconds(clip.InPoint + withinClip); } catch { }
+            // Playhead drag fires Seek ~100×/sec. Writing videoView.Position that fast
+            // backs up the decoder queue (choppy audio, freezes). Route through the
+            // existing 35 ms scrub timer so we coalesce a burst of seeks into a single
+            // decode + Position write. Single-shot seeks (Back/Fwd buttons, click-on-
+            // ruler) still feel instant because there's only one call.
+            ScrubToClipFrame(clip, clip.InPoint + withinClip);
         }
-        timeline.SetCurrent(seconds);
+        // Block + text overlay visibility tracks the playhead in real time, paused or not —
+        // so scrubbing past a hide block's range immediately reveals the underlying frame.
+        UpdateBlockVisibility();
     }
 
     private VideoClip? NextClipAfter(VideoClip c)
@@ -438,6 +671,7 @@ public partial class MainWindow : Window
             var withinClip = (mediaPos - _playingClip.InPoint) / Math.Max(0.01, _playingClip.Speed);
             timeline.SetCurrent(clipStart + withinClip);
             UpdateBlockVisibility();
+            UpdateTextOverlaysVisibility(clipStart + withinClip);
             UpdateTimeDisplays();
         }
         catch (Exception ex)
@@ -466,7 +700,12 @@ public partial class MainWindow : Window
         }
     }
 
-    private void VideoView_MediaOpened(object sender, RoutedEventArgs e) { }
+    private void VideoView_MediaOpened(object sender, RoutedEventArgs e)
+    {
+        // Video dimensions are first reliable here — RepositionCanvasHandles needs them to
+        // compute the actual displayed bounds.
+        RepositionCanvasHandles();
+    }
     private void VideoView_MediaFailed(object sender, ExceptionRoutedEventArgs e)
     {
         var fileName = _playingClip?.DisplayName ?? videoView.Source?.LocalPath ?? "(unknown)";
@@ -638,6 +877,9 @@ public partial class MainWindow : Window
         foreach (var kv in _blockControls) kv.Value.SetSelected(kv.Key == b);
         timeline.SelectBlock(b);
         ShowInspectorTab(b != null ? "block" : (_selectedClip != null ? "clip" : "export"));
+        // Selection changed → previously-selected block (if out of range) must now hide;
+        // the newly-selected one must now show even if out of range.
+        UpdateBlockVisibility();
         if (b == null) return;
         _suppress = true;
         lblBox.Text = b.Label;
@@ -646,34 +888,41 @@ public partial class MainWindow : Window
         strengthSlider.Value = b.BlurStrength;
         strengthLabel.Text = ((int)b.BlurStrength).ToString();
         wholeCheck.IsChecked = b.CoversWholeVideo;
-        FillHmsBoxes(b.StartSeconds, startH, startM, startS);
-        FillHmsBoxes(b.EndSeconds, endH, endM, endS);
+        FillHmsBoxes(b.StartSeconds, startH, startM, startS, startMs);
+        FillHmsBoxes(b.EndSeconds, endH, endM, endS, endMs);
         _suppress = false;
     }
 
-    private static void FillHmsBoxes(double totalSeconds, TextBox hBox, TextBox mBox, TextBox sBox)
+    private static void FillHmsBoxes(double totalSeconds, TextBox hBox, TextBox mBox, TextBox sBox, TextBox msBox)
     {
         if (totalSeconds < 0) totalSeconds = 0;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
         var h = (int)(totalSeconds / 3600);
         var m = (int)((totalSeconds - h * 3600) / 60);
-        var s = totalSeconds - h * 3600 - m * 60;
-        hBox.Text = h.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        mBox.Text = m.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        sBox.Text = s.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        var s = (int)(totalSeconds - h * 3600 - m * 60);
+        var ms = (int)Math.Round((totalSeconds - h * 3600 - m * 60 - s) * 1000);
+        // Floating-point round-up: 12.9996 → 13 s 0 ms (not 12 s 1000 ms).
+        if (ms >= 1000) { ms -= 1000; s += 1; if (s >= 60) { s -= 60; m += 1; if (m >= 60) { m -= 60; h += 1; } } }
+        hBox.Text = h.ToString(inv);
+        mBox.Text = m.ToString(inv);
+        sBox.Text = s.ToString(inv);
+        msBox.Text = ms.ToString("000", inv);
     }
 
-    private static double ReadHmsBoxes(TextBox hBox, TextBox mBox, TextBox sBox)
+    private static double ReadHmsBoxes(TextBox hBox, TextBox mBox, TextBox sBox, TextBox msBox)
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         var any = System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowThousands;
-        double h = 0, m = 0, s = 0;
+        double h = 0, m = 0, s = 0, ms = 0;
         double.TryParse(hBox.Text, any, inv, out h);
         double.TryParse(mBox.Text, any, inv, out m);
         double.TryParse(sBox.Text, any, inv, out s);
+        double.TryParse(msBox.Text, any, inv, out ms);
         if (h < 0) h = 0;
         if (m < 0) m = 0;
         if (s < 0) s = 0;
-        return h * 3600 + m * 60 + s;
+        if (ms < 0) ms = 0;
+        return h * 3600 + m * 60 + s + ms / 1000.0;
     }
 
     private void SelectClip(VideoClip? c)
@@ -682,6 +931,7 @@ public partial class MainWindow : Window
         if (c != null) _selectedBlock = null;
         timeline.SelectClip(c);
         ShowInspectorTab(c != null ? "clip" : (_selectedBlock != null ? "block" : "export"));
+        RepositionCanvasHandles();
         if (c == null) return;
         _suppress = true;
         clipNameText.Text = c.DisplayName;
@@ -697,7 +947,68 @@ public partial class MainWindow : Window
         clipSpeedLabel.Text = c.Speed.ToString("0.00") + "×";
         clipVolSlider.Value = c.Volume;
         clipVolLabel.Text = (c.Volume * 100).ToString("0") + "%";
+        canvasScaleSlider.Value = c.CanvasScale;
+        canvasOffsetXSlider.Value = c.CanvasOffsetX;
+        canvasOffsetYSlider.Value = c.CanvasOffsetY;
+        UpdateCanvasLabels(c);
         _suppress = false;
+        // Capture once for the gesture handlers (re-applies on every drag).
+        _updateInspectorCanvasFields = () =>
+        {
+            if (_selectedClip == null) return;
+            _suppress = true;
+            canvasScaleSlider.Value = _selectedClip.CanvasScale;
+            canvasOffsetXSlider.Value = _selectedClip.CanvasOffsetX;
+            canvasOffsetYSlider.Value = _selectedClip.CanvasOffsetY;
+            UpdateCanvasLabels(_selectedClip);
+            _suppress = false;
+        };
+    }
+
+    private void UpdateCanvasLabels(VideoClip c)
+    {
+        if (canvasScaleText != null)
+            canvasScaleText.Text = ((int)Math.Round(c.CanvasScale * 100)).ToString() + "%";
+        if (canvasOffsetXText != null)
+            canvasOffsetXText.Text = ((int)Math.Round(c.CanvasOffsetX * 100)).ToString() + "%";
+        if (canvasOffsetYText != null)
+            canvasOffsetYText.Text = ((int)Math.Round(c.CanvasOffsetY * 100)).ToString() + "%";
+    }
+
+    private void CanvasScale_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_suppress || _selectedClip == null) return;
+        _selectedClip.CanvasScale = e.NewValue;
+        UpdateCanvasLabels(_selectedClip);
+        if (_playingClip == _selectedClip) ApplyClipTransform(_selectedClip);
+    }
+    private void CanvasOffsetX_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_suppress || _selectedClip == null) return;
+        _selectedClip.CanvasOffsetX = e.NewValue;
+        UpdateCanvasLabels(_selectedClip);
+        if (_playingClip == _selectedClip) ApplyClipTransform(_selectedClip);
+    }
+    private void CanvasOffsetY_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_suppress || _selectedClip == null) return;
+        _selectedClip.CanvasOffsetY = e.NewValue;
+        UpdateCanvasLabels(_selectedClip);
+        if (_playingClip == _selectedClip) ApplyClipTransform(_selectedClip);
+    }
+    private void CanvasReset_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedClip == null) return;
+        _selectedClip.CanvasScale = 1.0;
+        _selectedClip.CanvasOffsetX = 0;
+        _selectedClip.CanvasOffsetY = 0;
+        _suppress = true;
+        canvasScaleSlider.Value = 1.0;
+        canvasOffsetXSlider.Value = 0;
+        canvasOffsetYSlider.Value = 0;
+        _suppress = false;
+        UpdateCanvasLabels(_selectedClip);
+        if (_playingClip == _selectedClip) ApplyClipTransform(_selectedClip);
     }
 
     // Show one of the three inspector panels (block / clip / export).
@@ -790,8 +1101,8 @@ public partial class MainWindow : Window
     {
         if (_selectedBlock == null) return;
         _suppress = true;
-        FillHmsBoxes(_selectedBlock.StartSeconds, startH, startM, startS);
-        FillHmsBoxes(_selectedBlock.EndSeconds, endH, endM, endS);
+        FillHmsBoxes(_selectedBlock.StartSeconds, startH, startM, startS, startMs);
+        FillHmsBoxes(_selectedBlock.EndSeconds, endH, endM, endS, endMs);
         wholeCheck.IsChecked = _selectedBlock.CoversWholeVideo;
         _suppress = false;
     }
@@ -834,8 +1145,8 @@ public partial class MainWindow : Window
     private void StartEnd_Changed(object sender, TextChangedEventArgs e)
     {
         if (_suppress || _selectedBlock == null) return;
-        var startTotal = ReadHmsBoxes(startH, startM, startS);
-        var endTotal = ReadHmsBoxes(endH, endM, endS);
+        var startTotal = ReadHmsBoxes(startH, startM, startS, startMs);
+        var endTotal = ReadHmsBoxes(endH, endM, endS, endMs);
         _selectedBlock.StartSeconds = Math.Max(0, startTotal);
         _selectedBlock.EndSeconds = Math.Min(timeline.TotalSeconds, Math.Max(_selectedBlock.StartSeconds + 0.1, endTotal));
         if (_selectedBlock.EndSeconds < timeline.TotalSeconds || _selectedBlock.StartSeconds > 0) _selectedBlock.CoversWholeVideo = false;
@@ -1228,19 +1539,125 @@ public partial class MainWindow : Window
         {
             var block = kv.Key;
             var ctl = kv.Value;
-            bool shouldShow;
-            if (!_isPlaying)
-            {
-                // When paused, always show blocks so user can edit/position them
-                shouldShow = true;
-            }
-            else
-            {
-                // When playing, only show blocks within their active time range (matches export)
-                shouldShow = block.CoversWholeVideo || (t >= block.StartSeconds && t <= block.EndSeconds);
-            }
-            ctl.Visibility = shouldShow ? Visibility.Visible : Visibility.Hidden;
+            // Blocks render exactly the way the exported video will look: a block is on-
+            // screen iff the playhead is inside its time range (or it covers the whole
+            // project). One concession to editability: the *currently selected* block stays
+            // visible even outside its range — otherwise it'd disappear the moment you
+            // selected it to drag/resize.
+            bool inRange = block.CoversWholeVideo || (t >= block.StartSeconds && t <= block.EndSeconds);
+            bool isEditing = block == _selectedBlock;
+            ctl.Visibility = (inRange || isEditing) ? Visibility.Visible : Visibility.Hidden;
         }
+        UpdateTextOverlaysVisibility(t);
+    }
+
+    private readonly Dictionary<TextOverlay, Border> _textOverlayPreviewControls = new();
+    /// <summary>Overlays that need their preview control restyled / repositioned on next Tick.
+    /// New / edited / resize-affected overlays go in here; the Tick clears it after processing.
+    /// This avoids the per-Tick brush churn that made scrubbing stutter once ~40 AI captions
+    /// were on the timeline.</summary>
+    private readonly HashSet<TextOverlay> _textOverlayDirty = new();
+
+    private void UpdateTextOverlaysVisibility(double currentSec)
+    {
+        if (overlayCanvas == null) return;
+        // Clean up stale controls (deleted overlays).
+        foreach (var stale in _textOverlayPreviewControls.Keys.Where(o => !timeline.TextOverlays.Contains(o)).ToList())
+        {
+            if (_textOverlayPreviewControls.TryGetValue(stale, out var ctl)) overlayCanvas.Children.Remove(ctl);
+            _textOverlayPreviewControls.Remove(stale);
+            _textOverlayDirty.Remove(stale);
+        }
+
+        double canvasW = overlayCanvas.ActualWidth, canvasH = overlayCanvas.ActualHeight;
+        if (canvasW < 1 || canvasH < 1) return;
+        var firstVideo = timeline.Clips.FirstOrDefault(c => !c.IsAudioOnly);
+        if (firstVideo == null || firstVideo.VideoWidth <= 0 || firstVideo.VideoHeight <= 0) return;
+        double sx = canvasW / firstVideo.VideoWidth;
+        double sy = canvasH / firstVideo.VideoHeight;
+        double s = Math.Min(sx, sy);
+
+        foreach (var ov in timeline.TextOverlays)
+        {
+            bool isNew = !_textOverlayPreviewControls.TryGetValue(ov, out var ctl);
+            if (isNew)
+            {
+                ctl = MakeTextOverlayPreviewControl(ov);
+                _textOverlayPreviewControls[ov] = ctl;
+                overlayCanvas.Children.Add(ctl);
+                ApplyOverlayStyle(ctl, ov, s);
+                ApplyOverlayPlacement(ctl, ov, s);
+            }
+            else if (_textOverlayDirty.Contains(ov))
+            {
+                ApplyOverlayStyle(ctl!, ov, s);
+                ApplyOverlayPlacement(ctl!, ov, s);
+            }
+            // Per-tick we only flip Visibility — the cheap part. Style + placement
+            // are no-ops unless the overlay was just added or marked dirty.
+            bool active = !_isPlaying || (currentSec >= ov.StartSeconds && currentSec <= ov.EndSeconds);
+            ctl!.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+        }
+        _textOverlayDirty.Clear();
+    }
+
+    private Border MakeTextOverlayPreviewControl(TextOverlay ov)
+    {
+        var tb = new TextBlock
+        {
+            Text = ov.Text,
+            Foreground = Brushes.White,
+            FontFamily = new FontFamily("Segoe UI"),
+            FontWeight = ov.Bold ? FontWeights.Bold : FontWeights.Normal,
+            FontStyle = ov.Italic ? FontStyles.Italic : FontStyles.Normal,
+            TextWrapping = TextWrapping.Wrap
+        };
+        tb.Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Colors.Black, BlurRadius = 6, ShadowDepth = 0, Opacity = 0.9 };
+        var border = new Border
+        {
+            CornerRadius = new CornerRadius(6),
+            Child = tb,
+            IsHitTestVisible = false
+        };
+        ApplyOverlayStyle(border, ov, 1.0);
+        return border;
+    }
+
+    private static void ApplyOverlayStyle(Border ctl, TextOverlay ov, double scale)
+    {
+        if (ctl.Child is not TextBlock tb) return;
+        tb.Text = ov.Text;
+        tb.FontWeight = ov.Bold ? FontWeights.Bold : FontWeights.Normal;
+        tb.FontStyle = ov.Italic ? FontStyles.Italic : FontStyles.Normal;
+        tb.Foreground = new SolidColorBrush(ParseDrawtextColor(ov.FontColor));
+        tb.FontSize = Math.Max(6, ov.FontSize * scale);
+
+        if (ov.BackgroundEnabled && ov.BackgroundOpacity > 0)
+        {
+            var c = ParseDrawtextColor(ov.BackgroundColor);
+            ctl.Background = new SolidColorBrush(Color.FromArgb((byte)(ov.BackgroundOpacity * 255), c.R, c.G, c.B));
+            var pad = Math.Max(2, ov.BackgroundPadding * scale);
+            ctl.Padding = new Thickness(pad, pad * 0.55, pad, pad * 0.55);
+        }
+        else
+        {
+            ctl.Background = Brushes.Transparent;
+            ctl.Padding = new Thickness(0);
+        }
+    }
+
+    private void ApplyOverlayPlacement(Border ctl, TextOverlay ov, double scale)
+    {
+        Canvas.SetLeft(ctl, ov.X * scale);
+        Canvas.SetTop(ctl, ov.Y * scale);
+    }
+
+    private static Color ParseDrawtextColor(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return Colors.White;
+        var t = s.Trim();
+        if (t.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) t = "#" + t.Substring(2);
+        try { return (Color)ColorConverter.ConvertFromString(t); } catch { return Colors.White; }
     }
 
     private void Split_Click(object sender, RoutedEventArgs e)
@@ -1397,7 +1814,13 @@ public partial class MainWindow : Window
 
         status.Text = "Exporting...";
         progress.Value = 0;
-        var prog = new Progress<double>(v => Dispatcher.Invoke(() => progress.Value = v));
+        progressLabel.Text = "0 %";
+        // Stream both the bar value and the readable percent label from the export pipeline.
+        var prog = new Progress<double>(v => Dispatcher.Invoke(() =>
+        {
+            progress.Value = v;
+            progressLabel.Text = ((int)Math.Round(Math.Max(0, Math.Min(1, v)) * 100)) + " %";
+        }));
         try
         {
             // Export in timeline order
@@ -1407,15 +1830,18 @@ public partial class MainWindow : Window
             await _ff.ExportProjectAsync(orderedClips, timeline.Blocks.ToList(),
                 tW, tH,
                 overlayCanvas.ActualWidth, overlayCanvas.ActualHeight,
-                timeline.TotalSeconds, sfd.FileName, AppSettings.TargetFitMode, prog);
+                timeline.TotalSeconds, sfd.FileName, AppSettings.TargetFitMode,
+                timeline.TextOverlays.ToList(), prog);
             status.Text = "Exported: " + sfd.FileName;
             progress.Value = 1;
+            progressLabel.Text = "Done";
             if (MessageBox.Show("Open output folder?", "Done", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
                 RevealInExplorer(sfd.FileName);
         }
         catch (Exception ex)
         {
             status.Text = "Export failed: " + ex.Message;
+            progressLabel.Text = "Failed";
             MessageBox.Show(ex.Message, "Export Error");
         }
     }
@@ -1610,11 +2036,157 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
     }
     private async void AddText_Click(object s, RoutedEventArgs e)
     {
-        var c = CurrentClip(); if (c == null) return;
-        var dlg = new AddTextWindow() { Owner = this };
-        if (dlg.ShowDialog() != true) return;
-        await ApplyDestructiveOpAsync(c, async (input, output, prog) =>
-            await _ff.AddTextAsync(input, output, dlg.TextValue, dlg.X, dlg.Y, dlg.FontSize, dlg.ColorHex, c.OriginalDuration, prog));
+        var c = CurrentClip();
+        if (c == null) { MessageBox.Show("Select a clip first."); return; }
+        await OpenTextPickerAndAddAsync(c, null);
+    }
+
+    private void AiCaptions_Click(object s, RoutedEventArgs e)
+    {
+        var anyVideo = false;
+        foreach (var c in timeline.Clips) if (!c.IsAudioOnly) { anyVideo = true; break; }
+        if (!anyVideo)
+        {
+            MessageBox.Show(VideoEditor.Services.Localization.T("Add a video clip first."),
+                "AI Captions", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(AppSettings.LlmApiKey))
+        {
+            MessageBox.Show(
+                VideoEditor.Services.Localization.T("Set your Gemini API key first — opening Settings…"),
+                "AI Captions", MessageBoxButton.OK, MessageBoxImage.Information);
+            new SettingsWindow("ai") { Owner = this }.ShowDialog();
+            if (string.IsNullOrWhiteSpace(AppSettings.LlmApiKey)) return;
+        }
+
+        var selected = CurrentClip();
+        int width = 1920, height = 1080;
+        foreach (var clip in timeline.Clips)
+        {
+            if (clip.IsAudioOnly) continue;
+            if (clip.VideoWidth > 0 && clip.VideoHeight > 0)
+            {
+                width = clip.VideoWidth;
+                height = clip.VideoHeight;
+                break;
+            }
+        }
+
+        var dlg = new AiCaptionsWindow(selected, timeline.Clips, width, height) { Owner = this };
+        var ok = dlg.ShowDialog() == true;
+        if (!ok || dlg.Result.Count == 0) return;
+
+        foreach (var ov in dlg.Result) timeline.TextOverlays.Add(ov);
+
+        status.Text = VideoEditor.Services.Localization.T("AI Captions added · {0} overlays — drag bars on the timeline to tweak.")
+            .Replace("{0}", dlg.Result.Count.ToString());
+    }
+
+    private async System.Threading.Tasks.Task OpenTextPickerAndAddAsync(VideoClip c, TextOverlay? edit)
+    {
+        var tempFrame = Path.Combine(Path.GetTempPath(), $"text_frame_{Guid.NewGuid():N}.jpg");
+        try
+        {
+            double frameTime;
+            if (edit != null)
+            {
+                var midProject = (edit.StartSeconds + edit.EndSeconds) / 2.0;
+                if (midProject >= c.TimelineStart && midProject <= c.TimelineStart + c.EffectiveDuration)
+                    frameTime = c.InPoint + (midProject - c.TimelineStart) * c.Speed;
+                else
+                    frameTime = c.InPoint + (c.OutPoint - c.InPoint) / 2;
+            }
+            else if (timeline.CurrentSeconds >= c.TimelineStart && timeline.CurrentSeconds <= c.TimelineStart + c.EffectiveDuration)
+            {
+                frameTime = c.InPoint + (timeline.CurrentSeconds - c.TimelineStart) * c.Speed;
+            }
+            else
+            {
+                frameTime = c.InPoint + (c.OutPoint - c.InPoint) / 2;
+            }
+            status.Text = "Extracting preview frame...";
+            await _ff.ExtractFrameAsync(c.SourceFile, tempFrame, frameTime);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Failed to extract preview: " + ex.Message);
+            return;
+        }
+
+        TextOverlayOptions? initial = null;
+        if (edit != null)
+        {
+            initial = new TextOverlayOptions
+            {
+                Text = edit.Text, X = edit.X, Y = edit.Y,
+                FontSize = edit.FontSize, FontColor = edit.FontColor,
+                Bold = edit.Bold, Italic = edit.Italic,
+                BackgroundEnabled = edit.BackgroundEnabled,
+                BackgroundColor = edit.BackgroundColor,
+                BackgroundOpacity = edit.BackgroundOpacity,
+                BackgroundPadding = edit.BackgroundPadding
+            };
+        }
+
+        var picker = new TextOverlayPickerWindow(tempFrame,
+            c.VideoWidth > 0 ? c.VideoWidth : 1920,
+            c.VideoHeight > 0 ? c.VideoHeight : 1080,
+            initial)
+        { Owner = this };
+        var ok = picker.ShowDialog() == true;
+        try { File.Delete(tempFrame); } catch { }
+        if (!ok || string.IsNullOrWhiteSpace(picker.Result.Text)) return;
+
+        var opt = picker.Result;
+        if (edit == null)
+        {
+            double start = Math.Max(c.TimelineStart, timeline.CurrentSeconds);
+            double end = c.TimelineStart + c.EffectiveDuration;
+            if (end - start < 0.5) { start = c.TimelineStart; end = c.TimelineStart + c.EffectiveDuration; }
+            var ov = new TextOverlay
+            {
+                Text = opt.Text, X = opt.X, Y = opt.Y,
+                FontSize = opt.FontSize, FontColor = opt.FontColor,
+                Bold = opt.Bold, Italic = opt.Italic,
+                BackgroundEnabled = opt.BackgroundEnabled,
+                BackgroundColor = opt.BackgroundColor,
+                BackgroundOpacity = opt.BackgroundOpacity,
+                BackgroundPadding = opt.BackgroundPadding,
+                StartSeconds = start, EndSeconds = end
+            };
+            timeline.TextOverlays.Add(ov);
+            timeline.SelectTextOverlay(ov);
+            status.Text = "Text overlay added. Drag the teal bar on the timeline to move or resize it.";
+        }
+        else
+        {
+            edit.Text = opt.Text; edit.X = opt.X; edit.Y = opt.Y;
+            edit.FontSize = opt.FontSize; edit.FontColor = opt.FontColor;
+            edit.Bold = opt.Bold; edit.Italic = opt.Italic;
+            edit.BackgroundEnabled = opt.BackgroundEnabled;
+            edit.BackgroundColor = opt.BackgroundColor;
+            edit.BackgroundOpacity = opt.BackgroundOpacity;
+            edit.BackgroundPadding = opt.BackgroundPadding;
+            timeline.NotifyTextOverlayChanged(edit);
+            status.Text = "Text overlay updated.";
+        }
+    }
+
+    private async void OnTextOverlayContext(TextOverlay o, string action)
+    {
+        if (action == "delete")
+        {
+            timeline.TextOverlays.Remove(o);
+            status.Text = "Text overlay deleted.";
+        }
+        else if (action == "edit")
+        {
+            var clip = CurrentClip() ?? timeline.Clips.FirstOrDefault(c => !c.IsAudioOnly);
+            if (clip == null) { MessageBox.Show("Add a video clip first."); return; }
+            await OpenTextPickerAndAddAsync(clip, o);
+        }
     }
     private async void RemoveLogo_Click(object s, RoutedEventArgs e)
     {
@@ -1722,7 +2294,8 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
             await _ff.ExportProjectAsync(orderedClips, new List<VideoBlock>(),
                 tW, tH,
                 overlayCanvas.ActualWidth, overlayCanvas.ActualHeight,
-                timeline.TotalSeconds, tempVideo, AppSettings.TargetFitMode, prog1);
+                timeline.TotalSeconds, tempVideo, AppSettings.TargetFitMode,
+                null, prog1);
 
             status.Text = "Extracting audio...";
             var prog2 = new Progress<double>(v => Dispatcher.Invoke(() => progress.Value = 0.8 + v * 0.2));

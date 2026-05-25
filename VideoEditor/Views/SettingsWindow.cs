@@ -61,6 +61,9 @@ public class SettingsWindow : Window
         public string HardwareAccel = "cpu";
         public bool TwoPass;
         public bool AudioLoudnorm = true;
+        public string LlmProvider = "gemini";
+        public string LlmApiKey = "";
+        public string LlmModel = "gemini-2.5-flash";
 
         public static SettingsDraft FromCurrent() => new()
         {
@@ -90,6 +93,9 @@ public class SettingsWindow : Window
             HardwareAccel = AppSettings.HardwareAccel,
             TwoPass = AppSettings.TwoPass,
             AudioLoudnorm = AppSettings.AudioLoudnorm,
+            LlmProvider = AppSettings.LlmProvider,
+            LlmApiKey = AppSettings.LlmApiKey,
+            LlmModel = AppSettings.LlmModel,
         };
     }
 
@@ -101,12 +107,15 @@ public class SettingsWindow : Window
         ("export",   "💾", "Export",             "Codec & quality"),
         ("storage",  "💿", "Storage",            "Cache & paths"),
         ("ffmpeg",   "🛠", "FFmpeg",             "Binaries & encoders"),
+        ("ai",       "✨", "AI Captions",        "Auto-caption with an LLM"),
         ("keys",     "⌨",  "Keyboard",           "Shortcuts"),
         ("updates",  "⭐",  "Updates",            "Channel & changelog"),
         ("about",    "ℹ",  "About",              "License & credits"),
     };
 
-    public SettingsWindow()
+    public SettingsWindow() : this("general") { }
+
+    public SettingsWindow(string startSection)
     {
         ApplyThemePalette();
         Title = "Settings";
@@ -232,7 +241,7 @@ public class SettingsWindow : Window
         Content = root;
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
 
-        SetActiveSection("general");
+        SetActiveSection(string.IsNullOrEmpty(startSection) ? "general" : startSection);
         FlowDirection = VideoEditor.Services.Localization.IsHebrew ? FlowDirection.RightToLeft : FlowDirection.LeftToRight;
         VideoEditor.Services.Localization.TranslateTree(this);
     }
@@ -307,6 +316,9 @@ public class SettingsWindow : Window
         AppSettings.HardwareAccel = _draft.HardwareAccel;
         AppSettings.TwoPass = _draft.TwoPass;
         AppSettings.AudioLoudnorm = _draft.AudioLoudnorm;
+        AppSettings.LlmProvider = _draft.LlmProvider;
+        AppSettings.LlmApiKey = _draft.LlmApiKey;
+        AppSettings.LlmModel = _draft.LlmModel;
         AppSettings.Save();
 
         if (!string.IsNullOrEmpty(AppSettings.LastSaveError))
@@ -326,7 +338,7 @@ public class SettingsWindow : Window
         if (themeChanged || languageChanged)
         {
             if (themeChanged) (Application.Current as App)?.ApplyThemeResources();
-            var refreshed = new SettingsWindow { Owner = Owner };
+            var refreshed = new SettingsWindow(_activeKey) { Owner = Owner };
             refreshed.Show();
             Close();
         }
@@ -393,6 +405,7 @@ public class SettingsWindow : Window
         "export"  => BuildExport(),
         "storage" => BuildStorage(),
         "ffmpeg"  => BuildFFmpeg(),
+        "ai"      => BuildAi(),
         "keys"    => BuildKeys(),
         "updates" => BuildUpdates(),
         "about"   => BuildAbout(),
@@ -607,6 +620,205 @@ public class SettingsWindow : Window
         p.Children.Add(MakeRow("Status", "Detected binaries", statusBox));
         var testBtn = MakeButton("Run test pipeline", false);
         p.Children.Add(MakeRow("Diagnostics", "Encode a 3-second test clip", testBtn));
+        return WrapSection(p);
+    }
+    private UIElement BuildAi()
+    {
+        var p = MakePanel("AI Captions",
+            "Auto-generate short on-screen captions from the spoken audio. Uses Google Gemini (free tier).");
+
+        // Provider — locked to Gemini for v1, dropdown shape kept for future swap.
+        p.Children.Add(MakeRow("Provider",
+            "Google Gemini · free tier (1500 requests/day on gemini-2.0-flash)",
+            MakeComboBound(new[] { "Google Gemini" }, 0, _ => { })));
+
+        // API key — masked input (PasswordBox).
+        var pwBox = new PasswordBox
+        {
+            Background = new SolidColorBrush(Bg2),
+            Foreground = new SolidColorBrush(Text),
+            BorderBrush = new SolidColorBrush(LineStrong),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(8, 5, 8, 5),
+            FontSize = 12.5,
+            FontFamily = new FontFamily("Consolas"),
+            Width = 280,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Password = _draft.LlmApiKey
+        };
+        pwBox.PasswordChanged += (_, _) => { _draft.LlmApiKey = pwBox.Password ?? ""; MarkDirty(); };
+        p.Children.Add(MakeRow("API key",
+            "Paste your Gemini API key — starts with AIza… · stored in settings.json next to the EXE",
+            pwBox));
+
+        // Action buttons (Get key + Test connection).
+        var actionGrid = new Grid { HorizontalAlignment = HorizontalAlignment.Right };
+        actionGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        actionGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        actionGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
+
+        var getKeyBtn = MakeButton("Get an API key", false);
+        getKeyBtn.Margin = new Thickness(0, 0, 6, 0);
+        getKeyBtn.Click += (_, _) =>
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "https://aistudio.google.com/apikey",
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, "Open URL", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        };
+        Grid.SetColumn(getKeyBtn, 0);
+        actionGrid.Children.Add(getKeyBtn);
+
+        var testBtn = MakeButton("Test connection", true);
+        Grid.SetColumn(testBtn, 1);
+        actionGrid.Children.Add(testBtn);
+
+        var testResult = new TextBlock
+        {
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(10, 0, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(TextDim)
+        };
+        Grid.SetColumn(testResult, 2);
+        actionGrid.Children.Add(testResult);
+
+        testBtn.Click += async (_, _) =>
+        {
+            var key = (pwBox.Password ?? "").Trim();
+            if (string.IsNullOrEmpty(key))
+            {
+                testResult.Text = VideoEditor.Services.Localization.T("Paste an API key first.");
+                testResult.Foreground = new SolidColorBrush(Warn);
+                return;
+            }
+            testBtn.IsEnabled = false;
+            testResult.Text = VideoEditor.Services.Localization.T("Contacting Gemini…");
+            testResult.Foreground = new SolidColorBrush(TextMute);
+            try
+            {
+                var svc = new LlmCaptionService();
+                var ok = await svc.PingAsync(key);
+                if (ok)
+                {
+                    _draft.LlmModel = svc.LastUsedModel ?? _draft.LlmModel;
+                    testResult.Text = VideoEditor.Services.Localization.T("OK — using {0}")
+                        .Replace("{0}", svc.LastUsedModel ?? "Gemini");
+                    testResult.Foreground = new SolidColorBrush(Success);
+                }
+                else
+                {
+                    testResult.Text = VideoEditor.Services.Localization.T("Gemini answered but the response was unexpected.");
+                    testResult.Foreground = new SolidColorBrush(Warn);
+                }
+            }
+            catch (Exception ex)
+            {
+                testResult.Text = ex.Message;
+                testResult.Foreground = new SolidColorBrush(Warn);
+            }
+            finally
+            {
+                testBtn.IsEnabled = true;
+            }
+        };
+
+        p.Children.Add(MakeRow("Quick actions",
+            "Open Google AI Studio · ping the API with your key",
+            actionGrid));
+
+        // Usage counter — local count of Gemini requests this install has made today.
+        // (Google does not expose remaining-quota via API. The free-tier daily limit
+        // varies per Google account; ~1500 for the Flash models is the common default.)
+        var usageGrid = new Grid { HorizontalAlignment = HorizontalAlignment.Right };
+        usageGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
+        usageGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var usageText = new TextBlock
+        {
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Text),
+            VerticalAlignment = VerticalAlignment.Center,
+            TextAlignment = TextAlignment.Right
+        };
+        void RefreshUsage()
+        {
+            var used = LlmCaptionService.GetUsageToday();
+            usageText.Text = VideoEditor.Services.Localization.T("{0} requests today")
+                .Replace("{0}", used.ToString());
+            if (used >= 1400) usageText.Foreground = new SolidColorBrush(Warn);
+            else if (used >= 1000) usageText.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xC1, 0x07));
+            else usageText.Foreground = new SolidColorBrush(Text);
+        }
+        RefreshUsage();
+        Grid.SetColumn(usageText, 0);
+        usageGrid.Children.Add(usageText);
+
+        var refreshBtn = MakeButton("Refresh", false);
+        refreshBtn.Margin = new Thickness(8, 0, 0, 0);
+        refreshBtn.Click += (_, _) =>
+        {
+            AppSettings.Load();
+            RefreshUsage();
+        };
+        Grid.SetColumn(refreshBtn, 1);
+        usageGrid.Children.Add(refreshBtn);
+
+        p.Children.Add(MakeRow("Usage today",
+            "Counted by this app · Google free tier is ~1500 requests/day, resets at midnight",
+            usageGrid));
+
+        // Numbered guide card.
+        var guide = new Border
+        {
+            Background = new SolidColorBrush(Bg2),
+            BorderBrush = new SolidColorBrush(Line),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(14, 12, 14, 12),
+            Margin = new Thickness(0, 4, 0, 0)
+        };
+        var guideStack = new StackPanel();
+        guideStack.Children.Add(new TextBlock
+        {
+            Text = VideoEditor.Services.Localization.T("How to get an API key"),
+            FontSize = 12.5,
+            FontWeight = FontWeights.Bold,
+            Foreground = new SolidColorBrush(Text),
+            Margin = new Thickness(0, 0, 0, 6)
+        });
+        var steps = new[]
+        {
+            "1.  Go to https://aistudio.google.com/apikey",
+            "2.  Sign in with a Google account.",
+            "3.  Click \"Create API key\" → \"Create API key in new project\".",
+            "4.  Copy the key (starts with AIza…).",
+            "5.  Paste it in the field above and click Save."
+        };
+        foreach (var s in steps)
+        {
+            guideStack.Children.Add(new TextBlock
+            {
+                Text = VideoEditor.Services.Localization.T(s),
+                FontSize = 12,
+                Foreground = new SolidColorBrush(TextMute),
+                Margin = new Thickness(0, 2, 0, 2),
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+        guide.Child = guideStack;
+        p.Children.Add(guide);
+
         return WrapSection(p);
     }
     private UIElement BuildKeys()

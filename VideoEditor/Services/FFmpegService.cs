@@ -187,13 +187,63 @@ public class FFmpegService
         return RunAsync(args, duration, progress);
     }
 
-    public Task AddTextAsync(string videoIn, string output, string text, int x, int y, int fontSize, string colorHex, double duration, IProgress<double>? progress = null)
+    public Task AddTextAsync(string videoIn, string output, VideoEditor.Views.TextOverlayOptions opt, double duration, IProgress<double>? progress = null)
     {
-        // drawtext requires \ to be escaped FIRST — if we escape ' and : first, the \ we
-        // added would itself get doubled and the closing quote of text='...' would break.
-        var safeText = text.Replace("\\", "\\\\").Replace("'", "\\'").Replace(":", "\\:");
-        var args = $"-y -i \"{videoIn}\" -vf \"drawtext=text='{safeText}':x={x}:y={y}:fontsize={fontSize}:fontcolor={colorHex}\" -c:a copy \"{output}\"";
+        var fontFile = ResolveDrawtextFont(opt.Bold, opt.Italic);
+        var parts = new List<string>
+        {
+            "drawtext=text=" + EscapeDrawtextValue(opt.Text ?? "", isText: true),
+            "fontfile=" + EscapeDrawtextValue(fontFile.Replace('\\', '/'), isText: false),
+            "x=" + opt.X,
+            "y=" + opt.Y,
+            "fontsize=" + opt.FontSize,
+            "fontcolor=" + opt.FontColor
+        };
+        if (opt.BackgroundEnabled && opt.BackgroundOpacity > 0)
+        {
+            parts.Add("box=1");
+            parts.Add($"boxcolor={opt.BackgroundColor}@{opt.BackgroundOpacity.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}");
+            parts.Add("boxborderw=" + opt.BackgroundPadding);
+        }
+        var args = $"-y -i \"{videoIn}\" -vf \"{string.Join(":", parts)}\" -c:a copy \"{output}\"";
         return RunAsync(args, duration, progress);
+    }
+
+    // Escape a value for the drawtext filter (libavfilter level-1 escaping). Backslash first,
+    // then the filter separator ':', the quote char ''', and drawtext's expansion-trigger '%'.
+    // For the text= arg specifically, real newlines become the literal two-char sequence "\n" so
+    // drawtext renders multi-line. Newline escape happens AFTER backslash escape so the
+    // backslash we add isn't itself doubled.
+    private static string EscapeDrawtextValue(string s, bool isText)
+    {
+        var t = s ?? "";
+        t = t.Replace("\\", "\\\\");
+        t = t.Replace(":", "\\:");
+        t = t.Replace("'", "\\'");
+        if (isText)
+        {
+            t = t.Replace("%", "\\%");
+            t = t.Replace("\r\n", "\\n").Replace("\n", "\\n").Replace("\r", "\\n");
+        }
+        return t;
+    }
+
+    private static string ResolveDrawtextFont(bool bold, bool italic)
+    {
+        string winFonts = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts");
+        var candidates = (bold, italic) switch
+        {
+            (true,  true)  => new[] { "segoeuiz.ttf", "arialbi.ttf", "segoeuib.ttf", "arialbd.ttf", "segoeui.ttf", "arial.ttf" },
+            (true,  false) => new[] { "segoeuib.ttf", "arialbd.ttf", "segoeui.ttf",  "arial.ttf" },
+            (false, true)  => new[] { "segoeuii.ttf", "ariali.ttf",  "segoeui.ttf",  "arial.ttf" },
+            _              => new[] { "segoeui.ttf",  "arial.ttf",   "tahoma.ttf" },
+        };
+        foreach (var name in candidates)
+        {
+            var p = Path.Combine(winFonts, name);
+            if (File.Exists(p)) return p;
+        }
+        return Path.Combine(winFonts, "arial.ttf");
     }
 
     public Task RemoveLogoAsync(string videoIn, string output, int x, int y, int w, int h, double duration, IProgress<double>? progress = null)
@@ -302,7 +352,9 @@ public class FFmpegService
 
     public async Task ExportProjectAsync(IList<VideoClip> clips, IList<VideoBlock> blocks,
         int canvasVideoW, int canvasVideoH, double canvasUiW, double canvasUiH,
-        double totalDuration, string output, string fitMode = "contain", IProgress<double>? progress = null)
+        double totalDuration, string output, string fitMode = "contain",
+        IList<VideoEditor.Models.TextOverlay>? textOverlays = null,
+        IProgress<double>? progress = null)
     {
         if (clips.Count == 0) throw new Exception("No clips.");
         var temps = new List<string>();
@@ -313,12 +365,9 @@ public class FFmpegService
             if (targetW % 2 != 0) targetW++;
             if (targetH % 2 != 0) targetH++;
 
-            // Only video clips go to the V1 track. Audio-only clips are handled separately (TBD).
             var videoClips = clips.Where(c => !c.IsAudioOnly).OrderBy(c => c.TimelineStart).ToList();
             if (videoClips.Count == 0) throw new Exception("No video clips to export.");
 
-            // Pass 1: render each clip + insert black filler for real gaps in the timeline.
-            // Black is only inserted when clips don't abut (gap > 0.1s), so seamless joins stay seamless.
             const double gapEpsilon = 0.1;
             var renderQueue = new List<string>();
             double prevEnd = 0;
@@ -335,7 +384,14 @@ public class FFmpegService
                 }
                 var tmp = Path.Combine(Path.GetTempPath(), $"ve_clip_{Guid.NewGuid():N}.mp4");
                 temps.Add(tmp);
-                await RenderClipAsync(c, tmp, targetW, targetH, fitMode);
+                // Stream ffmpeg's time= output back as fractional progress so the bar
+                // moves smoothly even within a single very long clip. The whole
+                // per-clip render covers slot (i / N → (i+1) / N) of the 0..0.7 range.
+                int slot = i;
+                int nClips = videoClips.Count;
+                var clipProgress = new Progress<double>(p =>
+                    progress?.Report((slot + Math.Max(0, Math.Min(1, p))) * 0.7 / nClips));
+                await RenderClipAsync(c, tmp, targetW, targetH, fitMode, clipProgress);
                 renderQueue.Add(tmp);
                 prevEnd = c.TimelineStart + c.EffectiveDuration;
                 progress?.Report((i + 1) * 0.7 / videoClips.Count);
@@ -344,21 +400,40 @@ public class FFmpegService
             string concatList = Path.Combine(Path.GetTempPath(), $"ve_concat_{Guid.NewGuid():N}.txt");
             File.WriteAllText(concatList, string.Join("\n", renderQueue.Select(t => $"file '{EscapeConcatPath(t)}'")));
 
-            string concatOut = blocks.Count > 0
+            bool hasOverlays = textOverlays != null && textOverlays.Count > 0;
+            bool hasBlocks = blocks.Count > 0;
+            bool extraStages = hasOverlays || hasBlocks;
+
+            string concatOut = extraStages
                 ? Path.Combine(Path.GetTempPath(), $"ve_concat_{Guid.NewGuid():N}.mp4")
                 : output;
+            if (extraStages) temps.Add(concatOut);
 
             var concatArgs = $"-y -f concat -safe 0 -i \"{concatList}\" -c copy \"{concatOut}\"";
             await RunAsync(concatArgs, totalDuration, null);
-            progress?.Report(0.85);
+            progress?.Report(0.78);
 
             try { File.Delete(concatList); } catch { }
 
-            if (blocks.Count > 0)
+            string stageIn = concatOut;
+
+            if (hasOverlays)
             {
-                await ApplyBlocksAsync(concatOut, output, blocks, targetW, targetH, canvasUiW, canvasUiH, totalDuration,
-                    new Progress<double>(p => progress?.Report(0.85 + p * 0.15)));
-                try { File.Delete(concatOut); } catch { }
+                string textOut = hasBlocks
+                    ? Path.Combine(Path.GetTempPath(), $"ve_texts_{Guid.NewGuid():N}.mp4")
+                    : output;
+                if (textOut != output) temps.Add(textOut);
+
+                await BurnTextOverlaysAsync(stageIn, textOut, textOverlays!, totalDuration,
+                    new Progress<double>(p => progress?.Report(0.78 + p * 0.12)));
+                stageIn = textOut;
+                progress?.Report(0.90);
+            }
+
+            if (hasBlocks)
+            {
+                await ApplyBlocksAsync(stageIn, output, blocks, targetW, targetH, canvasUiW, canvasUiH, totalDuration,
+                    new Progress<double>(p => progress?.Report(0.90 + p * 0.10)));
             }
             else
             {
@@ -371,7 +446,47 @@ public class FFmpegService
         }
     }
 
-    private async Task RenderClipAsync(VideoClip c, string output, int targetW, int targetH, string fitMode = "contain")
+    private async Task BurnTextOverlaysAsync(string videoIn, string output,
+        IList<VideoEditor.Models.TextOverlay> overlays, double duration, IProgress<double>? progress)
+    {
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        var filterParts = new List<string>();
+        foreach (var ov in overlays)
+        {
+            if (string.IsNullOrWhiteSpace(ov.Text)) continue;
+            if (ov.EndSeconds <= ov.StartSeconds) continue;
+            var fontFile = ResolveDrawtextFont(ov.Bold, ov.Italic).Replace('\\', '/');
+            var bits = new List<string>
+            {
+                "drawtext=text=" + EscapeDrawtextValue(ov.Text, isText: true),
+                "fontfile=" + EscapeDrawtextValue(fontFile, isText: false),
+                "x=" + ov.X,
+                "y=" + ov.Y,
+                "fontsize=" + ov.FontSize,
+                "fontcolor=" + ov.FontColor
+            };
+            if (ov.BackgroundEnabled && ov.BackgroundOpacity > 0)
+            {
+                bits.Add("box=1");
+                bits.Add($"boxcolor={ov.BackgroundColor}@{ov.BackgroundOpacity.ToString("0.##", ci)}");
+                bits.Add("boxborderw=" + ov.BackgroundPadding);
+            }
+            // enable= must be quoted so the comma inside between(...) isn't read as a filter separator.
+            bits.Add($"enable='between(t,{ov.StartSeconds.ToString("0.###", ci)},{ov.EndSeconds.ToString("0.###", ci)})'");
+            filterParts.Add(string.Join(":", bits));
+        }
+        if (filterParts.Count == 0)
+        {
+            // No usable overlays — copy through unchanged.
+            await RunAsync($"-y -i \"{videoIn}\" -c copy \"{output}\"", duration, progress);
+            return;
+        }
+        var filter = string.Join(",", filterParts);
+        var args = $"-y -i \"{videoIn}\" -vf \"{filter}\" -c:a copy \"{output}\"";
+        await RunAsync(args, duration, progress);
+    }
+
+    private async Task RenderClipAsync(VideoClip c, string output, int targetW, int targetH, string fitMode = "contain", IProgress<double>? progress = null)
     {
         var ci = System.Globalization.CultureInfo.InvariantCulture;
         int fps = AppSettings.ExportFps;
@@ -390,7 +505,26 @@ public class FFmpegService
         var vfTail = new List<string> { "setsar=1", $"fps={fps}", "setpts=PTS-STARTPTS" };
 
         string videoFilterArg;
-        if (fitMode == "blur")
+        // Per-clip manual canvas transform overrides the global fit mode.
+        // Scale source by (contain-fit * CanvasScale) and lay it on a black canvas at the
+        // user's offset; overlay clips anything beyond the target rectangle automatically.
+        if (c.HasManualCanvasTransform && c.VideoWidth > 0 && c.VideoHeight > 0)
+        {
+            double baseScale = Math.Min((double)targetW / c.VideoWidth, (double)targetH / c.VideoHeight);
+            int finalW = Math.Max(2, (int)Math.Round(c.VideoWidth * baseScale * c.CanvasScale));
+            int finalH = Math.Max(2, (int)Math.Round(c.VideoHeight * baseScale * c.CanvasScale));
+            int posX = (targetW - finalW) / 2 + (int)Math.Round(c.CanvasOffsetX * targetW);
+            int posY = (targetH - finalH) / 2 + (int)Math.Round(c.CanvasOffsetY * targetH);
+
+            var preChain = vfPre.Count > 0 ? string.Join(",", vfPre) + "," : "";
+            var tailChain = string.Join(",", vfTail);
+            string complex =
+                $"[0:v]{preChain}scale={finalW}:{finalH}[fg];" +
+                $"color=c=black:s={targetW}x{targetH}:r={fps}[bg];" +
+                $"[bg][fg]overlay={posX}:{posY}:shortest=1,{tailChain}[v]";
+            videoFilterArg = $"-filter_complex \"{complex}\" -map \"[v]\" -map 0:a?";
+        }
+        else if (fitMode == "blur")
         {
             int blur = Math.Clamp(AppSettings.BlurredBgStrength, 0, 60);
             var preChain = vfPre.Count > 0 ? string.Join(",", vfPre) + "," : "";
@@ -437,7 +571,7 @@ public class FFmpegService
         args += $" -r {fps} -video_track_timescale {fps * 1000}";
         args += $" \"{output}\"";
 
-        await RunAsync(args, c.EffectiveDuration, null);
+        await RunAsync(args, c.EffectiveDuration, progress);
     }
 
     /// <summary>
@@ -585,10 +719,17 @@ public class FFmpegService
             CreateNoWindow = true
         };
         using var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
+        var tail = new Queue<string>();
+        const int tailKeep = 12;
         p.ErrorDataReceived += (_, e) =>
         {
             if (string.IsNullOrEmpty(e.Data)) return;
             Log?.Invoke(e.Data);
+            lock (tail)
+            {
+                tail.Enqueue(e.Data);
+                while (tail.Count > tailKeep) tail.Dequeue();
+            }
             if (totalSeconds > 0 && progress != null)
             {
                 var idx = e.Data.IndexOf("time=", StringComparison.Ordinal);
@@ -604,14 +745,24 @@ public class FFmpegService
                 }
             }
         };
-        // Drain stdout too — otherwise its OS pipe buffer (~4KB) can fill on filters that
-        // write to stdout (e.g. -f null -, vstats) and the process hangs.
         p.OutputDataReceived += (_, _) => { /* discard */ };
         p.Start();
         p.BeginErrorReadLine();
         p.BeginOutputReadLine();
         await p.WaitForExitAsync();
-        if (p.ExitCode != 0) throw new Exception($"FFmpeg exited with code {p.ExitCode}. See log for details.");
+        if (p.ExitCode != 0)
+        {
+            string detail;
+            lock (tail)
+            {
+                var diag = tail
+                    .Where(l => !l.Contains("frame=") && !l.Contains("size=") && !l.Contains("bitrate="))
+                    .ToList();
+                if (diag.Count == 0) diag = tail.ToList();
+                detail = string.Join("\n", diag.TakeLast(6));
+            }
+            throw new Exception($"FFmpeg exited with code {p.ExitCode}.\n\n{detail}");
+        }
     }
 
     private async Task<string> RunAndCaptureAsync(string exe, string arguments)
