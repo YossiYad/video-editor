@@ -280,6 +280,7 @@ public class SettingsWindow : Window
         if (!_dirty) return;
 
         var previousTheme = AppSettings.Theme;
+        var previousLanguage = AppSettings.Language;
         AppSettings.Language = _draft.Language;
         AppSettings.Theme = _draft.Theme;
         AppSettings.StartupBehavior = _draft.StartupBehavior;
@@ -320,9 +321,11 @@ public class SettingsWindow : Window
         _statusInfo.Text = VideoEditor.Services.Localization.T("Settings saved");
         _statusInfo.Foreground = new SolidColorBrush(Success);
 
-        if (!string.Equals(previousTheme, AppSettings.Theme, StringComparison.Ordinal))
+        var themeChanged = !string.Equals(previousTheme, AppSettings.Theme, StringComparison.Ordinal);
+        var languageChanged = !string.Equals(previousLanguage, AppSettings.Language, StringComparison.Ordinal);
+        if (themeChanged || languageChanged)
         {
-            (Application.Current as App)?.ApplyThemeResources();
+            if (themeChanged) (Application.Current as App)?.ApplyThemeResources();
             var refreshed = new SettingsWindow { Owner = Owner };
             refreshed.Show();
             Close();
