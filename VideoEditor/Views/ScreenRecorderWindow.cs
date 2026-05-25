@@ -3,9 +3,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using VideoEditor.Services;
 
 namespace VideoEditor.Views;
@@ -15,6 +18,8 @@ public class ScreenRecorderWindow : Window
     private readonly FFmpegService _ff;
     private readonly bool _webcam;
     private Process? _proc;
+    private DispatcherTimer? _previewTimer;
+    private System.Windows.Controls.Image? _previewImage;
 
     /// <summary>Path of the last successful recording. Set by Stop, read by the
     /// parent MainWindow when "Open in editor" was clicked. Empty when the user
@@ -28,7 +33,8 @@ public class ScreenRecorderWindow : Window
         Title = webcam ? "Video Recorder (Webcam)" : "Screen Recorder";
         var icon = webcam ? "🎥" : "🖥";
         var sub = webcam ? "Capture webcam via dshow" : "Capture a monitor — or the whole virtual desktop — using gdigrab";
-        var ch = WindowBuilder.Build(this, icon, Title, sub, 560, 440);
+        // Wider + taller window so the live preview has room to breathe.
+        var ch = WindowBuilder.Build(this, icon, Title, sub, 720, webcam ? 460 : 620);
 
         ch.Body.Children.Add(WindowBuilder.Lbl("Output file"));
         var path = WindowBuilder.Tb(Path.Combine(
@@ -67,6 +73,46 @@ public class ScreenRecorderWindow : Window
         fps.HorizontalAlignment = HorizontalAlignment.Left;
         fps.Width = 100;
         ch.Body.Children.Add(fps);
+
+        // Live preview surface — shows the chosen monitor (or whole desktop) every
+        // ~150 ms via GDI screen capture. Independent of ffmpeg's own capture so it
+        // can't affect the recording. Hidden for webcam mode.
+        if (!webcam)
+        {
+            ch.Body.Children.Add(WindowBuilder.Lbl("Live preview"));
+            var previewFrame = new Border
+            {
+                Background = System.Windows.Media.Brushes.Black,
+                BorderBrush = WindowBuilder.Line,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Height = 250,
+                Margin = new Thickness(0, 0, 0, 4),
+                ClipToBounds = true
+            };
+            _previewImage = new System.Windows.Controls.Image
+            {
+                Stretch = Stretch.Uniform,
+                Source = null
+            };
+            previewFrame.Child = _previewImage;
+            ch.Body.Children.Add(previewFrame);
+            ch.Body.Children.Add(new TextBlock
+            {
+                Text = "Preview updates 6×/sec. The actual recording captures at the FPS above.",
+                FontSize = 10.5,
+                Foreground = WindowBuilder.TextDim,
+                Margin = new Thickness(0, 0, 0, 4)
+            });
+            // Start the preview timer immediately (before recording too — so the
+            // user can confirm the picker selected the right monitor).
+            _previewTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(160) };
+            _previewTimer.Tick += (_, _) => CaptureMonitorPreview(monitorBox, monitors);
+            _previewTimer.Start();
+            // Refresh once whenever the user changes the chosen monitor.
+            if (monitorBox != null)
+                monitorBox.SelectionChanged += (_, _) => CaptureMonitorPreview(monitorBox, monitors);
+        }
 
         // Recording status indicator
         var statusRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 14, 0, 0) };
@@ -191,7 +237,79 @@ public class ScreenRecorderWindow : Window
         ch.Primary.Content = "Done";
         ch.Primary.Click += (_, _) => { DialogResult = true; Close(); };
 
-        Closed += (_, _) => { try { StopRecording(); } catch { } };
+        Closed += (_, _) =>
+        {
+            try { _previewTimer?.Stop(); } catch { }
+            try { StopRecording(); } catch { }
+        };
+    }
+
+    /// <summary>
+    /// Capture the currently-selected monitor (or the whole virtual desktop) into
+    /// a low-res BitmapSource and assign it to the preview Image. Runs ~6×/sec —
+    /// fine for "is the camera pointed at the right thing" feedback, not a real
+    /// playback.
+    /// </summary>
+    private void CaptureMonitorPreview(ComboBox? monitorBox, List<MonitorInfo.Display> monitors)
+    {
+        if (_previewImage == null) return;
+        try
+        {
+            int x, y, w, h;
+            int idx = monitorBox?.SelectedIndex ?? 0;
+            if (idx > 0 && idx - 1 < monitors.Count)
+            {
+                var m = monitors[idx - 1];
+                x = m.X; y = m.Y; w = m.Width; h = m.Height;
+            }
+            else
+            {
+                // Whole virtual desktop — use SystemParameters which already reports
+                // the bounding rectangle of every attached monitor.
+                x = (int)SystemParameters.VirtualScreenLeft;
+                y = (int)SystemParameters.VirtualScreenTop;
+                w = (int)SystemParameters.VirtualScreenWidth;
+                h = (int)SystemParameters.VirtualScreenHeight;
+            }
+            if (w <= 0 || h <= 0) return;
+            // Capture at full source resolution into a Bitmap, then convert to
+            // BitmapSource. Stretch="Uniform" on the Image control handles the
+            // downscale to the preview area at render time — keeps the math simple
+            // and the source bitmap pixel-perfect.
+            using var bmp = new System.Drawing.Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (var g = System.Drawing.Graphics.FromImage(bmp))
+            {
+                g.CopyFromScreen(x, y, 0, 0, new System.Drawing.Size(w, h),
+                    System.Drawing.CopyPixelOperation.SourceCopy);
+            }
+            _previewImage.Source = BitmapToBitmapSource(bmp);
+        }
+        catch
+        {
+            // Screen capture can transiently fail (UAC prompt, secure desktop,
+            // locked screen) — silently skip this tick.
+        }
+    }
+
+    private static BitmapSource BitmapToBitmapSource(System.Drawing.Bitmap bmp)
+    {
+        var data = bmp.LockBits(
+            new System.Drawing.Rectangle(0, 0, bmp.Width, bmp.Height),
+            System.Drawing.Imaging.ImageLockMode.ReadOnly,
+            System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        try
+        {
+            var src = BitmapSource.Create(
+                bmp.Width, bmp.Height, 96, 96,
+                PixelFormats.Bgra32, null,
+                data.Scan0, data.Stride * bmp.Height, data.Stride);
+            src.Freeze();
+            return src;
+        }
+        finally
+        {
+            bmp.UnlockBits(data);
+        }
     }
 
     private void StopRecording()

@@ -16,6 +16,7 @@
     <PackageReference Include="Xabe.FFmpeg.Downloader" Version="5.2.6" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="System.Speech" Version="8.0.0" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
