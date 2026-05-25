@@ -33,8 +33,16 @@ public class ScreenRecorderWindow : Window
         Title = webcam ? "Video Recorder (Webcam)" : "Screen Recorder";
         var icon = webcam ? "🎥" : "🖥";
         var sub = webcam ? "Capture webcam via dshow" : "Capture a monitor — or the whole virtual desktop — using gdigrab";
-        // Wider + taller window so the live preview has room to breathe.
-        var ch = WindowBuilder.Build(this, icon, Title, sub, 720, webcam ? 460 : 620);
+        // Wider + taller window so the live preview has room to breathe. WindowBuilder
+        // defaults to NoResize; we override below to CanResize so the user can drag
+        // the dialog larger and the preview grows with it.
+        var ch = WindowBuilder.Build(this, icon, Title, sub, 880, webcam ? 460 : 760);
+        if (!webcam)
+        {
+            ResizeMode = ResizeMode.CanResize;
+            MinWidth = 560;
+            MinHeight = 540;
+        }
 
         ch.Body.Children.Add(WindowBuilder.Lbl("Output file"));
         var path = WindowBuilder.Tb(Path.Combine(
@@ -77,16 +85,18 @@ public class ScreenRecorderWindow : Window
         // Live preview surface — shows the chosen monitor (or whole desktop) every
         // ~150 ms via GDI screen capture. Independent of ffmpeg's own capture so it
         // can't affect the recording. Hidden for webcam mode.
+        Border? previewFrame = null;
         if (!webcam)
         {
             ch.Body.Children.Add(WindowBuilder.Lbl("Live preview"));
-            var previewFrame = new Border
+            previewFrame = new Border
             {
                 Background = System.Windows.Media.Brushes.Black,
                 BorderBrush = WindowBuilder.Line,
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(6),
-                Height = 250,
+                Height = 380,
+                MinHeight = 200,
                 Margin = new Thickness(0, 0, 0, 4),
                 ClipToBounds = true
             };
@@ -99,11 +109,26 @@ public class ScreenRecorderWindow : Window
             ch.Body.Children.Add(previewFrame);
             ch.Body.Children.Add(new TextBlock
             {
-                Text = "Preview updates 6×/sec. The actual recording captures at the FPS above.",
+                Text = "Preview updates 6×/sec. Drag the window corner to make it bigger. The recording itself captures at the FPS above.",
                 FontSize = 10.5,
                 Foreground = WindowBuilder.TextDim,
-                Margin = new Thickness(0, 0, 0, 4)
+                Margin = new Thickness(0, 0, 0, 4),
+                TextWrapping = TextWrapping.Wrap
             });
+
+            // Grow the preview surface vertically with the window so dragging the
+            // bottom-right corner makes the live preview bigger (and shrinking the
+            // window makes it smaller, down to the MinHeight floor).
+            SizeChanged += (_, _) =>
+            {
+                if (previewFrame == null) return;
+                // ~360 px of fixed chrome above the preview (titlebar + output path
+                // + monitor combo + FPS + caption + status row + buttons + footer).
+                // Anything left over goes to the preview itself.
+                double available = ActualHeight - 360;
+                if (available > previewFrame.MinHeight)
+                    previewFrame.Height = available;
+            };
             // Start the preview timer immediately (before recording too — so the
             // user can confirm the picker selected the right monitor).
             _previewTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(160) };
