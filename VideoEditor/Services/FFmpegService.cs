@@ -302,7 +302,7 @@ public class FFmpegService
 
     public async Task ExportProjectAsync(IList<VideoClip> clips, IList<VideoBlock> blocks,
         int canvasVideoW, int canvasVideoH, double canvasUiW, double canvasUiH,
-        double totalDuration, string output, IProgress<double>? progress = null)
+        double totalDuration, string output, string fitMode = "contain", IProgress<double>? progress = null)
     {
         if (clips.Count == 0) throw new Exception("No clips.");
         var temps = new List<string>();
@@ -335,7 +335,7 @@ public class FFmpegService
                 }
                 var tmp = Path.Combine(Path.GetTempPath(), $"ve_clip_{Guid.NewGuid():N}.mp4");
                 temps.Add(tmp);
-                await RenderClipAsync(c, tmp, targetW, targetH);
+                await RenderClipAsync(c, tmp, targetW, targetH, fitMode);
                 renderQueue.Add(tmp);
                 prevEnd = c.TimelineStart + c.EffectiveDuration;
                 progress?.Report((i + 1) * 0.7 / videoClips.Count);
@@ -371,26 +371,51 @@ public class FFmpegService
         }
     }
 
-    private async Task RenderClipAsync(VideoClip c, string output, int targetW, int targetH)
+    private async Task RenderClipAsync(VideoClip c, string output, int targetW, int targetH, string fitMode = "contain")
     {
         var ci = System.Globalization.CultureInfo.InvariantCulture;
         int fps = AppSettings.ExportFps;
         int crf = AppSettings.ExportCrf;
         int abps = AppSettings.ExportAudioBitrate;
 
-        var vf = new List<string>();
-        if (c.RotateDegrees == 90) vf.Add("transpose=1");
-        else if (c.RotateDegrees == 180) vf.Add("transpose=1,transpose=1");
-        else if (c.RotateDegrees == 270) vf.Add("transpose=2");
-        if (c.FlipH) vf.Add("hflip");
-        if (c.FlipV) vf.Add("vflip");
+        var vfPre = new List<string>();
+        if (c.RotateDegrees == 90) vfPre.Add("transpose=1");
+        else if (c.RotateDegrees == 180) vfPre.Add("transpose=1,transpose=1");
+        else if (c.RotateDegrees == 270) vfPre.Add("transpose=2");
+        if (c.FlipH) vfPre.Add("hflip");
+        if (c.FlipV) vfPre.Add("vflip");
         if (Math.Abs(c.Speed - 1.0) > 0.01)
-            vf.Add($"setpts={(1.0 / c.Speed).ToString(ci)}*PTS");
-        vf.Add($"scale={targetW}:{targetH}:force_original_aspect_ratio=decrease");
-        vf.Add($"pad={targetW}:{targetH}:(ow-iw)/2:(oh-ih)/2:black");
-        vf.Add("setsar=1");
-        vf.Add($"fps={fps}");
-        vf.Add("setpts=PTS-STARTPTS");
+            vfPre.Add($"setpts={(1.0 / c.Speed).ToString(ci)}*PTS");
+
+        var vfTail = new List<string> { "setsar=1", $"fps={fps}", "setpts=PTS-STARTPTS" };
+
+        string videoFilterArg;
+        if (fitMode == "blur")
+        {
+            int blur = Math.Clamp(AppSettings.BlurredBgStrength, 0, 60);
+            var preChain = vfPre.Count > 0 ? string.Join(",", vfPre) + "," : "";
+            var tailChain = string.Join(",", vfTail);
+            string complex =
+                $"[0:v]{preChain}split=2[fgsrc][bgsrc];" +
+                $"[bgsrc]scale={targetW}:{targetH}:force_original_aspect_ratio=increase," +
+                $"crop={targetW}:{targetH}:(iw-{targetW})/2:(ih-{targetH})/2," +
+                $"boxblur={blur}:2[bg];" +
+                $"[fgsrc]scale={targetW}:{targetH}:force_original_aspect_ratio=decrease[fg];" +
+                $"[bg][fg]overlay=(W-w)/2:(H-h)/2,{tailChain}[v]";
+            videoFilterArg = $"-filter_complex \"{complex}\" -map \"[v]\" -map 0:a?";
+        }
+        else
+        {
+            string fit = fitMode == "cover"
+                ? $"scale={targetW}:{targetH}:force_original_aspect_ratio=increase," +
+                  $"crop={targetW}:{targetH}:(iw-{targetW})/2:(ih-{targetH})/2"
+                : $"scale={targetW}:{targetH}:force_original_aspect_ratio=decrease," +
+                  $"pad={targetW}:{targetH}:(ow-iw)/2:(oh-ih)/2:black";
+
+            var allVf = new List<string>(vfPre) { fit };
+            allVf.AddRange(vfTail);
+            videoFilterArg = $"-vf \"{string.Join(",", allVf)}\"";
+        }
 
         var af = new List<string>();
         if (Math.Abs(c.Speed - 1.0) > 0.01) af.Add(BuildAtempoFilter(c.Speed));
@@ -403,10 +428,9 @@ public class FFmpegService
             ? $"-stream_loop {c.LoopCount - 1} -ss {c.InPoint.ToString(ci)} -i \"{c.SourceFile}\" -t {(dur * c.LoopCount).ToString(ci)}"
             : $"-ss {c.InPoint.ToString(ci)} -i \"{c.SourceFile}\" -t {dur.ToString(ci)}";
 
-        // Add loudnorm filter if enabled
         if (AppSettings.AudioLoudnorm) af.Add("loudnorm=I=-16:TP=-1.5:LRA=11");
 
-        var args = $"-y {inputArg} -vf \"{string.Join(",", vf)}\"";
+        var args = $"-y {inputArg} {videoFilterArg}";
         if (af.Count > 0) args += $" -af \"{string.Join(",", af)}\"";
         args += $" {ResolveVideoEncoderArgs(crf)} -pix_fmt yuv420p";
         args += $" -c:a aac -ar 44100 -ac 2 -b:a {abps}k";
