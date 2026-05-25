@@ -4,11 +4,14 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using VideoEditor.Models;
 using VideoEditor.Services;
 
 namespace VideoEditor.Views;
@@ -20,6 +23,19 @@ public class ScreenRecorderWindow : Window
     private Process? _proc;
     private DispatcherTimer? _previewTimer;
     private System.Windows.Controls.Image? _previewImage;
+
+    // ---- AI camera background (webcam mode only) ----
+    private readonly BackgroundRemovalService _bgService = new();
+    private readonly CameraBackground _bg = new();
+    private System.Windows.Controls.Image? _camPreviewImage;
+    private TextBlock? _bgStatus;
+    private Process? _camPreviewProc;
+    private CancellationTokenSource? _camPreviewCts;
+    private bool _modelReady;
+    private bool _modelDownloading;
+    // When a background mode is active we record raw to a temp file, then re-render
+    // it with the background on Stop. Null means "record straight to the output".
+    private string? _recordTempPath;
 
     /// <summary>Path of the last successful recording. Set by Stop, read by the
     /// parent MainWindow when "Open in editor" was clicked. Empty when the user
@@ -37,13 +53,10 @@ public class ScreenRecorderWindow : Window
         // buttons) fits without the ScrollViewer needing to scroll. WindowBuilder
         // defaults to NoResize; for the screen recorder we override to CanResize
         // so the user can drag the dialog wider for a roomier preview.
-        var ch = WindowBuilder.Build(this, icon, Title, sub, 920, webcam ? 560 : 860);
-        if (!webcam)
-        {
-            ResizeMode = ResizeMode.CanResize;
-            MinWidth = 560;
-            MinHeight = 700;
-        }
+        var ch = WindowBuilder.Build(this, icon, Title, sub, 920, webcam ? 820 : 860);
+        ResizeMode = ResizeMode.CanResize;
+        MinWidth = 560;
+        MinHeight = 700;
 
         ch.Body.Children.Add(WindowBuilder.Lbl("Output file"));
         var path = WindowBuilder.Tb(Path.Combine(
@@ -97,6 +110,140 @@ public class ScreenRecorderWindow : Window
             };
             ch.Body.Children.Add(cameraHint);
 
+            // ---- AI background controls --------------------------------------
+            ch.Body.Children.Add(WindowBuilder.Lbl("Background (AI - runs locally, free)"));
+
+            var modeBox = new ComboBox
+            {
+                Background = WindowBuilder.Bg2,
+                Foreground = WindowBuilder.TextBr,
+                BorderBrush = WindowBuilder.Line,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(9, 6, 9, 6),
+                FontSize = 12.5,
+                MinHeight = 32,
+                Margin = new Thickness(0, 0, 0, 6)
+            };
+            modeBox.Items.Add("Keep original background");
+            modeBox.Items.Add("Blur the background");
+            modeBox.Items.Add("Remove background (transparent)");
+            modeBox.Items.Add("Replace with a colour");
+            modeBox.Items.Add("Replace with an image");
+            modeBox.SelectedIndex = 0;
+            ch.Body.Children.Add(modeBox);
+
+            // Colour palette (visible only for "Replace with a colour").
+            var colourRow = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(0, 0, 0, 6),
+                Visibility = Visibility.Collapsed
+            };
+            (string name, byte r, byte g, byte b)[] palette =
+            {
+                ("Studio blue", 0x10, 0x6E, 0xBE),
+                ("Green", 0x12, 0xB5, 0x66),
+                ("Black", 0x10, 0x12, 0x18),
+                ("White", 0xF2, 0xF4, 0xF8),
+                ("Purple", 0x8B, 0x5C, 0xFF),
+                ("Grey", 0x6A, 0x72, 0x82)
+            };
+            foreach (var c in palette)
+            {
+                var sw = new Button
+                {
+                    Width = 30,
+                    Height = 26,
+                    Margin = new Thickness(0, 0, 6, 0),
+                    Background = new SolidColorBrush(Color.FromRgb(c.r, c.g, c.b)),
+                    BorderBrush = WindowBuilder.Line,
+                    BorderThickness = new Thickness(1),
+                    ToolTip = c.name,
+                    Cursor = System.Windows.Input.Cursors.Hand
+                };
+                var cc = c;
+                sw.Click += (_, _) =>
+                {
+                    _bg.ColorR = cc.r; _bg.ColorG = cc.g; _bg.ColorB = cc.b;
+                    foreach (var child in colourRow.Children)
+                        if (child is Button b) b.BorderBrush = WindowBuilder.Line;
+                    sw.BorderBrush = WindowBuilder.Accent;
+                };
+                colourRow.Children.Add(sw);
+            }
+            ch.Body.Children.Add(colourRow);
+
+            // Image picker (visible only for "Replace with an image").
+            var imageRow = new Grid { Margin = new Thickness(0, 0, 0, 6), Visibility = Visibility.Collapsed };
+            imageRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            imageRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var imagePathBox = WindowBuilder.Tb("");
+            imagePathBox.IsReadOnly = true;
+            Grid.SetColumn(imagePathBox, 0);
+            imageRow.Children.Add(imagePathBox);
+            var browseImgBtn = new Button { Content = "Choose image...", MinWidth = 120, Height = 32, Margin = new Thickness(8, 0, 0, 0) };
+            browseImgBtn.Style = (Style)FindResource("ToolButton");
+            Grid.SetColumn(browseImgBtn, 1);
+            imageRow.Children.Add(browseImgBtn);
+            ch.Body.Children.Add(imageRow);
+            browseImgBtn.Click += (_, _) =>
+            {
+                var dlg = new Microsoft.Win32.OpenFileDialog
+                {
+                    Filter = "Images|*.jpg;*.jpeg;*.png;*.bmp;*.webp|All files|*.*"
+                };
+                if (dlg.ShowDialog() == true)
+                {
+                    _bg.ImagePath = dlg.FileName;
+                    imagePathBox.Text = dlg.FileName;
+                }
+            };
+
+            modeBox.SelectionChanged += (_, _) =>
+            {
+                _bg.Mode = modeBox.SelectedIndex switch
+                {
+                    1 => CameraBackgroundMode.Blur,
+                    2 => CameraBackgroundMode.Transparent,
+                    3 => CameraBackgroundMode.Color,
+                    4 => CameraBackgroundMode.Image,
+                    _ => CameraBackgroundMode.None
+                };
+                colourRow.Visibility = _bg.Mode == CameraBackgroundMode.Color ? Visibility.Visible : Visibility.Collapsed;
+                imageRow.Visibility = _bg.Mode == CameraBackgroundMode.Image ? Visibility.Visible : Visibility.Collapsed;
+                if (_bg.NeedsModel) EnsureModelInBackground();
+                else if (_bgStatus != null) _bgStatus.Text = "";
+            };
+
+            // Live preview of the chosen camera, with the background applied once the
+            // model is ready. Independent process so it never touches the recording.
+            ch.Body.Children.Add(WindowBuilder.Lbl("Preview"));
+            var camPreviewFrame = new Border
+            {
+                Height = 260,
+                Background = System.Windows.Media.Brushes.Black,
+                BorderBrush = WindowBuilder.Line,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                ClipToBounds = true,
+                Margin = new Thickness(0, 0, 0, 4)
+            };
+            _camPreviewImage = new System.Windows.Controls.Image { Stretch = Stretch.Uniform };
+            camPreviewFrame.Child = _camPreviewImage;
+            ch.Body.Children.Add(camPreviewFrame);
+
+            _bgStatus = new TextBlock
+            {
+                Text = "Pick a background above. The AI model downloads once (~25 MB) the first time you use it.",
+                FontSize = 10.5,
+                Foreground = WindowBuilder.TextDim,
+                Margin = new Thickness(0, 0, 0, 4),
+                TextWrapping = TextWrapping.Wrap
+            };
+            ch.Body.Children.Add(_bgStatus);
+
+            cameraBox.SelectionChanged += (_, _) => RestartCamPreview(cameraBox.Text);
+
             async void RefreshCameras()
             {
                 refreshCamerasBtn.IsEnabled = false;
@@ -128,6 +275,7 @@ public class ScreenRecorderWindow : Window
                     refreshCamerasBtn.Content = "Refresh";
                     refreshCamerasBtn.IsEnabled = true;
                 }
+                RestartCamPreview(cameraBox.Text);
             }
             refreshCamerasBtn.Click += (_, _) => RefreshCameras();
             Loaded += (_, _) => RefreshCameras();
@@ -353,8 +501,33 @@ public class ScreenRecorderWindow : Window
                 string args;
                 if (webcam)
                 {
+                    // The camera is an exclusive device - drop the live preview so
+                    // ffmpeg can open it for recording.
+                    StopCamPreview();
+
                     var cameraName = string.IsNullOrWhiteSpace(cameraBox?.Text) ? "USB Video Device" : cameraBox.Text.Trim();
-                    args = $"-y -f dshow -framerate {fpsValue} -i video=\"{EscapeRecorderArg(cameraName)}\" -c:v libx264 -preset ultrafast -pix_fmt yuv420p \"{outputPath}\"";
+
+                    // With a background mode active we capture the raw camera to a temp
+                    // file and re-render it (with the AI background) when the user stops.
+                    string recordTarget = outputPath;
+                    _recordTempPath = null;
+                    if (_bg.NeedsModel)
+                    {
+                        if (_bg.NeedsAlpha)
+                        {
+                            // A transparent recording needs an alpha-capable container.
+                            outputPath = Path.ChangeExtension(outputPath, ".webm");
+                            path.Text = outputPath;
+                        }
+                        recordTarget = Path.Combine(Path.GetTempPath(), $"ve_camraw_{Guid.NewGuid():N}.mp4");
+                        _recordTempPath = recordTarget;
+                    }
+
+                    // -rtbufsize gives the USB camera a bigger buffer (fewer dropped
+                    // frames), and -fps_mode cfr + -r force a constant frame rate so
+                    // playback is smooth instead of stuttering on variable timestamps.
+                    args = $"-y -f dshow -rtbufsize 200M -framerate {fpsValue} -i video=\"{EscapeRecorderArg(cameraName)}\" " +
+                           $"-c:v libx264 -preset ultrafast -pix_fmt yuv420p -fps_mode cfr -r {fpsValue} \"{recordTarget}\"";
                 }
                 else
                 {
@@ -378,14 +551,14 @@ public class ScreenRecorderWindow : Window
                         // pixel-format conversion afterwards so libx264 doesn't choke on
                         // ddagrab's native BGRA output.
                         args = $"-y -filter_complex \"ddagrab=output_idx={m.Index}:framerate={fpsValue},hwdownload,format=bgra,format=yuv420p[v]\" " +
-                               $"-map \"[v]\" -c:v libx264 -preset ultrafast \"{outputPath}\"";
+                               $"-map \"[v]\" -c:v libx264 -preset ultrafast -fps_mode cfr -r {fpsValue} \"{outputPath}\"";
                     }
                     else
                     {
                         AppSettings.LastScreenRecorderMonitor = -1;
                         AppSettings.Save();
                         // Entire virtual desktop: stick with gdigrab (multi-monitor span).
-                        args = $"-y -f gdigrab -framerate {fpsValue} -i desktop -c:v libx264 -preset ultrafast -pix_fmt yuv420p \"{outputPath}\"";
+                        args = $"-y -f gdigrab -framerate {fpsValue} -i desktop -c:v libx264 -preset ultrafast -pix_fmt yuv420p -fps_mode cfr -r {fpsValue} \"{outputPath}\"";
                     }
                 }
                 _proc = new Process
@@ -413,14 +586,42 @@ public class ScreenRecorderWindow : Window
             }
             catch (Exception ex) { MessageBox.Show(ex.Message); }
         };
-        stopBtn.Click += (_, _) =>
+        stopBtn.Click += async (_, _) =>
         {
             try
             {
                 StopRecording();
+                stopBtn.IsEnabled = false;
+
+                // Re-render the raw capture with the chosen AI background, if any.
+                if (_recordTempPath != null && File.Exists(_recordTempPath))
+                {
+                    startBtn.IsEnabled = false;
+                    statusDot.Fill = new SolidColorBrush(Color.FromRgb(0xFF, 0xB1, 0x4D));
+                    int.TryParse(fps.Text, out var fpsValue);
+                    if (fpsValue < 1) fpsValue = 30;
+                    var temp = _recordTempPath;
+                    var finalPath = path.Text;
+                    _recordTempPath = null;
+                    try
+                    {
+                        var progress = new Progress<double>(p =>
+                            statusText.Text = $"Applying AI background... {p:P0}");
+                        await _bgService.EnsureModelAsync();
+                        await Task.Run(() => _bgService.ProcessVideoAsync(
+                            _ff, temp, finalPath, _bg, fpsValue, progress));
+                    }
+                    finally
+                    {
+                        try { File.Delete(temp); } catch { }
+                    }
+                }
+
                 statusDot.Fill = new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50));
                 statusText.Text = "Saved: " + Path.GetFileName(path.Text);
-                startBtn.IsEnabled = true; stopBtn.IsEnabled = false;
+                startBtn.IsEnabled = true;
+                if (webcam) RestartCamPreview(cameraBox?.Text);
+
                 if (!File.Exists(path.Text))
                 {
                     MessageBox.Show("Recording finished but the file wasn't created: " + path.Text);
@@ -441,7 +642,12 @@ public class ScreenRecorderWindow : Window
                     Close();
                 }
             }
-            catch (Exception ex) { MessageBox.Show(ex.Message); }
+            catch (Exception ex)
+            {
+                startBtn.IsEnabled = true;
+                statusText.Text = "Failed: " + ex.Message;
+                MessageBox.Show(ex.Message);
+            }
         };
 
         // Primary CTA closes the window (recording is started/stopped via the buttons above)
@@ -451,8 +657,158 @@ public class ScreenRecorderWindow : Window
         Closed += (_, _) =>
         {
             try { _previewTimer?.Stop(); } catch { }
+            try { StopCamPreview(); } catch { }
             try { StopRecording(); } catch { }
+            try { _bgService.Dispose(); } catch { }
         };
+    }
+
+    // ---- AI background: model download + live camera preview ----------------
+
+    private async void EnsureModelInBackground()
+    {
+        if (_modelReady || _modelDownloading) return;
+        if (BackgroundRemovalService.IsModelReady())
+        {
+            _modelReady = true;
+            if (_bgStatus != null) _bgStatus.Text = "Background preview is live.";
+            return;
+        }
+        _modelDownloading = true;
+        if (_bgStatus != null) _bgStatus.Text = "Downloading AI background model (~25 MB) - first time only...";
+        try
+        {
+            var progress = new Progress<double>(p =>
+            {
+                if (_bgStatus != null) _bgStatus.Text = $"Downloading AI background model... {p:P0}";
+            });
+            await _bgService.EnsureModelAsync(progress);
+            _modelReady = true;
+            if (_bgStatus != null) _bgStatus.Text = "Background preview is live.";
+        }
+        catch (Exception ex)
+        {
+            if (_bgStatus != null) _bgStatus.Text = "Model download failed: " + ex.Message;
+        }
+        finally
+        {
+            _modelDownloading = false;
+        }
+    }
+
+    private void RestartCamPreview(string? cameraName)
+    {
+        if (!_webcam) return;
+        StopCamPreview();
+        if (string.IsNullOrWhiteSpace(cameraName)) return;
+        // Never grab the camera while it's being recorded (exclusive device).
+        if (_proc != null && !_proc.HasExited) return;
+        try
+        {
+            _camPreviewCts = new CancellationTokenSource();
+            _camPreviewProc = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = _ff.FFmpegExe,
+                    Arguments = $"-hide_banner -loglevel error -f dshow -i video=\"{EscapeRecorderArg(cameraName.Trim())}\" " +
+                                "-vf fps=8,scale=480:-1 -f image2pipe -vcodec mjpeg pipe:1",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                },
+                EnableRaisingEvents = true
+            };
+            _camPreviewProc.Start();
+            _ = ReadCamPreviewAsync(_camPreviewProc.StandardOutput.BaseStream, _camPreviewCts.Token);
+        }
+        catch
+        {
+            // Preview is best-effort; recording does not depend on it.
+        }
+    }
+
+    private void StopCamPreview()
+    {
+        try { _camPreviewCts?.Cancel(); } catch { }
+        if (_camPreviewProc != null)
+        {
+            try { if (!_camPreviewProc.HasExited) _camPreviewProc.Kill(); } catch { }
+            try { _camPreviewProc.Dispose(); } catch { }
+        }
+        _camPreviewProc = null;
+        _camPreviewCts = null;
+    }
+
+    private async Task ReadCamPreviewAsync(Stream stream, CancellationToken token)
+    {
+        var buffer = new byte[8192];
+        var bytes = new List<byte>(256 * 1024);
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                // ConfigureAwait(false) keeps the (heavy) decode + inference off the
+                // UI thread; only the final Source assignment hops back via Dispatcher.
+                int read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), token).ConfigureAwait(false);
+                if (read <= 0) break;
+                for (int i = 0; i < read; i++) bytes.Add(buffer[i]);
+                while (TryExtractJpeg(bytes, out var jpg))
+                {
+                    var src = RenderPreviewFrame(jpg);
+                    if (src != null)
+                        Dispatcher.Invoke(() => { if (_camPreviewImage != null) _camPreviewImage.Source = src; });
+                }
+            }
+        }
+        catch
+        {
+            // Stream closed / camera released - nothing to do.
+        }
+    }
+
+    private BitmapSource? RenderPreviewFrame(byte[] jpg)
+    {
+        try
+        {
+            using var ms = new MemoryStream(jpg);
+            using var raw = new System.Drawing.Bitmap(ms);
+            if (_modelReady && _bg.Mode != CameraBackgroundMode.None)
+            {
+                using var composited = _bgService.ProcessBitmap(raw, _bg);
+                return BitmapToBitmapSource(composited);
+            }
+            return BitmapToBitmapSource(raw);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool TryExtractJpeg(List<byte> bytes, out byte[] jpg)
+    {
+        jpg = Array.Empty<byte>();
+        int start = -1;
+        for (int i = 0; i < bytes.Count - 1; i++)
+            if (bytes[i] == 0xFF && bytes[i + 1] == 0xD8) { start = i; break; }
+        if (start < 0)
+        {
+            if (bytes.Count > 4096) bytes.RemoveRange(0, bytes.Count - 2);
+            return false;
+        }
+        int end = -1;
+        for (int i = start + 2; i < bytes.Count - 1; i++)
+            if (bytes[i] == 0xFF && bytes[i + 1] == 0xD9) { end = i + 2; break; }
+        if (end < 0)
+        {
+            if (start > 0) bytes.RemoveRange(0, start);
+            return false;
+        }
+        jpg = bytes.GetRange(start, end - start).ToArray();
+        bytes.RemoveRange(0, end);
+        return true;
     }
 
     private async System.Threading.Tasks.Task<List<string>> DetectDshowVideoDevicesAsync()
