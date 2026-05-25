@@ -105,7 +105,8 @@ public class DownloadService
         var psi = new ProcessStartInfo
         {
             FileName = YtDlpExePath,
-            Arguments = $"-f \"bv*[height<=1080]+ba/b[height<=1080]\" --merge-output-format mp4 " +
+            Arguments = $"-f \"bv*[ext=mp4][vcodec^=avc1][height<=1080]+ba[ext=m4a]/b[ext=mp4][height<=1080]/bv*[height<=1080]+ba/b[height<=1080]\" " +
+                        $"--merge-output-format mp4 --remux-video mp4 " +
                         $"--ffmpeg-location \"{ffmpegPath}\" " +
                         $"--no-playlist --no-warnings --newline " +
                         $"-o \"{outputTemplate}\" \"{url}\"",

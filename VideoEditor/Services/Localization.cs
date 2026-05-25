@@ -123,12 +123,65 @@ internal static class Localization
         ["Delete"] = "מחק",
         ["Copy/Paste"] = "העתק/הדבק",
         ["Ready · drop video files to add"] = "מוכן · גרור קבצי וידאו כדי להוסיף",
+
+        ["Renders over video at export"] = "מוצג מעל הווידאו בייצוא",
+        ["LABEL"] = "תווית",
+        ["MODE"] = "מצב",
+        ["Solid"] = "אטום",
+        ["Blur"] = "טשטוש",
+        ["Pixelate"] = "פיקסול",
+        ["COLOR"] = "צבע",
+        ["STRENGTH"] = "עוצמה",
+        ["Subtle"] = "עדין",
+        ["Soft"] = "רך",
+        ["Heavy"] = "כבד",
+        ["Cover whole timeline"] = "כיסוי כל ציר הזמן",
+        ["START (s)"] = "התחלה (שניות)",
+        ["END (s)"] = "סיום (שניות)",
+        ["START"] = "התחלה",
+        ["END"] = "סיום",
+        ["TRIM — IN / OUT"] = "חיתוך — התחלה / סוף",
+        ["SPEED"] = "מהירות",
+        ["VOLUME"] = "עוצמת קול",
+        ["TRANSFORM"] = "טרנספורם",
+        ["EXPORT-TIME EFFECTS"] = "אפקטים בייצוא",
+        ["ARRANGE"] = "סידור",
+        ["QUALITY (CRF)"] = "איכות (CRF)",
+        ["Visually lossless"] = "ללא איבוד נראה",
+        ["Smaller file"] = "קובץ קטן יותר",
+        ["Export project"] = "ייצוא הפרויקט",
+        ["Extract project audio only"] = "חילוץ אודיו בלבד מהפרויקט",
+        ["Source"] = "מקור",
+        ["No clip loaded"] = "לא נטען קליפ",
+        ["FFmpeg 6.1 · ffprobe ready"] = "FFmpeg 6.1 · ffprobe מוכן",
+        ["NEW"] = "חדש",
+        ["2-pass"] = "2 מעברים",
+        ["Split into N Parts…"] = "פיצול ל-N חלקים…",
+        ["Open video files"] = "פתח קבצי וידאו",
+        ["Export project (Ctrl+E)"] = "ייצוא הפרויקט (Ctrl+E)",
+        ["Settings · ,"] = "הגדרות · ,",
+        ["User Guide · ?"] = "מדריך למשתמש · ?",
+        ["Drag video files here"] = "גרור קבצי וידאו לכאן",
+        ["Fit"] = "התאם",
     };
 
     public static bool IsHebrew =>
         AppSettings.Language == "he" ||
         (AppSettings.Language == "auto" &&
          System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "he");
+
+    private static Dictionary<string, string>? _heToEn;
+    private static Dictionary<string, string> HeToEn
+    {
+        get
+        {
+            if (_heToEn != null) return _heToEn;
+            var d = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var kv in He) d[kv.Value] = kv.Key;
+            _heToEn = d;
+            return d;
+        }
+    }
 
     public static string T(string text)
     {
@@ -137,9 +190,19 @@ internal static class Localization
         return text;
     }
 
+    private static string Translate(string text, bool toHebrew)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        if (toHebrew)
+        {
+            return He.TryGetValue(text, out var he) ? he : text;
+        }
+        return HeToEn.TryGetValue(text, out var en) ? en : text;
+    }
+
     public static void TranslateTree(DependencyObject root)
     {
-        if (!IsHebrew) return;
+        bool toHebrew = IsHebrew;
         var seen = new HashSet<DependencyObject>();
 
         void Recurse(DependencyObject? node)
@@ -147,14 +210,14 @@ internal static class Localization
             if (node == null || !seen.Add(node)) return;
 
             if (node is TextBlock tb && !string.IsNullOrEmpty(tb.Text))
-                tb.Text = T(tb.Text);
+                tb.Text = Translate(tb.Text, toHebrew);
             else if (node is HeaderedContentControl hc && hc.Header is string hs)
-                hc.Header = T(hs);
+                hc.Header = Translate(hs, toHebrew);
             else if (node is ContentControl cc && cc.Content is string s)
-                cc.Content = T(s);
+                cc.Content = Translate(s, toHebrew);
 
             if (node is FrameworkElement fe && fe.ToolTip is string tip)
-                fe.ToolTip = T(tip);
+                fe.ToolTip = Translate(tip, toHebrew);
 
             foreach (var child in LogicalTreeHelper.GetChildren(node))
                 if (child is DependencyObject d) Recurse(d);
