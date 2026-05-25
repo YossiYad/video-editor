@@ -187,13 +187,56 @@ public class FFmpegService
         return RunAsync(args, duration, progress);
     }
 
-    public Task AddTextAsync(string videoIn, string output, string text, int x, int y, int fontSize, string colorHex, double duration, IProgress<double>? progress = null)
+    public async Task AddTextAsync(string videoIn, string output, VideoEditor.Views.TextOverlayOptions opt, double duration, IProgress<double>? progress = null)
     {
-        // drawtext requires \ to be escaped FIRST — if we escape ' and : first, the \ we
-        // added would itself get doubled and the closing quote of text='...' would break.
-        var safeText = text.Replace("\\", "\\\\").Replace("'", "\\'").Replace(":", "\\:");
-        var args = $"-y -i \"{videoIn}\" -vf \"drawtext=text='{safeText}':x={x}:y={y}:fontsize={fontSize}:fontcolor={colorHex}\" -c:a copy \"{output}\"";
-        return RunAsync(args, duration, progress);
+        var tempText = Path.Combine(Path.GetTempPath(), $"ve_text_{Guid.NewGuid():N}.txt");
+        await File.WriteAllTextAsync(tempText, opt.Text ?? "", new System.Text.UTF8Encoding(false));
+        try
+        {
+            var fontFile = ResolveDrawtextFont(opt.Bold, opt.Italic);
+            var parts = new List<string>
+            {
+                "drawtext=textfile=" + EscapeFilterArg(tempText),
+                "fontfile=" + EscapeFilterArg(fontFile),
+                "x=" + opt.X,
+                "y=" + opt.Y,
+                "fontsize=" + opt.FontSize,
+                "fontcolor=" + opt.FontColor
+            };
+            if (opt.BackgroundEnabled && opt.BackgroundOpacity > 0)
+            {
+                parts.Add("box=1");
+                parts.Add($"boxcolor={opt.BackgroundColor}@{opt.BackgroundOpacity.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}");
+                parts.Add("boxborderw=" + opt.BackgroundPadding);
+            }
+            var args = $"-y -i \"{videoIn}\" -vf \"{string.Join(":", parts)}\" -c:a copy \"{output}\"";
+            await RunAsync(args, duration, progress);
+        }
+        finally
+        {
+            try { File.Delete(tempText); } catch { }
+        }
+    }
+
+    private static string EscapeFilterArg(string p)
+        => p.Replace("\\", "/").Replace(":", "\\:").Replace("'", "\\'").Replace(",", "\\,");
+
+    private static string ResolveDrawtextFont(bool bold, bool italic)
+    {
+        string winFonts = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts");
+        var candidates = (bold, italic) switch
+        {
+            (true,  true)  => new[] { "segoeuiz.ttf", "arialbi.ttf", "segoeuib.ttf", "arialbd.ttf", "segoeui.ttf", "arial.ttf" },
+            (true,  false) => new[] { "segoeuib.ttf", "arialbd.ttf", "segoeui.ttf",  "arial.ttf" },
+            (false, true)  => new[] { "segoeuii.ttf", "ariali.ttf",  "segoeui.ttf",  "arial.ttf" },
+            _              => new[] { "segoeui.ttf",  "arial.ttf",   "tahoma.ttf" },
+        };
+        foreach (var name in candidates)
+        {
+            var p = Path.Combine(winFonts, name);
+            if (File.Exists(p)) return p;
+        }
+        return Path.Combine(winFonts, "arial.ttf");
     }
 
     public Task RemoveLogoAsync(string videoIn, string output, int x, int y, int w, int h, double duration, IProgress<double>? progress = null)

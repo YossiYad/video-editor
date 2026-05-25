@@ -164,6 +164,16 @@ internal static class Localization
         ["Drag video files here"] = "גרור קבצי וידאו לכאן",
         ["Fit"] = "התאם",
 
+        ["Add Text"] = "הוספת טקסט",
+        ["Drag the text on the video to position it. The result burns into the clip on export."] = "גרור את הטקסט על הוידאו כדי למקם אותו. התוצאה נצרבת לקליפ בייצוא.",
+        ["Drag the text on the video to position it."] = "גרור את הטקסט על הוידאו כדי למקם אותו.",
+        ["TEXT"] = "טקסט",
+        ["SIZE"] = "גודל",
+        ["STYLE"] = "סגנון",
+        ["TEXT COLOR"] = "צבע טקסט",
+        ["BACKGROUND HIGHLIGHT"] = "רקע הדגשה",
+        ["Add text"] = "הוסף טקסט",
+
         ["Choose project format"] = "בחר פורמט פרויקט",
         ["Pick the canvas you'll be editing for. You can change this anytime."] = "בחר את המסגרת שלפיה תערוך. אפשר לשנות בכל רגע.",
         ["Use this format"] = "השתמש בפורמט הזה",
