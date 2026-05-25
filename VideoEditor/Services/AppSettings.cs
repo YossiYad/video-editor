@@ -82,8 +82,8 @@ public static class AppSettings
     public static int BlurredBgStrength { get; set; } = 20;
 
     // ----- Transcription -----
-    /// <summary>"tiny" | "base" | "small" - default whisper model.</summary>
-    public static string LastTranscribeModel { get; set; } = "base";
+    /// <summary>"tiny" | "base" | "small" | "medium" | "large-v3-turbo" - default whisper model. Turbo is the sweet spot for Hebrew.</summary>
+    public static string LastTranscribeModel { get; set; } = "large-v3-turbo";
     /// <summary>"auto" | "he" | "en" - last picked transcription language.</summary>
     public static string LastTranscribeLanguage { get; set; } = "auto";
     /// <summary>"clip" | "all" - transcribe selected clip vs all video clips.</summary>

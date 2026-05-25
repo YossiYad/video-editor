@@ -40,8 +40,22 @@ public class AiCaptionsWindow : Window
 
     private static readonly string[] LanguageItems = { "Auto-detect", "Hebrew", "English" };
     private static readonly string[] LanguageKeys  = { "auto",        "he",     "en"      };
-    private static readonly string[] ModelItems = { "Tiny — fastest (75 MB)", "Base — balanced (140 MB)", "Small — most accurate (470 MB)" };
-    private static readonly string[] ModelKeys  = { "tiny",                    "base",                      "small" };
+    private static readonly string[] ModelItems =
+    {
+        "Tiny — fastest (75 MB)",
+        "Base — balanced (140 MB)",
+        "Small — better Hebrew (470 MB)",
+        "Medium — very accurate (1.5 GB)",
+        "Large v3 Turbo — best Hebrew (800 MB, recommended)"
+    };
+    private static readonly string[] ModelKeys =
+    {
+        "tiny",
+        "base",
+        "small",
+        "medium",
+        "large-v3-turbo"
+    };
     private static readonly string[] SourceItems = { "Selected clip", "All video clips" };
     private static readonly string[] SourceKeys  = { "clip",          "all" };
 

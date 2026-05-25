@@ -184,16 +184,32 @@ public sealed class LlmCaptionService
     private static string BuildPrompt(IList<SubtitleSegment> segments)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("You are an expert short-form video editor (Reels / TikTok / Shorts).");
-        sb.AppendLine("Convert the transcript below into a sequence of short, punchy on-screen captions");
-        sb.AppendLine("that drive engagement — \"kinetic typography\" style.");
+        sb.AppendLine("You are an expert short-form video editor (Reels / TikTok / Shorts) AND a careful");
+        sb.AppendLine("transcription editor. The transcript below was produced by an automatic speech-");
+        sb.AppendLine("to-text model (whisper.cpp). It will contain mis-heard words — especially in Hebrew,");
+        sb.AppendLine("where similar-sounding letters are easily confused (ב/ו, ם/ן, ת/ט, ק/כ, ה/ע) and");
+        sb.AppendLine("Whisper sometimes drops words or runs two together.");
+        sb.AppendLine();
+        sb.AppendLine("Your job:");
+        sb.AppendLine("1. Read the whole transcript and figure out what is ACTUALLY being said.");
+        sb.AppendLine("   Fix obvious misrecognitions using the surrounding context (a sentence about");
+        sb.AppendLine("   a recipe shouldn't suddenly contain a nonsense word — replace it with the");
+        sb.AppendLine("   word that makes the sentence make sense). Treat song lyrics, idioms and");
+        sb.AppendLine("   common Hebrew phrases as anchors — \"שוב חוזרים ללוודה הנקודה\" is gibberish;");
+        sb.AppendLine("   the real lyric is \"שוב חוזרים לאותה הנקודה\".");
+        sb.AppendLine("2. Then convert the cleaned transcript into a sequence of short, punchy on-screen");
+        sb.AppendLine("   captions — \"kinetic typography\" style — that drive engagement.");
         sb.AppendLine();
         sb.AppendLine("Rules (must follow):");
         sb.AppendLine("- Output STRICT JSON: an array of objects with exactly these keys: start, end, text, color.");
-        sb.AppendLine("- Times are seconds (number) measured from 0.");
+        sb.AppendLine("- Times are seconds (number) measured from 0. Keep them close to the original");
+        sb.AppendLine("  timing — you may split a noisy long segment but do not invent timing far from");
+        sb.AppendLine("  what the transcript provides.");
         sb.AppendLine("- Caption ranges must NOT overlap and must be in chronological order.");
         sb.AppendLine("- Cover roughly the whole spoken duration; gaps between captions are fine.");
         sb.AppendLine("- text: 3–7 words per caption (1–5 in Hebrew). Use the SAME language as the transcript — do not translate.");
+        sb.AppendLine("- Use real, well-formed words in that language. NEVER pass through obvious");
+        sb.AppendLine("  gibberish from the input — fix it.");
         sb.AppendLine("- Capitalise for emphasis sparingly. Avoid ALL CAPS on every single line.");
         sb.AppendLine("- color: pick from this small palette to stay consistent — \"white\", \"yellow\", \"cyan\", \"red\".");
         sb.AppendLine("  Use \"white\" most of the time; switch colour only for emphasis on key words or numbers.");
