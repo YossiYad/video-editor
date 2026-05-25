@@ -2,7 +2,9 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ctl="clr-namespace:VideoEditor.Controls"
-        Title="VideoEditor — Pro" Height="900" Width="1440" Background="{DynamicResource Bg0}"
+        Title="VideoEditor — Pro" Height="900" Width="1440"
+        MinHeight="640" MinWidth="1280"
+        Background="{DynamicResource Bg0}"
         WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI, Heebo"
         AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver">
@@ -23,10 +25,11 @@
                  - Transport (Auto, never gets squeezed)
                  - Spacer (*) absorbs slack
                  - Status + right actions (Auto)
-                 The earlier layout used a single star column between Auto edges, so on narrow
-                 screens (<~1450 px) the centred transport block overflowed left and hid behind
-                 the project meta — taking the volume slider with it. -->
-            <Grid Margin="14,0">
+                 ScrollViewer keeps everything reachable on narrow screens: the topbar never
+                 hides items behind their neighbours, and a horizontal scrollbar appears only
+                 if the user shrinks the window beyond what the controls need. -->
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+            <Grid Margin="14,0" MinWidth="1380">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
@@ -114,9 +117,18 @@
                             </Ellipse>
                             <TextBlock Grid.Column="1" x:Name="status" Text="Ready · drop video files to add" FontSize="11.5" Foreground="{DynamicResource TextMute}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
                         </Grid>
-                        <Border Grid.Row="1" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="3" Height="6" Margin="0,5,0,0">
-                            <ProgressBar x:Name="progress" Minimum="0" Maximum="1" Background="Transparent" BorderThickness="0"/>
-                        </Border>
+                        <Grid Grid.Row="1" Margin="0,5,0,0">
+                            <Border Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="3" Height="14">
+                                <ProgressBar x:Name="progress" Minimum="0" Maximum="1" Background="Transparent" BorderThickness="0"/>
+                            </Border>
+                            <!-- "45 %" text overlaid on the bar so progress is readable even when the bar
+                                 colour blends into the gradient on certain themes. Hidden until the first
+                                 progress.Report (set by the code-behind when an export starts). -->
+                            <TextBlock x:Name="progressLabel" Text=""
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       FontFamily="Consolas" FontSize="10.5" FontWeight="Bold"
+                                       Foreground="{DynamicResource TextBright}" IsHitTestVisible="False"/>
+                        </Grid>
                     </Grid>
                     <Button x:Name="quickAddBlockBtn" Style="{DynamicResource GhostButton}" Click="AddBlock_Click" Height="36" Padding="10,0" ToolTip="Add Hide Block - B" Margin="0,0,6,0">
                         <StackPanel Orientation="Horizontal">
@@ -147,6 +159,7 @@
                     </Button>
                 </StackPanel>
             </Grid>
+            </ScrollViewer>
         </Border>
 
         <!-- ========================================================

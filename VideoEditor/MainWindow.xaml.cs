@@ -441,7 +441,12 @@ public partial class MainWindow : Window
         else                       { w = aw; h = w / targetRatio; }
         videoContainer.Width  = Math.Max(40, w);
         videoContainer.Height = Math.Max(40, h);
-        // Project-format change resizes the canvas — handles must follow.
+        // The videoView's actual size just changed → the ScaleTransform pivot and
+        // TranslateTransform amount baked into RenderTransform are wrong. Re-apply
+        // the transform so it tracks the new size, and refresh the handles.
+        if (_playingClip != null)
+            Dispatcher.BeginInvoke(new Action(() => ApplyClipTransform(_playingClip)),
+                System.Windows.Threading.DispatcherPriority.Loaded);
         RepositionCanvasHandles();
     }
 
@@ -1809,7 +1814,13 @@ public partial class MainWindow : Window
 
         status.Text = "Exporting...";
         progress.Value = 0;
-        var prog = new Progress<double>(v => Dispatcher.Invoke(() => progress.Value = v));
+        progressLabel.Text = "0 %";
+        // Stream both the bar value and the readable percent label from the export pipeline.
+        var prog = new Progress<double>(v => Dispatcher.Invoke(() =>
+        {
+            progress.Value = v;
+            progressLabel.Text = ((int)Math.Round(Math.Max(0, Math.Min(1, v)) * 100)) + " %";
+        }));
         try
         {
             // Export in timeline order
@@ -1823,12 +1834,14 @@ public partial class MainWindow : Window
                 timeline.TextOverlays.ToList(), prog);
             status.Text = "Exported: " + sfd.FileName;
             progress.Value = 1;
+            progressLabel.Text = "Done";
             if (MessageBox.Show("Open output folder?", "Done", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
                 RevealInExplorer(sfd.FileName);
         }
         catch (Exception ex)
         {
             status.Text = "Export failed: " + ex.Message;
+            progressLabel.Text = "Failed";
             MessageBox.Show(ex.Message, "Export Error");
         }
     }

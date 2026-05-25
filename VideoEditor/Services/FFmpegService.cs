@@ -384,7 +384,14 @@ public class FFmpegService
                 }
                 var tmp = Path.Combine(Path.GetTempPath(), $"ve_clip_{Guid.NewGuid():N}.mp4");
                 temps.Add(tmp);
-                await RenderClipAsync(c, tmp, targetW, targetH, fitMode);
+                // Stream ffmpeg's time= output back as fractional progress so the bar
+                // moves smoothly even within a single very long clip. The whole
+                // per-clip render covers slot (i / N → (i+1) / N) of the 0..0.7 range.
+                int slot = i;
+                int nClips = videoClips.Count;
+                var clipProgress = new Progress<double>(p =>
+                    progress?.Report((slot + Math.Max(0, Math.Min(1, p))) * 0.7 / nClips));
+                await RenderClipAsync(c, tmp, targetW, targetH, fitMode, clipProgress);
                 renderQueue.Add(tmp);
                 prevEnd = c.TimelineStart + c.EffectiveDuration;
                 progress?.Report((i + 1) * 0.7 / videoClips.Count);
@@ -479,7 +486,7 @@ public class FFmpegService
         await RunAsync(args, duration, progress);
     }
 
-    private async Task RenderClipAsync(VideoClip c, string output, int targetW, int targetH, string fitMode = "contain")
+    private async Task RenderClipAsync(VideoClip c, string output, int targetW, int targetH, string fitMode = "contain", IProgress<double>? progress = null)
     {
         var ci = System.Globalization.CultureInfo.InvariantCulture;
         int fps = AppSettings.ExportFps;
@@ -564,7 +571,7 @@ public class FFmpegService
         args += $" -r {fps} -video_track_timescale {fps * 1000}";
         args += $" \"{output}\"";
 
-        await RunAsync(args, c.EffectiveDuration, null);
+        await RunAsync(args, c.EffectiveDuration, progress);
     }
 
     /// <summary>
