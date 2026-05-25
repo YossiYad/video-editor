@@ -628,10 +628,17 @@ public class FFmpegService
             CreateNoWindow = true
         };
         using var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
+        var tail = new Queue<string>();
+        const int tailKeep = 12;
         p.ErrorDataReceived += (_, e) =>
         {
             if (string.IsNullOrEmpty(e.Data)) return;
             Log?.Invoke(e.Data);
+            lock (tail)
+            {
+                tail.Enqueue(e.Data);
+                while (tail.Count > tailKeep) tail.Dequeue();
+            }
             if (totalSeconds > 0 && progress != null)
             {
                 var idx = e.Data.IndexOf("time=", StringComparison.Ordinal);
@@ -647,14 +654,24 @@ public class FFmpegService
                 }
             }
         };
-        // Drain stdout too — otherwise its OS pipe buffer (~4KB) can fill on filters that
-        // write to stdout (e.g. -f null -, vstats) and the process hangs.
         p.OutputDataReceived += (_, _) => { /* discard */ };
         p.Start();
         p.BeginErrorReadLine();
         p.BeginOutputReadLine();
         await p.WaitForExitAsync();
-        if (p.ExitCode != 0) throw new Exception($"FFmpeg exited with code {p.ExitCode}. See log for details.");
+        if (p.ExitCode != 0)
+        {
+            string detail;
+            lock (tail)
+            {
+                var diag = tail
+                    .Where(l => !l.Contains("frame=") && !l.Contains("size=") && !l.Contains("bitrate="))
+                    .ToList();
+                if (diag.Count == 0) diag = tail.ToList();
+                detail = string.Join("\n", diag.TakeLast(6));
+            }
+            throw new Exception($"FFmpeg exited with code {p.ExitCode}.\n\n{detail}");
+        }
     }
 
     private async Task<string> RunAndCaptureAsync(string exe, string arguments)
