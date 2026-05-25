@@ -573,7 +573,7 @@ public class FFmpegService
         }
         if (filterParts.Count == 0)
         {
-            // No usable overlays — copy through unchanged.
+            // No usable overlays - copy through unchanged.
             await RunAsync($"-y -i \"{videoIn}\" -c copy \"{output}\"", duration, progress);
             return;
         }
@@ -873,7 +873,7 @@ public class FFmpegService
             CreateNoWindow = true
         };
         using var p = Process.Start(psi) ?? throw new Exception($"Failed to start {exe}");
-        // Read both streams concurrently — otherwise filling one pipe can block the other.
+        // Read both streams concurrently - otherwise filling one pipe can block the other.
         var outputTask = p.StandardOutput.ReadToEndAsync();
         var errTask = p.StandardError.ReadToEndAsync();
         await Task.WhenAll(outputTask, errTask);

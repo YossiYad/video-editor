@@ -47,7 +47,7 @@ public class DownloadService
     {
         if (File.Exists(YtDlpExePath)) return;
         Directory.CreateDirectory(YtDlpFolder);
-        Log?.Invoke("Downloading yt-dlp.exe (~12 MB) — first run only...");
+        Log?.Invoke("Downloading yt-dlp.exe (~12 MB) - first run only...");
         using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
         using var response = await client.GetAsync(YtDlpDownloadUrl, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
@@ -164,7 +164,7 @@ public class DownloadService
         }
         catch (OperationCanceledException)
         {
-            // User cancelled — make sure we don't leave yt-dlp running in the background.
+            // User cancelled - make sure we don't leave yt-dlp running in the background.
             try { if (!p.HasExited) p.Kill(entireProcessTree: true); } catch { }
             throw;
         }

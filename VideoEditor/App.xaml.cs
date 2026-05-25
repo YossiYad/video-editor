@@ -155,7 +155,7 @@ public partial class App : Application
         var whisperDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "whisper");
         Directory.CreateDirectory(whisperDir);
 
-        // Both files must be present — if a previous run crashed mid-download we'd otherwise
+        // Both files must be present - if a previous run crashed mid-download we'd otherwise
         // skip re-fetching even though one of them is missing/corrupt.
         var ffmpegExe = Path.Combine(ffmpegDir, "ffmpeg.exe");
         var ffprobeExe = Path.Combine(ffmpegDir, "ffprobe.exe");

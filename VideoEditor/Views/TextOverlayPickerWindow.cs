@@ -160,7 +160,7 @@ public class TextOverlayPickerWindow : Window
         Grid.SetColumn(sizeLabel, 1); sizeRow.Children.Add(sizeLabel);
         ctrls.Children.Add(sizeRow);
 
-        // Style — Bold / Italic
+        // Style - Bold / Italic
         ctrls.Children.Add(MakeLabel("STYLE"));
         var styleRow = new StackPanel { Orientation = Orientation.Horizontal };
         var boldBtn = MakeToggle("B", Result.Bold, isOn =>

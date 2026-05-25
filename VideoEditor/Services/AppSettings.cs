@@ -76,7 +76,7 @@ public static class AppSettings
     public static string TargetFormatPreset { get; set; } = "source";
     public static int CustomTargetWidth { get; set; } = 1920;
     public static int CustomTargetHeight { get; set; } = 1080;
-    /// <summary>"contain" | "cover" | "blur" — how source clips fill the target canvas at export.</summary>
+    /// <summary>"contain" | "cover" | "blur" - how source clips fill the target canvas at export.</summary>
     public static string TargetFitMode { get; set; } = "contain";
     /// <summary>boxblur sigma for the "blur" fit mode background.</summary>
     public static int BlurredBgStrength { get; set; } = 20;
@@ -92,7 +92,7 @@ public static class AppSettings
     /// 0..N = a specific monitor. Reset to -1 automatically if the saved index is no longer valid
     /// (e.g. user unplugged the monitor).</summary>
     public static int LastScreenRecorderMonitor { get; set; } = -1;
-    /// <summary>"auto" | "he" | "en" | "ar" | "es" | "fr" | "ru" | "pt" | "de" — language to write the captions in.
+    /// <summary>"auto" | "he" | "en" | "ar" | "es" | "fr" | "ru" | "pt" | "de" - language to write the captions in.
     /// "auto" keeps the same language as the audio; anything else asks the LLM to translate.</summary>
     public static string LastCaptionLanguage { get; set; } = "auto";
 
@@ -102,7 +102,7 @@ public static class AppSettings
     /// <summary>Free-form key paste. Persisted in settings.json next to the EXE (gitignored).</summary>
     public static string LlmApiKey { get; set; } = "";
     /// <summary>Optional second Gemini key, from a DIFFERENT Google account. Used automatically
-    /// when the primary key returns a 429 quota-exceeded error — effectively doubles the free
+    /// when the primary key returns a 429 quota-exceeded error - effectively doubles the free
     /// tier. Empty = no fallback.</summary>
     public static string LlmApiKeyFallback { get; set; } = "";
     /// <summary>The Gemini model that last answered 200 OK for this key. Auto-discovered by Test connection.</summary>

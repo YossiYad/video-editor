@@ -32,7 +32,7 @@ public class ScreenRecorderWindow : Window
         _webcam = webcam;
         Title = webcam ? "Camera Recorder" : "Screen Recorder";
         var icon = webcam ? "🎥" : "🖥";
-        var sub = webcam ? "Record directly from a camera" : "Capture a monitor — or the whole virtual desktop — using gdigrab";
+        var sub = webcam ? "Record directly from a camera" : "Capture a monitor - or the whole virtual desktop - using gdigrab";
         // Default sized so every section (output path / monitor / FPS / preview /
         // buttons) fits without the ScrollViewer needing to scroll. WindowBuilder
         // defaults to NoResize; for the screen recorder we override to CanResize
@@ -133,7 +133,7 @@ public class ScreenRecorderWindow : Window
             Loaded += (_, _) => RefreshCameras();
         }
 
-        // Monitor picker — only shown for screen recording, not webcam.
+        // Monitor picker - only shown for screen recording, not webcam.
         // Enumerates every attached display via Win32 EnumDisplayMonitors and offers
         // an "Entire desktop" option that captures the full virtual screen (current default).
         ComboBox? monitorBox = null;
@@ -165,7 +165,7 @@ public class ScreenRecorderWindow : Window
         fps.Width = 100;
         ch.Body.Children.Add(fps);
 
-        // Live preview surface — shows the chosen monitor (or whole desktop) every
+        // Live preview surface - shows the chosen monitor (or whole desktop) every
         // ~150 ms via GDI screen capture. Independent of ffmpeg's own capture so it
         // can't affect the recording. Hidden for webcam mode.
         Border? previewFrame = null;
@@ -225,7 +225,7 @@ public class ScreenRecorderWindow : Window
                 TextWrapping = TextWrapping.Wrap
             });
 
-            // Diagnostic line — shows exactly which rectangle of the screen we're
+            // Diagnostic line - shows exactly which rectangle of the screen we're
             // capturing. If the user reports "I don't see the whole monitor", we can
             // compare these numbers to what Windows Display Settings actually reports.
             var diagText = new TextBlock
@@ -260,7 +260,7 @@ public class ScreenRecorderWindow : Window
             refreshDiag();
             if (monitorBox != null) monitorBox.SelectionChanged += (_, _) => refreshDiag();
 
-            // Start the preview timer immediately (before recording too — so the
+            // Start the preview timer immediately (before recording too - so the
             // user can confirm the picker selected the right monitor).
             _previewTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(160) };
             _previewTimer.Tick += (_, _) => CaptureMonitorPreview(monitorBox, monitors);
@@ -358,11 +358,11 @@ public class ScreenRecorderWindow : Window
                 }
                 else
                 {
-                    // For specific-monitor capture, use ddagrab — ffmpeg's modern Desktop
+                    // For specific-monitor capture, use ddagrab - ffmpeg's modern Desktop
                     // Duplication API (DXGI) source. Unlike the legacy gdigrab, ddagrab is
                     // DPI-aware and captures at PHYSICAL pixel resolution, so a 1920×1080
                     // monitor displayed via 150% Windows scaling is recorded at the full
-                    // 1920×1080 — not the 1280×720 logical size gdigrab would see.
+                    // 1920×1080 - not the 1280×720 logical size gdigrab would see.
                     //
                     // For "Entire desktop (all monitors)" we still use gdigrab because
                     // ddagrab is per-monitor only.
@@ -427,7 +427,7 @@ public class ScreenRecorderWindow : Window
                     return;
                 }
                 // Show the shared post-creation dialog. If the user picks "Open in editor",
-                // ShareDialog returns true and OpenInEditor is set — propagate that to our
+                // ShareDialog returns true and OpenInEditor is set - propagate that to our
                 // own OpenInEditorPath so the parent MainWindow can pick the clip up.
                 var share = new ShareDialog(path.Text,
                     title: webcam ? "Recording saved" : "Screen recording saved",
@@ -506,7 +506,7 @@ public class ScreenRecorderWindow : Window
 
     /// <summary>
     /// Capture the currently-selected monitor (or the whole virtual desktop) into
-    /// a low-res BitmapSource and assign it to the preview Image. Runs ~6×/sec —
+    /// a low-res BitmapSource and assign it to the preview Image. Runs ~6×/sec -
     /// fine for "is the camera pointed at the right thing" feedback, not a real
     /// playback.
     /// </summary>
@@ -529,7 +529,7 @@ public class ScreenRecorderWindow : Window
             }
             else
             {
-                // Whole virtual desktop — use SystemParameters which already reports
+                // Whole virtual desktop - use SystemParameters which already reports
                 // the bounding rectangle of every attached monitor.
                 x = (int)SystemParameters.VirtualScreenLeft;
                 y = (int)SystemParameters.VirtualScreenTop;
@@ -539,7 +539,7 @@ public class ScreenRecorderWindow : Window
             if (w <= 0 || h <= 0) return;
             // Capture at full source resolution into a Bitmap, then convert to
             // BitmapSource. Stretch="Uniform" on the Image control handles the
-            // downscale to the preview area at render time — keeps the math simple
+            // downscale to the preview area at render time - keeps the math simple
             // and the source bitmap pixel-perfect.
             using var bmp = new System.Drawing.Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
             using (var g = System.Drawing.Graphics.FromImage(bmp))
@@ -552,7 +552,7 @@ public class ScreenRecorderWindow : Window
         catch
         {
             // Screen capture can transiently fail (UAC prompt, secure desktop,
-            // locked screen) — silently skip this tick.
+            // locked screen) - silently skip this tick.
         }
     }
 

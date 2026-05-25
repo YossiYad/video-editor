@@ -389,7 +389,7 @@
             </Setter>
         </Style>
 
-        <!-- ComboBoxItem — dark row inside the dropdown popup -->
+        <!-- ComboBoxItem - dark row inside the dropdown popup -->
         <Style TargetType="ComboBoxItem">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource Text}"/>
@@ -532,7 +532,7 @@
         </Style>
 
         <!-- ============================================================
-             Slider — re-templated with purple thumb & track
+             Slider - re-templated with purple thumb & track
              ============================================================ -->
 
         <Style TargetType="Thumb" x:Key="SliderThumbStyle">

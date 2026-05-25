@@ -234,13 +234,13 @@ public class UserGuideWindow : Window
         var p = MakePane("התחלה מהירה", "Open a video and start editing in three steps.");
         p.Children.Add(MakeNumberedStep(1,
             "פתח סרטון  ·  Open a video",
-            "לחץ על Open למעלה, או פשוט גרור קובץ וידאו מהמחשב לתוך החלון. אפשר גם להוריד מיוטיוב — לחץ \"Import from URL\" בסיידבר השמאלי, הדבק קישור, והאפליקציה תוריד את הסרטון.\nClick Open in the topbar, drag a video file into the window, or use Import from URL to grab a YouTube video."));
+            "לחץ על Open למעלה, או פשוט גרור קובץ וידאו מהמחשב לתוך החלון. אפשר גם להוריד מיוטיוב - לחץ \"Import from URL\" בסיידבר השמאלי, הדבק קישור, והאפליקציה תוריד את הסרטון.\nClick Open in the topbar, drag a video file into the window, or use Import from URL to grab a YouTube video."));
         p.Children.Add(MakeNumberedStep(2,
             "ערוך בציר הזמן  ·  Edit on the timeline",
             "הציר זמן למטה. תגרור את הקצוות של הקליפ כדי לחתוך, תגרור באמצע כדי להזיז. לחיצה ימנית על קליפ פותחת את כל הפעולות (לחתוך, לשנות מהירות, להעתיק, למחוק וכו').\nDrag clip edges to trim, drag the body to reorder. Right-click for the full toolbox."));
         p.Children.Add(MakeNumberedStep(3,
             "ייצא  ·  Export",
-            "לחץ על הכפתור הירוק Export למעלה מימין. בחר איפה לשמור את הקובץ — האפליקציה תרכיב את כל מה שערכת לסרטון אחד.\nClick the green Export button at top-right. Pick a destination — the editor renders everything into a single video file."));
+            "לחץ על הכפתור הירוק Export למעלה מימין. בחר איפה לשמור את הקובץ - האפליקציה תרכיב את כל מה שערכת לסרטון אחד.\nClick the green Export button at top-right. Pick a destination - the editor renders everything into a single video file."));
 
         var layoutTitle = new TextBlock { Text = "המסך שלך  ·  Workspace layout", FontSize = 14, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Text), Margin = new Thickness(0, 24, 0, 12) };
         p.Children.Add(layoutTitle);
@@ -251,16 +251,16 @@ public class UserGuideWindow : Window
         layoutGrid.RowDefinitions.Add(new RowDefinition());
         layoutGrid.Children.Add(WithGridPos(MakeCard(
             "סיידבר שמאלי  ·  Left sidebar",
-            "כל הכלים — הקלטת מסך, ייבוא מיוטיוב, חיתוך, סיבוב, הוספת אודיו, AI Captions ועוד. מקובץ לפי קטגוריות.\nAll capture, transform, overlay, audio, and AI tools — grouped by category."), 0, 0));
+            "כל הכלים - הקלטת מסך, ייבוא מיוטיוב, חיתוך, סיבוב, הוספת אודיו, AI Captions ועוד. מקובץ לפי קטגוריות.\nAll capture, transform, overlay, audio, and AI tools - grouped by category."), 0, 0));
         layoutGrid.Children.Add(WithGridPos(MakeCard(
             "תצוגה מקדימה במרכז  ·  Preview (center)",
             "כאן רואים את הסרטון מתנגן. גם רואים בלוקי הסתרה וכתוביות שתוסיף.\nThe live video preview. Hide blocks and text overlays render here too."), 0, 1));
         layoutGrid.Children.Add(WithGridPos(MakeCard(
             "Inspector מימין  ·  Right inspector",
-            "פאנל ההגדרות של מה שבחרת — קליפ או בלוק. שולט במהירות, עוצמה, מיקום על הקנבס, צבע ועוד.\nProperty panel for whatever is selected — clip or block. Controls speed, volume, canvas position, color, time range, and more."), 1, 0));
+            "פאנל ההגדרות של מה שבחרת - קליפ או בלוק. שולט במהירות, עוצמה, מיקום על הקנבס, צבע ועוד.\nProperty panel for whatever is selected - clip or block. Controls speed, volume, canvas position, color, time range, and more."), 1, 0));
         layoutGrid.Children.Add(WithGridPos(MakeCard(
             "ציר זמן למטה  ·  Timeline (bottom)",
-            "סרגל זמן + שכבת וידאו + שכבת אודיו עם גלי קול + רצועות בלוקים וטקסטים. הקו הצהוב הוא ראש הניגון — אפשר לגרור אותו לאן שרוצים.\nRuler + video track + audio track with waveforms + hide-block and text-overlay rows. Drag the yellow playhead from anywhere along its length."), 1, 1));
+            "סרגל זמן + שכבת וידאו + שכבת אודיו עם גלי קול + רצועות בלוקים וטקסטים. הקו הצהוב הוא ראש הניגון - אפשר לגרור אותו לאן שרוצים.\nRuler + video track + audio track with waveforms + hide-block and text-overlay rows. Drag the yellow playhead from anywhere along its length."), 1, 1));
         p.Children.Add(layoutGrid);
         return WrapSection(p);
     }
@@ -270,11 +270,11 @@ public class UserGuideWindow : Window
 
         p.Children.Add(MakeGroupHeading("Capture · לכידה", "להכניס וידאו חדש לפרויקט  ·  Bring new media into the project"));
         p.Children.Add(MakeToolCard("🌐 Import from URL · הורדה מיוטיוב",
-            "מדביק כתובת של סרטון מ-YouTube / Vimeo / TikTok / Twitter / Instagram וכו', והאפליקציה מורידה את הסרטון אליך אוטומטית. בפעם הראשונה היא מורידה גם את הכלי שעושה את זה (yt-dlp).\nPaste a video URL from YouTube/Vimeo/TikTok/Twitter/Instagram — the app downloads it for you. First run also installs yt-dlp."));
+            "מדביק כתובת של סרטון מ-YouTube / Vimeo / TikTok / Twitter / Instagram וכו', והאפליקציה מורידה את הסרטון אליך אוטומטית. בפעם הראשונה היא מורידה גם את הכלי שעושה את זה (yt-dlp).\nPaste a video URL from YouTube/Vimeo/TikTok/Twitter/Instagram - the app downloads it for you. First run also installs yt-dlp."));
         p.Children.Add(MakeToolCard("🖥 Screen Recorder · הקלטת מסך",
             "מקליט את המסך שלך לוידאו. בוחר אזור, לוחץ הקלטה, וזה נשמר לקובץ.\nRecord a region of your screen straight into a video file."));
         p.Children.Add(MakeToolCard("🎙 Text to Speech · טקסט לדיבור",
-            "מקליד טקסט, האפליקציה מקריאה אותו בקול ושומרת כקובץ אודיו. שימושי לקריינות אוטומטית.\nType text, the app speaks it out loud and saves to an audio file — for auto-narration."));
+            "מקליד טקסט, האפליקציה מקריאה אותו בקול ושומרת כקובץ אודיו. שימושי לקריינות אוטומטית.\nType text, the app speaks it out loud and saves to an audio file - for auto-narration."));
         p.Children.Add(MakeToolCard("🎥 Camera Recorder · הקלטה ממצלמה",
             "מקליט מהמצלמה של המחשב שלך (webcam).\nRecords from your webcam."));
 
@@ -290,29 +290,29 @@ public class UserGuideWindow : Window
         p.Children.Add(MakeToolCard("⇄ Flip · היפוך",
             "הופך את הסרטון אופקית או אנכית (אפקט מראה).\nMirror the video horizontally or vertically."));
         p.Children.Add(MakeToolCard("⛶ Resize · שינוי רזולוציה",
-            "משנה את הרזולוציה של הסרטון (לדוגמה — להוריד מ-4K ל-1080p).\nChange the video resolution (e.g. 4K → 1080p)."));
+            "משנה את הרזולוציה של הסרטון (לדוגמה - להוריד מ-4K ל-1080p).\nChange the video resolution (e.g. 4K → 1080p)."));
         p.Children.Add(MakeToolCard("🔁 Loop · לולאה",
             "משכפל את הסרטון N פעמים ברצף.\nRepeats the clip N times in a row."));
         p.Children.Add(MakeToolCard("⏩ Change Speed · שינוי מהירות",
             "מאיץ או מאט את הסרטון (0.25× עד 4×). אודיו מתואם אוטומטית כך שאף אחד לא ישמע צפצופים.\nSpeed the video up or down (0.25× – 4×). Audio is pitch-corrected automatically."));
         p.Children.Add(MakeToolCard("🤚 Stabilize · ייצוב",
-            "מתקן רעידות וזעזועי מצלמה (כמו וידאו שצולם ביד). לוקח שני מעברים, איטי יותר אבל איכות גבוהה.\nFixes camera shake. Two-pass — slower but high quality."));
+            "מתקן רעידות וזעזועי מצלמה (כמו וידאו שצולם ביד). לוקח שני מעברים, איטי יותר אבל איכות גבוהה.\nFixes camera shake. Two-pass - slower but high quality."));
 
         p.Children.Add(MakeGroupHeading("Overlays · שכבות", "להוסיף דברים על גבי הסרטון  ·  Add things on top of the video"));
         p.Children.Add(MakeToolCard("🚫 Remove Logo · הסרת לוגו",
-            "מסיר לוגו של ערוץ או סימן מים. גורר מסגרת צהובה על הלוגו והאפליקציה תטשטש אותו.\nDrag a yellow rectangle over a watermark/logo — the app blurs it out."));
+            "מסיר לוגו של ערוץ או סימן מים. גורר מסגרת צהובה על הלוגו והאפליקציה תטשטש אותו.\nDrag a yellow rectangle over a watermark/logo - the app blurs it out."));
         p.Children.Add(MakeToolCard("🖼 Add Image · הוספת תמונה",
             "מדביק תמונה (PNG/JPG) על הסרטון במיקום שתבחר.\nPaste an image (PNG/JPG) on the video at any position."));
         p.Children.Add(MakeToolCard("🔤 Add Text · הוספת טקסט",
-            "מוסיף טקסט על הסרטון. בוחר פונט, גודל, צבע, רקע — וגורר את הטקסט על הפריים למיקום שאתה רוצה. הטקסט מופיע כפס בציר הזמן שאפשר לגרור ולשנות לאיזה זמנים הוא מופיע.\nAdds text over the video. Pick font / size / colour / background and drag it to position on the frame. Shows up as a draggable bar on the timeline so you control when it appears."));
+            "מוסיף טקסט על הסרטון. בוחר פונט, גודל, צבע, רקע - וגורר את הטקסט על הפריים למיקום שאתה רוצה. הטקסט מופיע כפס בציר הזמן שאפשר לגרור ולשנות לאיזה זמנים הוא מופיע.\nAdds text over the video. Pick font / size / colour / background and drag it to position on the frame. Shows up as a draggable bar on the timeline so you control when it appears."));
         p.Children.Add(MakeToolCard("✨ AI Captions · כתוביות AI",
-            "מייצר אוטומטית כתוביות לסרטון ע\"י זיהוי הדיבור (Whisper) + עריכה חכמה (Google Gemini). יודע גם לתרגם — אם הסרטון באנגלית הוא יודע לכתוב כתוביות בעברית, ולהפך. ראה סקציית AI Captions לפרטים.\nAuto-generate kinetic-typography captions from the spoken audio. Can translate to a different language. See the AI Captions section.", true));
+            "מייצר אוטומטית כתוביות לסרטון ע\"י זיהוי הדיבור (Whisper) + עריכה חכמה (Google Gemini). יודע גם לתרגם - אם הסרטון באנגלית הוא יודע לכתוב כתוביות בעברית, ולהפך. ראה סקציית AI Captions לפרטים.\nAuto-generate kinetic-typography captions from the spoken audio. Can translate to a different language. See the AI Captions section.", true));
 
         p.Children.Add(MakeGroupHeading("Audio · אודיו", "שליטה בקול  ·  Sound control"));
         p.Children.Add(MakeToolCard("🎵 Add Audio · הוספת אודיו",
-            "מצרף לסרטון פסקול אודיו חיצוני (לדוגמה — מוזיקת רקע).\nAttach an external audio track (e.g. background music)."));
+            "מצרף לסרטון פסקול אודיו חיצוני (לדוגמה - מוזיקת רקע).\nAttach an external audio track (e.g. background music)."));
         p.Children.Add(MakeToolCard("🔊 Change Volume · עוצמת קול",
-            "מעלה או מוריד את עוצמת הקליפ (0% — שקט גמור, 200% — פי שניים).\nRaise or lower the clip's volume (0% = silent, 200% = double)."));
+            "מעלה או מוריד את עוצמת הקליפ (0% - שקט גמור, 200% - פי שניים).\nRaise or lower the clip's volume (0% = silent, 200% = double)."));
         p.Children.Add(MakeToolCard("↗ Extract Audio · חילוץ אודיו",
             "שומר רק את האודיו של הסרטון כקובץ נפרד (MP3 / WAV / AAC).\nSaves just the audio of the video as a separate file."));
         p.Children.Add(MakeToolCard("🔇 Mute · השתקה",
@@ -320,21 +320,21 @@ public class UserGuideWindow : Window
 
         p.Children.Add(MakeGroupHeading("Hide Blocks · בלוקי הסתרה", "כיסוי מידע רגיש (פנים, מספרים)  ·  Cover sensitive areas"));
         p.Children.Add(MakeToolCard("◼ Add Hide Block · הוסף בלוק הסתרה",
-            "מוסיף מסגרת על הסרטון לכיסוי משהו רגיש — פנים, מספרי טלפון, כתובות. אפשר מילוי שחור, טשטוש או פיקסול. ראה סקציית בלוקי הסתרה.\nAdds a box over the video to cover faces, phone numbers, addresses, etc. Solid / Blur / Pixelate. See Hide Blocks section."));
+            "מוסיף מסגרת על הסרטון לכיסוי משהו רגיש - פנים, מספרי טלפון, כתובות. אפשר מילוי שחור, טשטוש או פיקסול. ראה סקציית בלוקי הסתרה.\nAdds a box over the video to cover faces, phone numbers, addresses, etc. Solid / Blur / Pixelate. See Hide Blocks section."));
         return WrapSection(p);
     }
     private UIElement FormatsSection()
     {
-        var p = MakePane("פורמט הפרויקט", "Choose the canvas shape — YouTube, Reels, Square, etc.");
+        var p = MakePane("פורמט הפרויקט", "Choose the canvas shape - YouTube, Reels, Square, etc.");
         p.Children.Add(MakeNotice(
             "מה זה פורמט?  ·  What's a project format?",
-            "כל פלטפורמה רוצה צורת סרטון אחרת. ביוטיוב — מלבן רחב 16:9. בריילז של אינסטגרם וטיקטוק — אנכי 9:16. באינסטגרם רגיל — ריבוע 1:1. כשאתה בוחר פורמט, התצוגה המקדימה משתנה בהתאם וגם הסרטון הסופי ייצא בגודל הזה.\nEach platform expects a different shape: YouTube 16:9, Reels/TikTok 9:16, Instagram square 1:1. The preview and final export both match the format you choose.",
+            "כל פלטפורמה רוצה צורת סרטון אחרת. ביוטיוב - מלבן רחב 16:9. בריילז של אינסטגרם וטיקטוק - אנכי 9:16. באינסטגרם רגיל - ריבוע 1:1. כשאתה בוחר פורמט, התצוגה המקדימה משתנה בהתאם וגם הסרטון הסופי ייצא בגודל הזה.\nEach platform expects a different shape: YouTube 16:9, Reels/TikTok 9:16, Instagram square 1:1. The preview and final export both match the format you choose.",
             Accent));
         p.Children.Add(MakeBullet("הכפתור למעלה (\"→ 1920×1080 · YouTube\") פותח את הבחירה. \nThe chip at the top-bar (\"→ 1920×1080 · YouTube\") opens the format picker."));
         p.Children.Add(MakeBullet("פורמטים זמינים: Source (כמו המקור), YouTube 16:9, Reels/TikTok/Shorts 9:16, Square 1:1, Portrait 4:5, Cinematic 21:9, Custom (כל גודל שתבחר). \nPresets: Source, YouTube 16:9, Reels 9:16, Square 1:1, Portrait 4:5, Cinematic 21:9, or Custom."));
         p.Children.Add(MakeNotice(
-            "Fit Mode — איך לכווץ סרטון לפורמט",
-            "כשהסרטון בצורה אחת ובחרת פורמט אחר — צריך להחליט מה לעשות:\n• Contain — להכניס את כל הסרטון, יהיו פסים שחורים בצדדים (לא חותך כלום).\n• Cover — למלא את הפורמט עד הסוף, פינות הסרטון ייחתכו (אין פסים).\n• Blur bg — להכניס את כל הסרטון, ולמלא את הפסים השחורים בגרסה מטושטשת של הסרטון עצמו (יפה מאוד).\nWhen the clip aspect doesn't match the format you picked:\n• Contain — fit it all, with black bars\n• Cover — fill the canvas, cropping clip edges\n• Blur bg — fit it all, fill bars with a blurred copy of the clip itself.",
+            "Fit Mode - איך לכווץ סרטון לפורמט",
+            "כשהסרטון בצורה אחת ובחרת פורמט אחר - צריך להחליט מה לעשות:\n• Contain - להכניס את כל הסרטון, יהיו פסים שחורים בצדדים (לא חותך כלום).\n• Cover - למלא את הפורמט עד הסוף, פינות הסרטון ייחתכו (אין פסים).\n• Blur bg - להכניס את כל הסרטון, ולמלא את הפסים השחורים בגרסה מטושטשת של הסרטון עצמו (יפה מאוד).\nWhen the clip aspect doesn't match the format you picked:\n• Contain - fit it all, with black bars\n• Cover - fill the canvas, cropping clip edges\n• Blur bg - fit it all, fill bars with a blurred copy of the clip itself.",
             Info));
         p.Children.Add(MakeBullet("Pro-tip: לסרטון אנכי שמיועד לריילז, בחר \"Reels 9:16\" ואז Fit=Cover או השתמש ב-Canvas Transform למיקום ידני (סקציה נפרדת).\nFor a vertical Reel, pick 9:16 + Fit=Cover, or use Canvas Transform for manual placement."));
         return WrapSection(p);
@@ -343,32 +343,32 @@ public class UserGuideWindow : Window
     private UIElement TimelineSection()
     {
         var p = MakePane("ציר הזמן", "The timeline at the bottom of the window.");
-        p.Children.Add(MakeBullet("הסרגל למעלה  ·  The ruler at the top — לחץ בכל מקום עליו והקו הצהוב יקפוץ לשם. זה הזמן בסרטון.\nClick anywhere — the yellow playhead jumps there. This is the current time in your project."));
-        p.Children.Add(MakeBullet("הקו הצהוב  ·  The yellow line — אפשר לגרור אותו בכל אורכו כדי לנוע בסרטון. ניתן גם לגרור את התווית הצהובה למעלה (חיץ עליון).\nDrag the yellow line — or its time-flag at the top — from any height to scrub through the video."));
-        p.Children.Add(MakeBullet("רצועת וידאו (V1)  ·  Video lane — כל סרטון שטענת מופיע כקליפ סגול עם תמונות ממוזערות. גרור את הקצוות לקצר/להאריך, גרור את כל הקליפ להזיז.\nEach loaded clip appears as a purple bar with thumbnails. Drag edges to trim, drag the body to move."));
-        p.Children.Add(MakeBullet("רצועת אודיו (A1)  ·  Audio lane — מציגה את גל הקול של כל קליפ. גרור בה ימינה לשמאל לזיהוי קטעים שקטים.\nShows each clip's waveform. Drag through it to spot silent passages."));
-        p.Children.Add(MakeBullet("רצועות בלוקי הסתרה  ·  Hide-block lanes — כל בלוק שיצרת מופיע כפס סגול. גרור קצוות כדי לקבוע מתי הבלוק מופיע בסרטון.\nEach hide block has its own purple bar. Drag its edges to set when it appears."));
-        p.Children.Add(MakeBullet("רצועות טקסט (T)  ·  Text-overlay lanes — כל טקסט שהוספת מופיע כפס טורקיז. אותו רעיון — קצוות = זמן הופעה.\nText overlays show up as teal bars. Same edge-drag = appearance time."));
-        p.Children.Add(MakeBullet("זום  ·  Zoom — כפתורי + / − בראש ציר הזמן, או גלגלת עכבר עליו.\n+ / − buttons at the timeline header, or mouse-wheel while hovering."));
-        p.Children.Add(MakeBullet("גרירת קבצים  ·  Drag-drop — תגרור קבצים מהמחשב ישירות לציר הזמן — חץ ירוק יראה לך איפה הם ייכנסו.\nDrop files from Explorer right onto the timeline — a green arrow shows where they'll land."));
-        p.Children.Add(MakeBullet("לחיצה ימנית  ·  Right-click — כל אלמנט (קליפ / בלוק / טקסט / אודיו) פותח תפריט עם כל הפעולות עליו.\nRight-click any element for its full action menu."));
+        p.Children.Add(MakeBullet("הסרגל למעלה  ·  The ruler at the top - לחץ בכל מקום עליו והקו הצהוב יקפוץ לשם. זה הזמן בסרטון.\nClick anywhere - the yellow playhead jumps there. This is the current time in your project."));
+        p.Children.Add(MakeBullet("הקו הצהוב  ·  The yellow line - אפשר לגרור אותו בכל אורכו כדי לנוע בסרטון. ניתן גם לגרור את התווית הצהובה למעלה (חיץ עליון).\nDrag the yellow line - or its time-flag at the top - from any height to scrub through the video."));
+        p.Children.Add(MakeBullet("רצועת וידאו (V1)  ·  Video lane - כל סרטון שטענת מופיע כקליפ סגול עם תמונות ממוזערות. גרור את הקצוות לקצר/להאריך, גרור את כל הקליפ להזיז.\nEach loaded clip appears as a purple bar with thumbnails. Drag edges to trim, drag the body to move."));
+        p.Children.Add(MakeBullet("רצועת אודיו (A1)  ·  Audio lane - מציגה את גל הקול של כל קליפ. גרור בה ימינה לשמאל לזיהוי קטעים שקטים.\nShows each clip's waveform. Drag through it to spot silent passages."));
+        p.Children.Add(MakeBullet("רצועות בלוקי הסתרה  ·  Hide-block lanes - כל בלוק שיצרת מופיע כפס סגול. גרור קצוות כדי לקבוע מתי הבלוק מופיע בסרטון.\nEach hide block has its own purple bar. Drag its edges to set when it appears."));
+        p.Children.Add(MakeBullet("רצועות טקסט (T)  ·  Text-overlay lanes - כל טקסט שהוספת מופיע כפס טורקיז. אותו רעיון - קצוות = זמן הופעה.\nText overlays show up as teal bars. Same edge-drag = appearance time."));
+        p.Children.Add(MakeBullet("זום  ·  Zoom - כפתורי + / − בראש ציר הזמן, או גלגלת עכבר עליו.\n+ / − buttons at the timeline header, or mouse-wheel while hovering."));
+        p.Children.Add(MakeBullet("גרירת קבצים  ·  Drag-drop - תגרור קבצים מהמחשב ישירות לציר הזמן - חץ ירוק יראה לך איפה הם ייכנסו.\nDrop files from Explorer right onto the timeline - a green arrow shows where they'll land."));
+        p.Children.Add(MakeBullet("לחיצה ימנית  ·  Right-click - כל אלמנט (קליפ / בלוק / טקסט / אודיו) פותח תפריט עם כל הפעולות עליו.\nRight-click any element for its full action menu."));
         return WrapSection(p);
     }
 
     private UIElement ClipSection()
     {
-        var p = MakePane("עריכת קליפ", "Editing a single video clip — speed, trim, rotate, etc.");
+        var p = MakePane("עריכת קליפ", "Editing a single video clip - speed, trim, rotate, etc.");
         p.Children.Add(MakeNotice("פעולות בלי לגעת בקובץ המקור  ·  Non-destructive",
-            "מהירות, עוצמת קול, חיתוך זמן, סיבוב, היפוך, לולאה, וגודל בקנבס — האפליקציה זוכרת את ההגדרה ומפעילה אותה רק בעת ייצוא. הקובץ המקורי במחשב שלך נשאר זהה. אפשר לחזור אחורה תמיד.\nSpeed, volume, in/out, rotate, flip, loop, canvas transform — all stored on the clip object and only applied at export. The source file on disk is never modified.",
+            "מהירות, עוצמת קול, חיתוך זמן, סיבוב, היפוך, לולאה, וגודל בקנבס - האפליקציה זוכרת את ההגדרה ומפעילה אותה רק בעת ייצוא. הקובץ המקורי במחשב שלך נשאר זהה. אפשר לחזור אחורה תמיד.\nSpeed, volume, in/out, rotate, flip, loop, canvas transform - all stored on the clip object and only applied at export. The source file on disk is never modified.",
             Success));
         p.Children.Add(MakeNotice("פעולות שמשנות את הקליפ  ·  Destructive operations",
-            "Crop, Stabilize, Add Image, Add Text מהסיידבר, Add Audio, Remove Logo, Remove Audio — אלה עוברים דרך FFmpeg ויוצרים קובץ חדש. הקליפ ה\"חדש\" מחליף את הישן בציר הזמן.\nCrop, Stabilize, Add Image, sidebar Add Text, Add Audio, Remove Logo, Remove Audio — re-encode through FFmpeg and replace the clip with a new file.",
+            "Crop, Stabilize, Add Image, Add Text מהסיידבר, Add Audio, Remove Logo, Remove Audio - אלה עוברים דרך FFmpeg ויוצרים קובץ חדש. הקליפ ה\"חדש\" מחליף את הישן בציר הזמן.\nCrop, Stabilize, Add Image, sidebar Add Text, Add Audio, Remove Logo, Remove Audio - re-encode through FFmpeg and replace the clip with a new file.",
             Warn));
-        p.Children.Add(MakeBullet("פיצול ב-S  ·  Split with S — בחר קליפ, מקם את הקו הצהוב, ותלחץ S. הקליפ נחצה לשני חלקים שאפשר לערוך בנפרד.\nSelect a clip, position the playhead, press S. Splits into two pieces."));
-        p.Children.Add(MakeBullet("פיצול בלחיצה  ·  Shift+Click — Shift+לחיצה על קליפ חוצה אותו בדיוק במקום שלחצת.\nShift-click anywhere on a clip to split at that exact pixel."));
-        p.Children.Add(MakeBullet("פיצול ל-N חלקים  ·  Right-click → Split into N — חותך את הקליפ ל-N חלקים שווים בפעולה אחת.\nRight-click → Split into N Parts… slices the clip into N equal segments."));
-        p.Children.Add(MakeBullet("העתק/הדבק  ·  Copy/Paste — Ctrl+C על קליפ, Ctrl+V מציב עותק. Ctrl+D = שכפול מהיר.\nCtrl+C / Ctrl+V copies a clip; Ctrl+D duplicates in place."));
-        p.Children.Add(MakeBullet("פאנל ה-Inspector מימין  ·  Right-side Inspector — בחירת קליפ מציגה: TRIM (חיתוך), SPEED (מהירות), VOLUME (עוצמה), TRANSFORM (סיבוב/היפוך/לולאה/ייצוב), CANVAS (גודל ומיקום).\nSelecting a clip shows TRIM, SPEED, VOLUME, TRANSFORM, CANVAS sections in the right pane."));
+        p.Children.Add(MakeBullet("פיצול ב-S  ·  Split with S - בחר קליפ, מקם את הקו הצהוב, ותלחץ S. הקליפ נחצה לשני חלקים שאפשר לערוך בנפרד.\nSelect a clip, position the playhead, press S. Splits into two pieces."));
+        p.Children.Add(MakeBullet("פיצול בלחיצה  ·  Shift+Click - Shift+לחיצה על קליפ חוצה אותו בדיוק במקום שלחצת.\nShift-click anywhere on a clip to split at that exact pixel."));
+        p.Children.Add(MakeBullet("פיצול ל-N חלקים  ·  Right-click → Split into N - חותך את הקליפ ל-N חלקים שווים בפעולה אחת.\nRight-click → Split into N Parts… slices the clip into N equal segments."));
+        p.Children.Add(MakeBullet("העתק/הדבק  ·  Copy/Paste - Ctrl+C על קליפ, Ctrl+V מציב עותק. Ctrl+D = שכפול מהיר.\nCtrl+C / Ctrl+V copies a clip; Ctrl+D duplicates in place."));
+        p.Children.Add(MakeBullet("פאנל ה-Inspector מימין  ·  Right-side Inspector - בחירת קליפ מציגה: TRIM (חיתוך), SPEED (מהירות), VOLUME (עוצמה), TRANSFORM (סיבוב/היפוך/לולאה/ייצוב), CANVAS (גודל ומיקום).\nSelecting a clip shows TRIM, SPEED, VOLUME, TRANSFORM, CANVAS sections in the right pane."));
         return WrapSection(p);
     }
 
@@ -376,14 +376,14 @@ public class UserGuideWindow : Window
     {
         var p = MakePane("גודל ומיקום בקנבס", "Resize and reposition the clip within the project format.");
         p.Children.Add(MakeNotice("למה זה שימושי  ·  Why this matters",
-            "בחרת פורמט Reels אנכי 9:16, אבל הסרטון שלך אופקי 16:9 — יוצא עם פסים שחורים מלמעלה ולמטה. עם Canvas Transform אתה יכול להגדיל את הסרטון, להזיז אותו, ולחתוך את החלק הלא חשוב. ככה הסרטון ממלא את הפורמט.\nYou picked Reels 9:16 but your video is landscape 16:9 → black bars top and bottom. With Canvas Transform you can zoom in, shift, and crop the part you don't need — making the clip fit the format exactly the way you want.",
+            "בחרת פורמט Reels אנכי 9:16, אבל הסרטון שלך אופקי 16:9 - יוצא עם פסים שחורים מלמעלה ולמטה. עם Canvas Transform אתה יכול להגדיל את הסרטון, להזיז אותו, ולחתוך את החלק הלא חשוב. ככה הסרטון ממלא את הפורמט.\nYou picked Reels 9:16 but your video is landscape 16:9 → black bars top and bottom. With Canvas Transform you can zoom in, shift, and crop the part you don't need - making the clip fit the format exactly the way you want.",
             Accent));
         p.Children.Add(MakeNumberedStep(1,
             "בחר קליפ  ·  Select a clip",
-            "לחץ על קליפ בציר הזמן. בתצוגה המקדימה יופיעו 4 ריבועים לבנים בפינות וגם מסגרת סגולה — אלה הידיות לשליטה.\nClick a clip on the timeline. Four white squares appear at the corners of the displayed video, with a purple dashed border."));
+            "לחץ על קליפ בציר הזמן. בתצוגה המקדימה יופיעו 4 ריבועים לבנים בפינות וגם מסגרת סגולה - אלה הידיות לשליטה.\nClick a clip on the timeline. Four white squares appear at the corners of the displayed video, with a purple dashed border."));
         p.Children.Add(MakeNumberedStep(2,
             "גרור פינה להגדלה/הקטנה  ·  Drag a corner to resize",
-            "גרור פינה החוצה — הסרטון גדל. גרור פנימה — הסרטון קטן. הסקלה תמיד מהמרכז של הקנבס.\nDrag a corner outward to enlarge, inward to shrink. The scale is uniform — width and height grow together."));
+            "גרור פינה החוצה - הסרטון גדל. גרור פנימה - הסרטון קטן. הסקלה תמיד מהמרכז של הקנבס.\nDrag a corner outward to enlarge, inward to shrink. The scale is uniform - width and height grow together."));
         p.Children.Add(MakeNumberedStep(3,
             "גרור באמצע להזיז  ·  Drag the middle to move",
             "לחיצה על אזור הסרטון (לא על ידית) + גרירה = הזזה לכל כיוון. החלק שיוצא מהקנבס לא יראה בסרטון הסופי.\nClick the video itself (not a handle) and drag to move it around. Anything that goes outside the canvas borders won't appear in the final video."));
@@ -393,13 +393,13 @@ public class UserGuideWindow : Window
         p.Children.Add(MakeNumberedStep(5,
             "איפוס  ·  Reset",
             "דאבל-קליק או קליק ימני על הסרטון = איפוס מלא. גם כפתור Reset בקטע CANVAS בפאנל הימני.\nDouble-click or right-click the video to reset. Also a Reset button in the right-pane CANVAS section."));
-        p.Children.Add(MakeBullet("הסליידרים בפאנל ימין (Zoom / Offset X / Offset Y)  ·  Sliders in right pane (Zoom / Offset X / Offset Y) — חלופה מדויקת לגרירה.\nPrecise alternative to dragging."));
+        p.Children.Add(MakeBullet("הסליידרים בפאנל ימין (Zoom / Offset X / Offset Y)  ·  Sliders in right pane (Zoom / Offset X / Offset Y) - חלופה מדויקת לגרירה.\nPrecise alternative to dragging."));
         return WrapSection(p);
     }
 
     private UIElement TextOverlaysSection()
     {
-        var p = MakePane("טקסט על הסרטון", "Add text overlays — non-destructive, with full timeline control.");
+        var p = MakePane("טקסט על הסרטון", "Add text overlays - non-destructive, with full timeline control.");
         p.Children.Add(MakeNumberedStep(1,
             "פתח את ה-Picker  ·  Open the visual picker",
             "סיידבר → \"🔤 Add Text\". נפתח חלון עם פריים נוכחי של הסרטון. תקליד טקסט, תבחר פונט/גודל/צבע/רקע, ותגרור את הטקסט על הפריים למיקום שאתה רוצה.\nSidebar → \"🔤 Add Text\". A picker opens with the current frame. Type text, pick font/size/colour/background, drag the text onto the frame."));
@@ -423,7 +423,7 @@ public class UserGuideWindow : Window
 
     private UIElement BlocksSection()
     {
-        var p = MakePane("בלוקי הסתרה", "Cover sensitive areas — faces, phone numbers, license plates.");
+        var p = MakePane("בלוקי הסתרה", "Cover sensitive areas - faces, phone numbers, license plates.");
         p.Children.Add(MakeNumberedStep(1,
             "הוסף בלוק  ·  Add a block",
             "סיידבר → \"◼ Add Hide Block\" (או קיצור B). מופיעה מסגרת שחורה על הסרטון.\nSidebar → \"◼ Add Hide Block\" (or press B). A black box appears on the preview."));
@@ -432,7 +432,7 @@ public class UserGuideWindow : Window
             "לחיצה על הבלוק = בחירה. גרור באמצע להזיז, גרור פינה לשנות גודל.\nClick the block to select. Drag the middle to move, corners to resize."));
         p.Children.Add(MakeNumberedStep(3,
             "בחר סגנון  ·  Pick a style",
-            "בפאנל ה-Inspector בחר Mode:\n• Solid — מילוי בצבע אחיד (ברירת מחדל — שחור)\n• Blur — טשטוש (זכוכית קפואה)\n• Pixelate — פיקסול (אפקט מוזאיקה)\nPick a Mode in the Inspector: Solid (solid colour), Blur (frosted glass) or Pixelate (mosaic)."));
+            "בפאנל ה-Inspector בחר Mode:\n• Solid - מילוי בצבע אחיד (ברירת מחדל - שחור)\n• Blur - טשטוש (זכוכית קפואה)\n• Pixelate - פיקסול (אפקט מוזאיקה)\nPick a Mode in the Inspector: Solid (solid colour), Blur (frosted glass) or Pixelate (mosaic)."));
         p.Children.Add(MakeNumberedStep(4,
             "טווח זמן  ·  Time range",
             "בפאנל ה-Inspector → טופס START / END עם שדות שעה : דקה : שניה . מילי-שניות (כל שדה בנפרד למקסימום דיוק). או סמן \"Cover Whole Video\" לכיסוי לכל אורך הסרטון.\nFill in the START/END fields (hours : minutes : seconds . milliseconds). Or tick \"Cover Whole Video\" to cover the entire timeline."));
@@ -455,43 +455,43 @@ public class UserGuideWindow : Window
         p.Children.Add(modesRow);
 
         p.Children.Add(MakeNotice("טיפ  ·  Tip",
-            "כשהסרטון בעצירה (Pause), בלוק מוצג רק אם הקו הצהוב בטווח שלו — בדיוק כמו שיהיה בסרטון הסופי. אם בחרת בלוק ב-Inspector, הוא נראה גם מחוץ לטווח כדי שתוכל לערוך אותו.\nWhen paused, a block is visible only if the playhead is within its range — just like in the exported file. The block you have selected in the Inspector stays visible outside its range so you can still edit it.",
+            "כשהסרטון בעצירה (Pause), בלוק מוצג רק אם הקו הצהוב בטווח שלו - בדיוק כמו שיהיה בסרטון הסופי. אם בחרת בלוק ב-Inspector, הוא נראה גם מחוץ לטווח כדי שתוכל לערוך אותו.\nWhen paused, a block is visible only if the playhead is within its range - just like in the exported file. The block you have selected in the Inspector stays visible outside its range so you can still edit it.",
             Info));
         return WrapSection(p);
     }
 
     private UIElement AudioSection()
     {
-        var p = MakePane("אודיו", "Sound — every clip has its own waveform in the audio lane.");
-        p.Children.Add(MakeBullet("עוצמה לכל קליפ בנפרד  ·  Per-clip volume — בחר קליפ → סליידר VOLUME בפאנל הימני (0% עד 200%).\nSelect a clip → VOLUME slider in the right pane (0% – 200%)."));
-        p.Children.Add(MakeBullet("עוצמה במהלך הניגון  ·  Master volume — סליידר 🔊 ב-topbar שולט בעוצמה הכוללת של התצוגה (לא משפיע על הייצוא).\nThe topbar 🔊 slider sets the preview master volume (doesn't affect export)."));
-        p.Children.Add(MakeBullet("השתקת קליפ  ·  Mute a clip — בחר את הפס באודיו (A1) ולחץ Backspace, או הסליידר ל-0%.\nSelect the A1 audio bar and press Backspace, or drag VOLUME to 0%."));
-        p.Children.Add(MakeBullet("הסרת אודיו  ·  Remove track — בכל קליפ אפשר להסיר את האודיו לחלוטין (סיידבר → \"🔇 Mute / Remove Audio\").\nFully strip audio from a clip (sidebar → \"🔇 Mute / Remove Audio\")."));
-        p.Children.Add(MakeBullet("חילוץ אודיו  ·  Extract audio — שמירת האודיו של הקליפ כקובץ נפרד (MP3 / WAV / AAC / OGG / FLAC).\nSave a clip's audio as a standalone file."));
+        var p = MakePane("אודיו", "Sound - every clip has its own waveform in the audio lane.");
+        p.Children.Add(MakeBullet("עוצמה לכל קליפ בנפרד  ·  Per-clip volume - בחר קליפ → סליידר VOLUME בפאנל הימני (0% עד 200%).\nSelect a clip → VOLUME slider in the right pane (0% – 200%)."));
+        p.Children.Add(MakeBullet("עוצמה במהלך הניגון  ·  Master volume - סליידר 🔊 ב-topbar שולט בעוצמה הכוללת של התצוגה (לא משפיע על הייצוא).\nThe topbar 🔊 slider sets the preview master volume (doesn't affect export)."));
+        p.Children.Add(MakeBullet("השתקת קליפ  ·  Mute a clip - בחר את הפס באודיו (A1) ולחץ Backspace, או הסליידר ל-0%.\nSelect the A1 audio bar and press Backspace, or drag VOLUME to 0%."));
+        p.Children.Add(MakeBullet("הסרת אודיו  ·  Remove track - בכל קליפ אפשר להסיר את האודיו לחלוטין (סיידבר → \"🔇 Mute / Remove Audio\").\nFully strip audio from a clip (sidebar → \"🔇 Mute / Remove Audio\")."));
+        p.Children.Add(MakeBullet("חילוץ אודיו  ·  Extract audio - שמירת האודיו של הקליפ כקובץ נפרד (MP3 / WAV / AAC / OGG / FLAC).\nSave a clip's audio as a standalone file."));
         p.Children.Add(MakeNotice("ניתוק אודיו  ·  Detach Audio",
-            "לחיצה ימנית על פס אודיו ב-A1 → Detach Audio. האודיו הופך לקליפ נפרד שאפשר לגרור, לחתוך, להזיז ולמחוק בלי קשר לוידאו המקורי. שימושי כשרוצים להחליף בלעדית את הסאונד.\nRight-click an audio bar → Detach Audio. The audio splits off as its own clip — drag, trim, split, copy and delete independently of the video. Great for replacing the soundtrack.",
+            "לחיצה ימנית על פס אודיו ב-A1 → Detach Audio. האודיו הופך לקליפ נפרד שאפשר לגרור, לחתוך, להזיז ולמחוק בלי קשר לוידאו המקורי. שימושי כשרוצים להחליף בלעדית את הסאונד.\nRight-click an audio bar → Detach Audio. The audio splits off as its own clip - drag, trim, split, copy and delete independently of the video. Great for replacing the soundtrack.",
             Accent));
         return WrapSection(p);
     }
 
     private UIElement AiCaptionsSection()
     {
-        var p = MakePane("כתוביות AI", "Auto-generate kinetic-typography captions — and translate them if you want.");
+        var p = MakePane("כתוביות AI", "Auto-generate kinetic-typography captions - and translate them if you want.");
         p.Children.Add(MakeNotice("מה זה עושה  ·  What it does",
-            "האפליקציה מקשיבה לדיבור בסרטון (באמצעות מודל בשם Whisper שרץ במחשב שלך, חינם), שולחת את הטקסט לבינה מלאכותית של גוגל (Gemini), והיא מחזירה כתוביות קצרות מסוג \"kinetic typography\" — קצרות, מודגשות, צבעוניות — בדיוק כמו בריילז וטיקטוק. הכתוביות מופיעות אוטומטית בציר הזמן ואפשר לערוך כל אחת בנפרד.\nThe app listens to the spoken audio (with a local model called Whisper, free), sends the transcript to Google's AI (Gemini), and gets back short kinetic-typography captions — punchy, coloured, ready for Reels/TikTok. Each caption appears as a teal bar on the timeline you can edit individually.",
+            "האפליקציה מקשיבה לדיבור בסרטון (באמצעות מודל בשם Whisper שרץ במחשב שלך, חינם), שולחת את הטקסט לבינה מלאכותית של גוגל (Gemini), והיא מחזירה כתוביות קצרות מסוג \"kinetic typography\" - קצרות, מודגשות, צבעוניות - בדיוק כמו בריילז וטיקטוק. הכתוביות מופיעות אוטומטית בציר הזמן ואפשר לערוך כל אחת בנפרד.\nThe app listens to the spoken audio (with a local model called Whisper, free), sends the transcript to Google's AI (Gemini), and gets back short kinetic-typography captions - punchy, coloured, ready for Reels/TikTok. Each caption appears as a teal bar on the timeline you can edit individually.",
             Accent));
 
         var setupTitle = new TextBlock { Text = "התקנה ראשונית  ·  First-time setup", FontSize = 14, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Text), Margin = new Thickness(0, 16, 0, 10) };
         p.Children.Add(setupTitle);
         p.Children.Add(MakeNumberedStep(1,
             "קבל מפתח API מגוגל (חינם)  ·  Get a free API key from Google",
-            "פתח Settings → ✨ AI Captions → לחץ \"Get an API key\" — נפתח אתר Google AI Studio. התחבר עם חשבון Google, צור פרויקט חדש, ולחץ \"Create API key\". העתק את המפתח (מתחיל ב-AIza…).\nOpen Settings → ✨ AI Captions → click \"Get an API key\". Sign in with a Google account, create a project, click \"Create API key\". Copy the key (starts with AIza…)."));
+            "פתח Settings → ✨ AI Captions → לחץ \"Get an API key\" - נפתח אתר Google AI Studio. התחבר עם חשבון Google, צור פרויקט חדש, ולחץ \"Create API key\". העתק את המפתח (מתחיל ב-AIza…).\nOpen Settings → ✨ AI Captions → click \"Get an API key\". Sign in with a Google account, create a project, click \"Create API key\". Copy the key (starts with AIza…)."));
         p.Children.Add(MakeNumberedStep(2,
             "הדבק והדלק  ·  Paste & test",
             "חזור ל-Settings → AI Captions, הדבק את המפתח בשדה \"API key\", ולחץ \"Test connection\". אם הכל בסדר תקבל הודעה ירוקה.\nBack in Settings → AI Captions, paste the key in the \"API key\" field and click \"Test connection\". You should get a green confirmation."));
         p.Children.Add(MakeNumberedStep(3,
             "(אופציונלי) מפתח גיבוי  ·  (Optional) Fallback key",
-            "במקרה שאתה מגיע למכסה החינמית היומית (1500 בקשות), אפשר להוסיף מפתח שני מ-חשבון Google שונה. אזהרה: אם זה אותו חשבון, זה לא יעזור — המכסה משותפת לחשבון.\nIf you hit the 1500-requests-per-day cap, you can add a second key — from a DIFFERENT Google account. A second key from the same account does NOT help (quota is shared)."));
+            "במקרה שאתה מגיע למכסה החינמית היומית (1500 בקשות), אפשר להוסיף מפתח שני מ-חשבון Google שונה. אזהרה: אם זה אותו חשבון, זה לא יעזור - המכסה משותפת לחשבון.\nIf you hit the 1500-requests-per-day cap, you can add a second key - from a DIFFERENT Google account. A second key from the same account does NOT help (quota is shared)."));
 
         var useTitle = new TextBlock { Text = "שימוש  ·  Using AI Captions", FontSize = 14, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Text), Margin = new Thickness(0, 20, 0, 10) };
         p.Children.Add(useTitle);
@@ -500,10 +500,10 @@ public class UserGuideWindow : Window
             "סיידבר → \"✨ AI Captions\". נפתח חלון עם 4 הגדרות.\nSidebar → \"✨ AI Captions\". A dialog with four options opens."));
         p.Children.Add(MakeNumberedStep(2,
             "בחר הגדרות  ·  Pick options",
-            "• Source — איזה קליפ לתמלל (הקליפ שנבחר / כל הקליפים)\n• Language — באיזו שפה הדיבור בסרטון (Auto / Hebrew / English)\n• Whisper model — איכות התמלול. Tiny הכי מהיר אבל פחות מדויק, Large v3 Turbo הכי מדויק (800MB, מוריד פעם אחת)\n• Caption language — באיזו שפה תרצה את הכתוביות. \"Same as audio\" = אותה שפה. אחר = תרגום אוטומטי.\n• Source — which clips to transcribe (selected one / all)\n• Language — spoken language (Auto / Hebrew / English)\n• Whisper model — accuracy. Tiny fastest, Large v3 Turbo most accurate (800MB)\n• Caption language — what language the captions should be in. \"Same as audio\" or auto-translate."));
+            "• Source - איזה קליפ לתמלל (הקליפ שנבחר / כל הקליפים)\n• Language - באיזו שפה הדיבור בסרטון (Auto / Hebrew / English)\n• Whisper model - איכות התמלול. Tiny הכי מהיר אבל פחות מדויק, Large v3 Turbo הכי מדויק (800MB, מוריד פעם אחת)\n• Caption language - באיזו שפה תרצה את הכתוביות. \"Same as audio\" = אותה שפה. אחר = תרגום אוטומטי.\n• Source - which clips to transcribe (selected one / all)\n• Language - spoken language (Auto / Hebrew / English)\n• Whisper model - accuracy. Tiny fastest, Large v3 Turbo most accurate (800MB)\n• Caption language - what language the captions should be in. \"Same as audio\" or auto-translate."));
         p.Children.Add(MakeNumberedStep(3,
             "לחץ Generate  ·  Click Generate",
-            "החלון מציג 3 שלבים: 1) תמלול האודיו ע\"י Whisper, 2) שליחה ל-Gemini ויצירת הכתוביות, 3) הוספה לציר זמן. בפעם הראשונה לוקח קצת יותר זמן כי האפליקציה מורידה את מודל ה-Whisper.\nThe dialog shows three steps: transcribe → generate → apply. First run downloads the chosen Whisper model — slower one-time cost."));
+            "החלון מציג 3 שלבים: 1) תמלול האודיו ע\"י Whisper, 2) שליחה ל-Gemini ויצירת הכתוביות, 3) הוספה לציר זמן. בפעם הראשונה לוקח קצת יותר זמן כי האפליקציה מורידה את מודל ה-Whisper.\nThe dialog shows three steps: transcribe → generate → apply. First run downloads the chosen Whisper model - slower one-time cost."));
         p.Children.Add(MakeNumberedStep(4,
             "ערוך כתוביות בציר הזמן  ·  Edit on the timeline",
             "כל כתובית מופיעה כפס טורקיז בציר הזמן. לחיצה ימנית → Edit text כדי לשנות (גופן, צבע, מיקום, טקסט). לחיצה ימנית → Delete למחיקה. גרירת קצוות = שינוי זמן ההופעה.\nEach caption is a teal bar on the timeline. Right-click → Edit text to change text/font/colour/position. Right-click → Delete. Drag edges to change appearance time."));
@@ -513,7 +513,7 @@ public class UserGuideWindow : Window
             Info));
 
         p.Children.Add(MakeNotice("עלות  ·  Cost",
-            "מודל ה-Whisper רץ במחשב שלך — חינם לחלוטין. השימוש ב-Gemini הוא בתוך המכסה החינמית של Google: כ-1500 בקשות ביום לכל חשבון. כל הפעלת AI Captions = בקשה אחת או שתיים. תוכל לראות כמה נשארו לך ב-Settings → AI Captions → Usage today.\nWhisper runs locally — totally free. Gemini falls under Google's free tier (~1500 requests/day per account). Each AI Captions run uses 1–2 requests. Counter in Settings → AI Captions → Usage today.",
+            "מודל ה-Whisper רץ במחשב שלך - חינם לחלוטין. השימוש ב-Gemini הוא בתוך המכסה החינמית של Google: כ-1500 בקשות ביום לכל חשבון. כל הפעלת AI Captions = בקשה אחת או שתיים. תוכל לראות כמה נשארו לך ב-Settings → AI Captions → Usage today.\nWhisper runs locally - totally free. Gemini falls under Google's free tier (~1500 requests/day per account). Each AI Captions run uses 1–2 requests. Counter in Settings → AI Captions → Usage today.",
             Success));
         return WrapSection(p);
     }
@@ -523,8 +523,8 @@ public class UserGuideWindow : Window
         var p = MakePane("הורדה מ-URL", "Import a video from YouTube, TikTok, etc.");
         p.Children.Add(MakeBullet("סיידבר → \"🌐 Import from URL\". הדבק את הקישור של הסרטון, לחץ Download.\nSidebar → \"🌐 Import from URL\". Paste the video URL and click Download."));
         p.Children.Add(MakeBullet("עובד עם: YouTube, TikTok, Twitter / X, Instagram, Facebook, Vimeo, Twitch, Reddit ועוד עשרות אתרים.\nWorks with YouTube, TikTok, Twitter/X, Instagram, Facebook, Vimeo, Twitch, Reddit, and dozens more."));
-        p.Children.Add(MakeBullet("בפעם הראשונה האפליקציה מורידה את הכלי שעושה את ההורדה (yt-dlp, ~12MB) — חד-פעמי.\nFirst use downloads the yt-dlp downloader (~12MB) — one-time."));
-        p.Children.Add(MakeBullet("גם קישורי .mp4 / .mov / .mkv ישירים עובדים — מורידים פשוט דרך HTTPS.\nDirect .mp4 / .mov / .mkv links work too — pulled over HTTPS."));
+        p.Children.Add(MakeBullet("בפעם הראשונה האפליקציה מורידה את הכלי שעושה את ההורדה (yt-dlp, ~12MB) - חד-פעמי.\nFirst use downloads the yt-dlp downloader (~12MB) - one-time."));
+        p.Children.Add(MakeBullet("גם קישורי .mp4 / .mov / .mkv ישירים עובדים - מורידים פשוט דרך HTTPS.\nDirect .mp4 / .mov / .mkv links work too - pulled over HTTPS."));
         p.Children.Add(MakeBullet("איכות: עד 1080p, האפליקציה בוחרת אוטומטית את האיכות הטובה ביותר ומאחדת וידאו + אודיו.\nQuality: up to 1080p. App auto-picks best video+audio and merges."));
         p.Children.Add(MakeBullet("בסיום ההורדה הסרטון נכנס אוטומטית לציר הזמן עם תמונות ממוזערות וגל קול.\nWhen done, the clip auto-lands on the timeline with thumbnails and waveform."));
         return WrapSection(p);
@@ -534,11 +534,11 @@ public class UserGuideWindow : Window
     {
         var p = MakePane("ייצוא", "Render everything into a final video file.");
         p.Children.Add(MakeBullet("לחץ Export הירוק למעלה מימין, או Ctrl+E.\nClick the green Export button at top-right, or press Ctrl+E."));
-        p.Children.Add(MakeBullet("בחר איפה לשמור. ברירת מחדל — MP4 H.264 ברזולוציה של הקליפ הראשון.\nPick a destination. Default is MP4 H.264 at the first clip's resolution."));
-        p.Children.Add(MakeBullet("פס ההתקדמות בטופ-בר זז בזמן אמת — אחוז + מספר. גם בתוך קליפ ארוך הוא יזוז (לא רק בין קליפים).\nThe topbar progress bar moves in real time — percent + number. It updates within a single long clip, not only between clips."));
-        p.Children.Add(MakeBullet("הקידוד עצמו נעשה ע\"י ffmpeg.exe (תהליך נפרד). אם תפתח Task Manager — האפליקציה עצמה תהיה ב-0% CPU וה-ffmpeg יהיה ב-100%. זה תקין.\nThe encoding itself runs in a separate ffmpeg.exe process. Task Manager will show VideoEditor at 0% CPU and ffmpeg.exe doing the work — that's normal."));
+        p.Children.Add(MakeBullet("בחר איפה לשמור. ברירת מחדל - MP4 H.264 ברזולוציה של הקליפ הראשון.\nPick a destination. Default is MP4 H.264 at the first clip's resolution."));
+        p.Children.Add(MakeBullet("פס ההתקדמות בטופ-בר זז בזמן אמת - אחוז + מספר. גם בתוך קליפ ארוך הוא יזוז (לא רק בין קליפים).\nThe topbar progress bar moves in real time - percent + number. It updates within a single long clip, not only between clips."));
+        p.Children.Add(MakeBullet("הקידוד עצמו נעשה ע\"י ffmpeg.exe (תהליך נפרד). אם תפתח Task Manager - האפליקציה עצמה תהיה ב-0% CPU וה-ffmpeg יהיה ב-100%. זה תקין.\nThe encoding itself runs in a separate ffmpeg.exe process. Task Manager will show VideoEditor at 0% CPU and ffmpeg.exe doing the work - that's normal."));
         p.Children.Add(MakeNotice("האצת חומרה  ·  Hardware acceleration",
-            "ב-Settings → Export → \"Hardware accel\" אפשר לבחור NVIDIA NVENC / Intel QuickSync / AMD AMF (תלוי בכרטיס המסך). זה מעביר את הקידוד ל-GPU — פי 3 עד 5 יותר מהיר ועומס CPU נמוך משמעותית.\nSettings → Export → Hardware accel: NVIDIA NVENC / Intel QuickSync / AMD AMF (depends on your GPU). Moves encoding to the GPU — 3-5x faster with much lower CPU.",
+            "ב-Settings → Export → \"Hardware accel\" אפשר לבחור NVIDIA NVENC / Intel QuickSync / AMD AMF (תלוי בכרטיס המסך). זה מעביר את הקידוד ל-GPU - פי 3 עד 5 יותר מהיר ועומס CPU נמוך משמעותית.\nSettings → Export → Hardware accel: NVIDIA NVENC / Intel QuickSync / AMD AMF (depends on your GPU). Moves encoding to the GPU - 3-5x faster with much lower CPU.",
             Info));
         p.Children.Add(MakeBullet("צינור הייצוא: 1) מרנדר כל קליפ עם המסננים שלו  2) מחבר אותם בסדר ציר הזמן  3) צורב טקסטים  4) צורב בלוקי הסתרה.\nPipeline: per-clip render → concat → text overlays → hide blocks."));
         return WrapSection(p);
@@ -598,9 +598,9 @@ public class UserGuideWindow : Window
             ("Editor",      "עורך", "מצב Ripple (קליפים נצמדים זה לזה), סף הצמדה מגנטית, זום התחלתי, מספר תמונות ממוזערות.\nRipple-abut mode, magnetic snap threshold, initial zoom, thumbnails per clip."),
             ("Export",      "ייצוא", "מיכל פלט (MP4 / MOV / MKV), codec (H.264 / H.265 / AV1 / ProRes), איכות CRF, FPS, האצת חומרה (NVENC / QSV / AMF), 2-pass.\nContainer (MP4/MOV/MKV), codec, CRF quality, FPS, hardware acceleration, 2-pass."),
             ("AI Captions", "כתוביות AI", "מפתח Gemini הראשי, מפתח גיבוי (לחשבון Google שני), בדיקת חיבור, ספירת בקשות יומית, מדריך השגת מפתח.\nGemini API key, fallback key (different Google account), test-connection, daily usage counter, guide on how to get a key."),
-            ("Storage",     "אחסון", "תיקיות שמירה — פרויקטים, הורדות, מטמון.\nFolders for projects, downloads, cache."),
+            ("Storage",     "אחסון", "תיקיות שמירה - פרויקטים, הורדות, מטמון.\nFolders for projects, downloads, cache."),
             ("FFmpeg",      "FFmpeg", "סטטוס הבינארי + ה-codecs המותקנים.\nBinary status + installed encoders."),
-            ("Keyboard",    "מקלדת", "כל קיצורי המקלדת — מקובץ לפי פעולה.\nFull keyboard cheat-sheet."),
+            ("Keyboard",    "מקלדת", "כל קיצורי המקלדת - מקובץ לפי פעולה.\nFull keyboard cheat-sheet."),
             ("Updates",     "עדכונים", "גרסה נוכחית של האפליקציה.\nCurrent app version."),
             ("About",       "אודות", "רישיון MIT, כתובת ה-Repo.\nMIT licence, repo link."),
         };
@@ -612,7 +612,7 @@ public class UserGuideWindow : Window
     {
         var p = MakePane("FFmpeg", "What works behind the scenes.");
         p.Children.Add(MakeNotice("מה זה FFmpeg?  ·  What is FFmpeg?",
-            "תוכנת קוד פתוח חזקה לעיבוד וידאו ואודיו. כמעט כל אפליקציית עריכה בעולם (כולל יוטיוב עצמה) משתמשת בה. אצלנו היא מבצעת את כל הקידוד והפילטרים, כך שהאפליקציה עצמה נשארת קלה ומהירה.\nA powerful open-source media-processing tool used by almost every video app in existence (YouTube itself uses it). It does all the encoding and filtering for us — our app stays light.",
+            "תוכנת קוד פתוח חזקה לעיבוד וידאו ואודיו. כמעט כל אפליקציית עריכה בעולם (כולל יוטיוב עצמה) משתמשת בה. אצלנו היא מבצעת את כל הקידוד והפילטרים, כך שהאפליקציה עצמה נשארת קלה ומהירה.\nA powerful open-source media-processing tool used by almost every video app in existence (YouTube itself uses it). It does all the encoding and filtering for us - our app stays light.",
             Info));
         p.Children.Add(MakeBullet("בפעם הראשונה האפליקציה מורידה את ffmpeg.exe + ffprobe.exe (~150MB) לתיקיית \"ffmpeg\" שליד ה-EXE. חד-פעמי.\nFirst run downloads ffmpeg.exe + ffprobe.exe (~150 MB) into the ffmpeg/ folder next to the EXE. One-time."));
         p.Children.Add(MakeBullet("גם yt-dlp (להורדה מיוטיוב) ו-whisper.cpp (לתמלול) מורדים אוטומטית בפעם הראשונה. הכל חינם וקוד פתוח.\nyt-dlp (URL imports) and whisper.cpp (AI Captions transcription) also auto-install on first use. All free + open source."));

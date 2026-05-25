@@ -10,7 +10,7 @@ public static class ProjectFormats
 
     public static readonly Preset[] All =
     {
-        new("source",              "Source — match first clip",       "Source",   0,    0,    "source",   "Match the first clip"),
+        new("source",              "Source - match first clip",       "Source",   0,    0,    "source",   "Match the first clip"),
         new("yt_1080p",            "YouTube · 16:9",                   "YouTube",  1920, 1080, "monitor",  "Landscape video for desktop / TV"),
         new("reels_1080",          "Reels / TikTok / Shorts · 9:16",   "Reels",    1080, 1920, "phone",    "Vertical video for phones"),
         new("square_1080",         "Instagram Square · 1:1",           "Square",   1080, 1080, "square",   "Square feed post"),

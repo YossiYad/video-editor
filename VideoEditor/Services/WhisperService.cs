@@ -50,7 +50,7 @@ public sealed class WhisperService
     {
         if (IsBinaryReady()) return;
         Directory.CreateDirectory(WhisperFolder);
-        Log?.Invoke("Downloading whisper.cpp (~80 MB) — first run only...");
+        Log?.Invoke("Downloading whisper.cpp (~80 MB) - first run only...");
 
         var tmpZip = Path.Combine(Path.GetTempPath(), $"whisper_{Guid.NewGuid():N}.zip");
         try
@@ -100,7 +100,7 @@ public sealed class WhisperService
         var path = ModelPath(modelKey);
         if (File.Exists(path)) return;
         Directory.CreateDirectory(WhisperFolder);
-        Log?.Invoke($"Downloading whisper model ggml-{modelKey}.bin — first run only...");
+        Log?.Invoke($"Downloading whisper model ggml-{modelKey}.bin - first run only...");
 
         using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("VideoEditor/1.0");
@@ -171,7 +171,7 @@ public sealed class WhisperService
                 throw new Exception($"whisper did not produce {srtOutPath}");
 
             // whisper.cpp writes the .srt as UTF-8 (no BOM). Always read as
-            // UTF-8 — File.ReadAllTextAsync without an encoding falls back to
+            // UTF-8 - File.ReadAllTextAsync without an encoding falls back to
             // the system default code page on Windows, which corrupts Hebrew.
             var srtText = await File.ReadAllTextAsync(srtOutPath, Encoding.UTF8, ct);
             progress?.Report(1.0);

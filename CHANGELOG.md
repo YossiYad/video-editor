@@ -6,14 +6,14 @@ The latest signed Windows build is always available at
 
 ---
 
-## [v1.6.1] — 2026-05-26
+## [v1.6.1] - 2026-05-26
 
-Polish on top of v1.6.0 — Screen Recorder fit, the new Export
+Polish on top of v1.6.0 - Screen Recorder fit, the new Export
 Destination picker, in-app User Guide refresh, and MainWindow layout
 tweaks.
 
 ### Added
-- New `ExportDestinationWindow` — pre-export step that lets the user
+- New `ExportDestinationWindow` - pre-export step that lets the user
   pick where the finished video goes (save / share / both).
 
 ### Changed
@@ -25,12 +25,12 @@ tweaks.
 
 ---
 
-## [v1.6.0] — 2026-05-26
+## [v1.6.0] - 2026-05-26
 
 Big upgrade to the screen-recording experience and post-export
 sharing.
 
-### Added — Screen Recorder
+### Added - Screen Recorder
 - **Monitor picker**: dropdown listing every attached display via
   Win32 EnumDisplayMonitors. Pick "Entire desktop (all monitors)" or
   one specific monitor. Persists across runs.
@@ -38,7 +38,7 @@ sharing.
   screen capture. Independent of ffmpeg's own capture so it can't
   affect the recording.
 - **🔍 Enlarge button** opens the live preview in its own resizable
-  window — drag any edge to make it as big as your monitor.
+  window - drag any edge to make it as big as your monitor.
 - **HiDPI-aware recording** via ffmpeg's `ddagrab` (Direct3D Desktop
   Duplication). A 1920×1080 monitor at 150% Windows scaling now
   records at its full 1920×1080 instead of the scaled 1280×720 that
@@ -49,7 +49,7 @@ sharing.
 - **Diagnostic** under the preview shows the exact rectangle being
   captured plus physical resolution if DPI scaling is in play.
 
-### Added — ShareDialog (used after every recording + export)
+### Added - ShareDialog (used after every recording + export)
 - "🎬 Open in editor" loads the file straight onto the timeline.
 - "📁 Open folder" reveals it in Explorer.
 - "Copy path" copies the path for pasting into web upload dialogs.
@@ -58,17 +58,17 @@ sharing.
   drag it onto the page that opens.
 - Replaces the old "Open output folder?" MessageBox after export.
 
-### Added — UI polish
+### Added - UI polish
 - **Branded application icon** (purple gradient scissors-and-film-
   strip "Video Editor Pro") visible in Explorer, taskbar, Alt+Tab and
   the window titlebar.
-- **Self-contained single-file EXE** — bundles the native WPF DLLs
+- **Self-contained single-file EXE** - bundles the native WPF DLLs
   (D3DCompiler / PresentationNative / wpfgfx / PenImc / vcruntime)
   inside the .exe so it runs from any folder with no companion files.
 
 ### Fixed
 - Hide blocks now hide / show only when the playhead is in their
-  range — matches export, no more "block over the whole video at
+  range - matches export, no more "block over the whole video at
   every paused position".
 - ScreenRecorderWindow layout: previous SizeChanged growth handler
   pushed Output file + Recording source out of the ScrollViewer's
@@ -83,13 +83,13 @@ sharing.
 
 ---
 
-## [v1.5.0] — 2026-05-25
+## [v1.5.0] - 2026-05-25
 
 Major update: AI Captions, Canvas Transform, project formats, and lots of polish.
 
-### Added — AI Captions ✨
+### Added - AI Captions ✨
 - Auto-generate kinetic-typography captions from the spoken audio in a clip.
-- Local Whisper.cpp transcription — free, no cloud upload for the audio
+- Local Whisper.cpp transcription - free, no cloud upload for the audio
   itself. Five model sizes from Tiny (75 MB) to Large-v3-Turbo (800 MB,
   recommended for Hebrew).
 - Google Gemini turns the cleaned transcript into short, punchy on-screen
@@ -99,40 +99,40 @@ Major update: AI Captions, Canvas Transform, project formats, and lots of polish
 - Caption translation: keep the source language *or* translate into
   Hebrew / English / Arabic / Spanish / French / Russian / Portuguese / German.
   Great for fan-subbing courses or shows.
-- Optional **fallback API key** from a second Google account — kicks in
+- Optional **fallback API key** from a second Google account - kicks in
   automatically when the primary key hits its daily 429 quota, doubling
   the free-tier cap.
 - Daily Gemini request counter visible in Settings → AI Captions and in
   the AI Captions dialog itself.
-- Automatic model probing — tries 2.5-flash → 2.0-flash → 2.5-flash-lite
+- Automatic model probing - tries 2.5-flash → 2.0-flash → 2.5-flash-lite
   → 1.5-flash, so the key works on any Google project regardless of
   which model that project has free quota for.
 
-### Added — per-clip Canvas Transform ⛶
+### Added - per-clip Canvas Transform ⛶
 - Zoom + offset on the project canvas, per-clip.
 - Direct manipulation: four corner handles, drag the preview to pan,
   scroll-wheel to zoom (Ctrl+Scroll = finer), double-click or right-
   click to reset.
 - Sliders in the right-pane CANVAS section as a precise alternative.
 - Dashed purple frame shows the editable canvas bounds.
-- Handles auto-hug the actual displayed video, not the canvas — so
+- Handles auto-hug the actual displayed video, not the canvas - so
   portrait clips in a 16:9 canvas don't put the handles in the side
   letterboxing.
 
-### Added — Project formats 📐
+### Added - Project formats 📐
 - Presets: YouTube 16:9, Reels / TikTok / Shorts 9:16, Square 1:1,
   Portrait 4:5, Cinematic 21:9, plus custom width × height.
 - Fit modes: Contain (letterbox), Cover (crop edges), Blur background
   (fill bars with a blurred copy of the clip).
 
-### Added — Hide blocks
+### Added - Hide blocks
 - Dedicated milliseconds field next to seconds in the START / END
   inputs (H : M : S . MS), each in its own box.
 - Visibility now matches export: a block only appears when the playhead
-  is in its range — paused or playing. The currently-selected block
+  is in its range - paused or playing. The currently-selected block
   stays visible regardless so it remains editable.
 
-### Added — UI
+### Added - UI
 - Bilingual English / Hebrew interface with full RTL layout for Hebrew.
 - Light / Dark / Auto theme with live switching (no restart needed).
 - Self-pacing export progress: bar moves smoothly even within a single
@@ -141,12 +141,12 @@ Major update: AI Captions, Canvas Transform, project formats, and lots of polish
   Export button never gets clipped.
 
 ### Changed
-- Whisper output is now read as UTF-8 explicitly — Hebrew transcripts
+- Whisper output is now read as UTF-8 explicitly - Hebrew transcripts
   no longer come out as mojibake.
 - Scrubbing the yellow playhead routes through a 35 ms coalescing
   timer so dragging doesn't choke MediaElement with ~100 Position
   writes/second; audio is no longer choppy during scrub.
-- Text-overlay preview controls now use dirty-tracking — adding 40+
+- Text-overlay preview controls now use dirty-tracking - adding 40+
   AI Captions to a timeline no longer makes scrubbing stutter.
 - Topbar icons: pause is now two hand-drawn bars (no longer rendered
   as a coloured emoji square that looked identical to Stop); settings
@@ -174,12 +174,12 @@ Major update: AI Captions, Canvas Transform, project formats, and lots of polish
 
 ### Security
 - `settings.json` (which holds the LLM API keys) is now explicitly
-  ignored in `.gitignore` — defence in depth on top of `publish/` and
+  ignored in `.gitignore` - defence in depth on top of `publish/` and
   `bin/` already being ignored.
 
 ---
 
-## [v1.0.0] — 2026-05-21
+## [v1.0.0] - 2026-05-21
 
 First public release.
 
@@ -201,7 +201,7 @@ First public release.
   Keyboard / Updates / About sections.
 - Bilingual UI: English + Hebrew (with RTL support).
 - Light / Dark theme with live switching.
-- Self-contained single-file Windows EXE — no installer, no admin
+- Self-contained single-file Windows EXE - no installer, no admin
   rights, no .NET install required (~150 MB).
 
 [v1.6.1]: https://github.com/YossiYad/video-editor/releases/tag/v1.6.1

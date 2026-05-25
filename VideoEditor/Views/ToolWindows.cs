@@ -8,7 +8,7 @@ using Microsoft.Win32;
 
 namespace VideoEditor.Views;
 
-// Shared dialog chrome — every tool window in the app is built on top of this so the design feels
+// Shared dialog chrome - every tool window in the app is built on top of this so the design feels
 // cohesive end to end. The OS window chrome stays; we add an in-window titlebar (icon tile + title
 // + subtitle), a padded body, and a footer with a Cancel + primary CTA.
 internal static class WindowBuilder
@@ -230,7 +230,7 @@ internal static class WindowBuilder
         };
     }
 
-    // Footer info chip — supplemental info on the left side of the footer.
+    // Footer info chip - supplemental info on the left side of the footer.
     public static TextBlock FooterInfo(string text) => new()
     {
         Text = text,
@@ -361,7 +361,7 @@ public class AddImageWindow : Window
     {
         Title = "Add Image to Video";
         var ch = WindowBuilder.Build(this, "🖼", "Add Image",
-            "Overlay an image at a given (X, Y) — applied at export", 520, 330);
+            "Overlay an image at a given (X, Y) - applied at export", 520, 330);
 
         ch.Body.Children.Add(WindowBuilder.Lbl("Image file"));
         var path = WindowBuilder.Tb();

@@ -112,7 +112,7 @@ public partial class MainWindow : Window
         overlayCanvas.SizeChanged += (_, _) =>
         {
             RepositionOverlay();
-            // Scale of every text-overlay preview control depends on canvas size — mark all dirty
+            // Scale of every text-overlay preview control depends on canvas size - mark all dirty
             // so the next tick re-styles + re-places them. Cheap because it only happens on resize.
             foreach (var ov in timeline.TextOverlays) _textOverlayDirty.Add(ov);
         };
@@ -226,7 +226,7 @@ public partial class MainWindow : Window
     //
     // Four 20×20 squares pinned to the four corners of the project canvas via XAML
     // alignment, so they don't depend on the Canvas's measured size (which is fragile).
-    // Dragging any handle scales the clip uniformly from the canvas centre — the new
+    // Dragging any handle scales the clip uniformly from the canvas centre - the new
     // scale = startScale × (currentDistFromCentre / startDistFromCentre).
 
     private bool _handleDragActive;
@@ -249,7 +249,7 @@ public partial class MainWindow : Window
         // Size the layer to match the *actual* displayed video, not the whole canvas.
         // MediaElement uses Stretch=Uniform so the base displayed size is the source dimensions
         // scaled by min(canvasW/srcW, canvasH/srcH); the user's CanvasScale multiplies that.
-        // When scale > 1 the displayed image is bigger than the canvas — clamp the layer to
+        // When scale > 1 the displayed image is bigger than the canvas - clamp the layer to
         // canvas size so handles stay inside the visible region.
         double canvasW = videoStack.ActualWidth;
         double canvasH = videoStack.ActualHeight;
@@ -270,7 +270,7 @@ public partial class MainWindow : Window
     {
         var c = CanvasTargetClip();
         if (c == null || sender is not Border h) return;
-        // Centre of the visible project canvas — handles drag relative to this point.
+        // Centre of the visible project canvas - handles drag relative to this point.
         double w = canvasHandlesLayer.ActualWidth;
         double hh = canvasHandlesLayer.ActualHeight;
         if (w < 1 || hh < 1) return;
@@ -593,7 +593,7 @@ public partial class MainWindow : Window
             videoView.SpeedRatio = clip.Speed;
             videoView.Volume = _masterVolume * clip.Volume;
             ApplyClipTransform(clip);
-            // Show resize handles as soon as a clip is loaded — even before the user
+            // Show resize handles as soon as a clip is loaded - even before the user
             // explicitly selects it in the timeline.
             Dispatcher.BeginInvoke(new Action(RepositionCanvasHandles), System.Windows.Threading.DispatcherPriority.Loaded);
             if (!_isPlaying)
@@ -642,7 +642,7 @@ public partial class MainWindow : Window
         var withinClip = Math.Max(0, seconds - clip.TimelineStart) * clip.Speed;
         if (clip != _playingClip)
         {
-            // Source change is unavoidable heavy work — do it once, not coalesced.
+            // Source change is unavoidable heavy work - do it once, not coalesced.
             LoadClipForPreview(clip, withinClip);
         }
         else
@@ -654,7 +654,7 @@ public partial class MainWindow : Window
             // ruler) still feel instant because there's only one call.
             ScrubToClipFrame(clip, clip.InPoint + withinClip);
         }
-        // Block + text overlay visibility tracks the playhead in real time, paused or not —
+        // Block + text overlay visibility tracks the playhead in real time, paused or not -
         // so scrubbing past a hide block's range immediately reveals the underlying frame.
         UpdateBlockVisibility();
     }
@@ -743,7 +743,7 @@ public partial class MainWindow : Window
 
     private void VideoView_MediaOpened(object sender, RoutedEventArgs e)
     {
-        // Video dimensions are first reliable here — RepositionCanvasHandles needs them to
+        // Video dimensions are first reliable here - RepositionCanvasHandles needs them to
         // compute the actual displayed bounds.
         RepositionCanvasHandles();
     }
@@ -1202,7 +1202,7 @@ public partial class MainWindow : Window
     private void ClipInOut_Changed(object sender, TextChangedEventArgs e)
     {
         if (_suppress || _selectedClip == null) return;
-        // Parse both first, then clamp against each other —” otherwise we'd clamp In against
+        // Parse both first, then clamp against each other -” otherwise we'd clamp In against
         // an outdated Out (or vice versa) when the user is editing the second field.
         var inOk = double.TryParse(clipInBox.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var newIn);
         var outOk = double.TryParse(clipOutBox.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var newOut);
@@ -1589,7 +1589,7 @@ public partial class MainWindow : Window
             // Blocks render exactly the way the exported video will look: a block is on-
             // screen iff the playhead is inside its time range (or it covers the whole
             // project). One concession to editability: the *currently selected* block stays
-            // visible even outside its range — otherwise it'd disappear the moment you
+            // visible even outside its range - otherwise it'd disappear the moment you
             // selected it to drag/resize.
             bool inRange = block.CoversWholeVideo || (t >= block.StartSeconds && t <= block.EndSeconds);
             bool isEditing = block == _selectedBlock;
@@ -1640,7 +1640,7 @@ public partial class MainWindow : Window
                 ApplyOverlayStyle(ctl!, ov, s);
                 ApplyOverlayPlacement(ctl!, ov, s);
             }
-            // Per-tick we only flip Visibility — the cheap part. Style + placement
+            // Per-tick we only flip Visibility - the cheap part. Style + placement
             // are no-ops unless the overlay was just added or marked dirty.
             bool active = !_isPlaying || (currentSec >= ov.StartSeconds && currentSec <= ov.EndSeconds);
             ctl!.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
@@ -1910,11 +1910,11 @@ public partial class MainWindow : Window
                 return;
             }
             // Show the unified share / upload dialog. offerOpenInEditor=false because
-            // the exported file IS the final output — re-loading it as a new clip
+            // the exported file IS the final output - re-loading it as a new clip
             // doesn't make sense here (unlike a screen recording).
             new ShareDialog(outputPath,
                 title: publishAfterExport ? "Ready to publish" : "Saved to files",
-                subtitle: "Pick where to send it — your editor project is still open.",
+                subtitle: "Pick where to send it - your editor project is still open.",
                 offerOpenInEditor: false)
             { Owner = this }.ShowDialog();
         }
@@ -1946,7 +1946,7 @@ public partial class MainWindow : Window
     {
         var dlg = new ScreenRecorderWindow(_ff, webcam) { Owner = this };
         dlg.ShowDialog();
-        // "Open in editor" path — user chose to keep editing the recording.
+        // "Open in editor" path - user chose to keep editing the recording.
         if (!string.IsNullOrEmpty(dlg.OpenInEditorPath) && File.Exists(dlg.OpenInEditorPath))
             AddFiles(new[] { dlg.OpenInEditorPath });
     }
@@ -2741,7 +2741,7 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
         if (string.IsNullOrWhiteSpace(AppSettings.LlmApiKey))
         {
             MessageBox.Show(
-                VideoEditor.Services.Localization.T("Set your Gemini API key first — opening Settings…"),
+                VideoEditor.Services.Localization.T("Set your Gemini API key first - opening Settings…"),
                 "AI Captions", MessageBoxButton.OK, MessageBoxImage.Information);
             new SettingsWindow("ai") { Owner = this }.ShowDialog();
             if (string.IsNullOrWhiteSpace(AppSettings.LlmApiKey)) return;
@@ -2766,7 +2766,7 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
 
         foreach (var ov in dlg.Result) timeline.TextOverlays.Add(ov);
 
-        status.Text = VideoEditor.Services.Localization.T("AI Captions added · {0} overlays — drag bars on the timeline to tweak.")
+        status.Text = VideoEditor.Services.Localization.T("AI Captions added · {0} overlays - drag bars on the timeline to tweak.")
             .Replace("{0}", dlg.Result.Count.ToString());
     }
 
@@ -3075,7 +3075,7 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
         {
             if (succeeded)
             {
-                // Replace the prior temp output (if any) —” first destructive op uses the user's
+                // Replace the prior temp output (if any) -” first destructive op uses the user's
                 // original file (don't touch), subsequent ones supersede our own temp files.
                 if (IsAppTempFile(previousSource))
                 {
@@ -3084,13 +3084,13 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
             }
             else
             {
-                // Operation failed —” clean up the half-written temp if it exists.
+                // Operation failed -” clean up the half-written temp if it exists.
                 try { if (File.Exists(tempOut)) File.Delete(tempOut); } catch { }
             }
         }
     }
 
-    // Use the ProcessStartInfo argument list so the path is quoted by the runtime —” avoids
+    // Use the ProcessStartInfo argument list so the path is quoted by the runtime -” avoids
     // breaking when the file name contains characters that interact with the shell parser.
     private static void RevealInExplorer(string filePath)
     {
