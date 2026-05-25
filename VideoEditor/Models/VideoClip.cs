@@ -23,6 +23,9 @@ public class VideoClip : INotifyPropertyChanged
     private int _loopCount = 1;
     private double _timelineStart;
     private bool _isAudioOnly;
+    private double _canvasScale = 1.0;
+    private double _canvasOffsetX;
+    private double _canvasOffsetY;
 
     /// <summary>
     /// When true, this clip carries only audio (no video). Used for "detached" audio that the user
@@ -44,6 +47,23 @@ public class VideoClip : INotifyPropertyChanged
     public int VideoWidth { get => _videoWidth; set => Set(ref _videoWidth, value); }
     public int VideoHeight { get => _videoHeight; set => Set(ref _videoHeight, value); }
     public int LoopCount { get => _loopCount; set => Set(ref _loopCount, value); }
+
+    /// <summary>Per-clip zoom on the project canvas. 1.0 = contain-fit (the standard
+    /// project-format behaviour); higher = video grows beyond the canvas (cropped on export);
+    /// lower = video shrinks inside the canvas with black bars around it.</summary>
+    public double CanvasScale { get => _canvasScale; set => Set(ref _canvasScale, Math.Max(0.05, Math.Min(8.0, value))); }
+    /// <summary>Horizontal offset on the canvas as a fraction of canvas width.
+    /// 0 = centered. ±0.5 = shifted by half the canvas width. Can take the video off-canvas.</summary>
+    public double CanvasOffsetX { get => _canvasOffsetX; set => Set(ref _canvasOffsetX, Math.Max(-2.0, Math.Min(2.0, value))); }
+    /// <summary>Vertical offset as a fraction of canvas height. 0 = centered.</summary>
+    public double CanvasOffsetY { get => _canvasOffsetY; set => Set(ref _canvasOffsetY, Math.Max(-2.0, Math.Min(2.0, value))); }
+
+    /// <summary>True iff the clip uses any non-default canvas transform. Lets the export
+    /// pipeline skip the heavier overlay-on-colour filter chain when nothing was touched.</summary>
+    public bool HasManualCanvasTransform =>
+        Math.Abs(_canvasScale - 1.0) > 0.001 ||
+        Math.Abs(_canvasOffsetX) > 0.001 ||
+        Math.Abs(_canvasOffsetY) > 0.001;
 
     public double EffectiveDuration => Math.Max(0.1, (OutPoint - InPoint) / Math.Max(0.01, Speed)) * Math.Max(1, LoopCount);
 

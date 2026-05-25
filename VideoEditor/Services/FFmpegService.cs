@@ -498,7 +498,26 @@ public class FFmpegService
         var vfTail = new List<string> { "setsar=1", $"fps={fps}", "setpts=PTS-STARTPTS" };
 
         string videoFilterArg;
-        if (fitMode == "blur")
+        // Per-clip manual canvas transform overrides the global fit mode.
+        // Scale source by (contain-fit * CanvasScale) and lay it on a black canvas at the
+        // user's offset; overlay clips anything beyond the target rectangle automatically.
+        if (c.HasManualCanvasTransform && c.VideoWidth > 0 && c.VideoHeight > 0)
+        {
+            double baseScale = Math.Min((double)targetW / c.VideoWidth, (double)targetH / c.VideoHeight);
+            int finalW = Math.Max(2, (int)Math.Round(c.VideoWidth * baseScale * c.CanvasScale));
+            int finalH = Math.Max(2, (int)Math.Round(c.VideoHeight * baseScale * c.CanvasScale));
+            int posX = (targetW - finalW) / 2 + (int)Math.Round(c.CanvasOffsetX * targetW);
+            int posY = (targetH - finalH) / 2 + (int)Math.Round(c.CanvasOffsetY * targetH);
+
+            var preChain = vfPre.Count > 0 ? string.Join(",", vfPre) + "," : "";
+            var tailChain = string.Join(",", vfTail);
+            string complex =
+                $"[0:v]{preChain}scale={finalW}:{finalH}[fg];" +
+                $"color=c=black:s={targetW}x{targetH}:r={fps}[bg];" +
+                $"[bg][fg]overlay={posX}:{posY}:shortest=1,{tailChain}[v]";
+            videoFilterArg = $"-filter_complex \"{complex}\" -map \"[v]\" -map 0:a?";
+        }
+        else if (fitMode == "blur")
         {
             int blur = Math.Clamp(AppSettings.BlurredBgStrength, 0, 60);
             var preChain = vfPre.Count > 0 ? string.Join(",", vfPre) + "," : "";

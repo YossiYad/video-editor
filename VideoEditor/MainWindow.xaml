@@ -667,6 +667,67 @@
 
                                     <Border Height="1" Background="{DynamicResource Line}" Margin="16,0"/>
 
+                                    <!-- Canvas (per-clip scale + position on the project format) -->
+                                    <StackPanel Margin="16,12,16,12">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="CANVAS" Style="{DynamicResource FieldLabel}"/>
+                                            <Button Grid.Column="1" x:Name="canvasResetBtn" Content="Reset" Padding="8,2"
+                                                    Style="{DynamicResource GhostButton}" FontSize="10.5"
+                                                    Click="CanvasReset_Click" ToolTip="Reset zoom &amp; position (double-click on the preview)"/>
+                                        </Grid>
+                                        <TextBlock Text="Drag preview to move · scroll to zoom · double-click to reset"
+                                                   FontSize="10.5" Foreground="{DynamicResource TextDim}"
+                                                   TextWrapping="Wrap" Margin="0,2,0,8"/>
+
+                                        <TextBlock Text="Zoom" FontSize="10.5" Foreground="{DynamicResource TextMute}" Margin="0,0,0,2"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="48"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Slider Grid.Column="0" x:Name="canvasScaleSlider" Minimum="0.1" Maximum="4.0" Value="1.0"
+                                                    SmallChange="0.05" LargeChange="0.2" IsMoveToPointEnabled="True"
+                                                    ValueChanged="CanvasScale_Changed"/>
+                                            <TextBlock Grid.Column="1" x:Name="canvasScaleText" Text="100%"
+                                                       FontFamily="Consolas" FontSize="10.5" Foreground="{DynamicResource TextMute}"
+                                                       VerticalAlignment="Center" TextAlignment="Right"/>
+                                        </Grid>
+
+                                        <TextBlock Text="Offset X" FontSize="10.5" Foreground="{DynamicResource TextMute}" Margin="0,6,0,2"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="48"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Slider Grid.Column="0" x:Name="canvasOffsetXSlider" Minimum="-1" Maximum="1" Value="0"
+                                                    SmallChange="0.02" LargeChange="0.1" IsMoveToPointEnabled="True"
+                                                    ValueChanged="CanvasOffsetX_Changed"/>
+                                            <TextBlock Grid.Column="1" x:Name="canvasOffsetXText" Text="0%"
+                                                       FontFamily="Consolas" FontSize="10.5" Foreground="{DynamicResource TextMute}"
+                                                       VerticalAlignment="Center" TextAlignment="Right"/>
+                                        </Grid>
+
+                                        <TextBlock Text="Offset Y" FontSize="10.5" Foreground="{DynamicResource TextMute}" Margin="0,6,0,2"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="48"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Slider Grid.Column="0" x:Name="canvasOffsetYSlider" Minimum="-1" Maximum="1" Value="0"
+                                                    SmallChange="0.02" LargeChange="0.1" IsMoveToPointEnabled="True"
+                                                    ValueChanged="CanvasOffsetY_Changed"/>
+                                            <TextBlock Grid.Column="1" x:Name="canvasOffsetYText" Text="0%"
+                                                       FontFamily="Consolas" FontSize="10.5" Foreground="{DynamicResource TextMute}"
+                                                       VerticalAlignment="Center" TextAlignment="Right"/>
+                                        </Grid>
+                                    </StackPanel>
+
+                                    <Border Height="1" Background="{DynamicResource Line}" Margin="16,0"/>
+
                                     <!-- Export-time effects -->
                                     <StackPanel Margin="16,12,16,12">
                                         <TextBlock Text="EXPORT-TIME EFFECTS" Style="{DynamicResource FieldLabel}"/>

@@ -104,7 +104,106 @@ public partial class MainWindow : Window
             foreach (var ov in timeline.TextOverlays) _textOverlayDirty.Add(ov);
         };
         overlayCanvas.MouseLeftButtonDown += OverlayCanvas_BackgroundClick;
+        WirePreviewCanvasTransformGestures();
     }
+
+    // ===== Direct manipulation of the canvas transform =====
+    //
+    // - Click and drag inside the preview to pan the selected clip on the canvas.
+    // - Scroll the mouse wheel inside the preview to zoom in/out (Ctrl+Scroll = finer step).
+    // - Double-click resets the clip to "fit the canvas exactly" (scale=1, offset=0,0).
+    //
+    // Behaviour is no-op when no video clip is selected.
+    private bool _canvasDragActive;
+    private Point _canvasDragStartMouse;
+    private double _canvasDragStartOffX;
+    private double _canvasDragStartOffY;
+
+    private void WirePreviewCanvasTransformGestures()
+    {
+        if (videoView == null) return;
+        videoView.MouseLeftButtonDown += PreviewCanvas_MouseDown;
+        videoView.MouseMove += PreviewCanvas_MouseMove;
+        videoView.MouseLeftButtonUp += PreviewCanvas_MouseUp;
+        videoView.MouseWheel += PreviewCanvas_MouseWheel;
+        videoView.MouseRightButtonDown += PreviewCanvas_MouseRight;
+        videoView.Cursor = Cursors.SizeAll;
+    }
+
+    private VideoClip? CanvasTargetClip() =>
+        _selectedClip != null && !_selectedClip.IsAudioOnly ? _selectedClip : _playingClip;
+
+    private void PreviewCanvas_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        var c = CanvasTargetClip();
+        if (c == null) return;
+        if (e.ClickCount >= 2)
+        {
+            c.CanvasScale = 1.0;
+            c.CanvasOffsetX = 0;
+            c.CanvasOffsetY = 0;
+            ApplyClipTransform(c);
+            UpdateInspectorCanvasFields();
+            e.Handled = true;
+            return;
+        }
+        _canvasDragActive = true;
+        _canvasDragStartMouse = e.GetPosition(videoView);
+        _canvasDragStartOffX = c.CanvasOffsetX;
+        _canvasDragStartOffY = c.CanvasOffsetY;
+        videoView.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void PreviewCanvas_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_canvasDragActive) return;
+        var c = CanvasTargetClip();
+        if (c == null) return;
+        var p = e.GetPosition(videoView);
+        double w = videoView.ActualWidth, h = videoView.ActualHeight;
+        if (w < 1 || h < 1) return;
+        c.CanvasOffsetX = _canvasDragStartOffX + (p.X - _canvasDragStartMouse.X) / w;
+        c.CanvasOffsetY = _canvasDragStartOffY + (p.Y - _canvasDragStartMouse.Y) / h;
+        ApplyClipTransform(c);
+        UpdateInspectorCanvasFields();
+    }
+
+    private void PreviewCanvas_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_canvasDragActive) return;
+        _canvasDragActive = false;
+        videoView.ReleaseMouseCapture();
+        e.Handled = true;
+    }
+
+    private void PreviewCanvas_MouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        var c = CanvasTargetClip();
+        if (c == null) return;
+        double step = (Keyboard.Modifiers & ModifierKeys.Control) != 0 ? 0.02 : 0.08;
+        double delta = e.Delta > 0 ? step : -step;
+        c.CanvasScale = Math.Max(0.1, Math.Min(6.0, c.CanvasScale * (1 + delta)));
+        ApplyClipTransform(c);
+        UpdateInspectorCanvasFields();
+        e.Handled = true;
+    }
+
+    private void PreviewCanvas_MouseRight(object sender, MouseButtonEventArgs e)
+    {
+        // Right-click to reset, mirrors double-click but easier on touchpads.
+        var c = CanvasTargetClip();
+        if (c == null) return;
+        c.CanvasScale = 1.0;
+        c.CanvasOffsetX = 0;
+        c.CanvasOffsetY = 0;
+        ApplyClipTransform(c);
+        UpdateInspectorCanvasFields();
+        e.Handled = true;
+    }
+
+    private Action? _updateInspectorCanvasFields;
+    private void UpdateInspectorCanvasFields() => _updateInspectorCanvasFields?.Invoke();
 
     protected override void OnClosed(EventArgs e)
     {
@@ -372,10 +471,24 @@ public partial class MainWindow : Window
 
     private void ApplyClipTransform(VideoClip clip)
     {
+        double cx = videoView.ActualWidth / 2, cy = videoView.ActualHeight / 2;
         var tg = new TransformGroup();
-        tg.Children.Add(new ScaleTransform(clip.FlipH ? -1 : 1, clip.FlipV ? -1 : 1, videoView.ActualWidth / 2, videoView.ActualHeight / 2));
+        // 1) flip around centre
+        double sx = clip.FlipH ? -1 : 1;
+        double sy = clip.FlipV ? -1 : 1;
+        // 2) user canvas zoom multiplies the flip scale
+        sx *= clip.CanvasScale;
+        sy *= clip.CanvasScale;
+        tg.Children.Add(new ScaleTransform(sx, sy, cx, cy));
         if (clip.RotateDegrees != 0)
-            tg.Children.Add(new RotateTransform(clip.RotateDegrees, videoView.ActualWidth / 2, videoView.ActualHeight / 2));
+            tg.Children.Add(new RotateTransform(clip.RotateDegrees, cx, cy));
+        // 3) user canvas offset, expressed as a fraction of canvas size
+        if (Math.Abs(clip.CanvasOffsetX) > 0.001 || Math.Abs(clip.CanvasOffsetY) > 0.001)
+        {
+            tg.Children.Add(new TranslateTransform(
+                clip.CanvasOffsetX * videoView.ActualWidth,
+                clip.CanvasOffsetY * videoView.ActualHeight));
+        }
         videoView.RenderTransform = tg;
     }
 
@@ -715,7 +828,68 @@ public partial class MainWindow : Window
         clipSpeedLabel.Text = c.Speed.ToString("0.00") + "×";
         clipVolSlider.Value = c.Volume;
         clipVolLabel.Text = (c.Volume * 100).ToString("0") + "%";
+        canvasScaleSlider.Value = c.CanvasScale;
+        canvasOffsetXSlider.Value = c.CanvasOffsetX;
+        canvasOffsetYSlider.Value = c.CanvasOffsetY;
+        UpdateCanvasLabels(c);
         _suppress = false;
+        // Capture once for the gesture handlers (re-applies on every drag).
+        _updateInspectorCanvasFields = () =>
+        {
+            if (_selectedClip == null) return;
+            _suppress = true;
+            canvasScaleSlider.Value = _selectedClip.CanvasScale;
+            canvasOffsetXSlider.Value = _selectedClip.CanvasOffsetX;
+            canvasOffsetYSlider.Value = _selectedClip.CanvasOffsetY;
+            UpdateCanvasLabels(_selectedClip);
+            _suppress = false;
+        };
+    }
+
+    private void UpdateCanvasLabels(VideoClip c)
+    {
+        if (canvasScaleText != null)
+            canvasScaleText.Text = ((int)Math.Round(c.CanvasScale * 100)).ToString() + "%";
+        if (canvasOffsetXText != null)
+            canvasOffsetXText.Text = ((int)Math.Round(c.CanvasOffsetX * 100)).ToString() + "%";
+        if (canvasOffsetYText != null)
+            canvasOffsetYText.Text = ((int)Math.Round(c.CanvasOffsetY * 100)).ToString() + "%";
+    }
+
+    private void CanvasScale_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_suppress || _selectedClip == null) return;
+        _selectedClip.CanvasScale = e.NewValue;
+        UpdateCanvasLabels(_selectedClip);
+        if (_playingClip == _selectedClip) ApplyClipTransform(_selectedClip);
+    }
+    private void CanvasOffsetX_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_suppress || _selectedClip == null) return;
+        _selectedClip.CanvasOffsetX = e.NewValue;
+        UpdateCanvasLabels(_selectedClip);
+        if (_playingClip == _selectedClip) ApplyClipTransform(_selectedClip);
+    }
+    private void CanvasOffsetY_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_suppress || _selectedClip == null) return;
+        _selectedClip.CanvasOffsetY = e.NewValue;
+        UpdateCanvasLabels(_selectedClip);
+        if (_playingClip == _selectedClip) ApplyClipTransform(_selectedClip);
+    }
+    private void CanvasReset_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedClip == null) return;
+        _selectedClip.CanvasScale = 1.0;
+        _selectedClip.CanvasOffsetX = 0;
+        _selectedClip.CanvasOffsetY = 0;
+        _suppress = true;
+        canvasScaleSlider.Value = 1.0;
+        canvasOffsetXSlider.Value = 0;
+        canvasOffsetYSlider.Value = 0;
+        _suppress = false;
+        UpdateCanvasLabels(_selectedClip);
+        if (_playingClip == _selectedClip) ApplyClipTransform(_selectedClip);
     }
 
     // Show one of the three inspector panels (block / clip / export).
