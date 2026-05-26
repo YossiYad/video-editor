@@ -8,7 +8,34 @@ $srcPath = Join-Path $PSScriptRoot "icon-source.png"
 $icoPath = Join-Path $PSScriptRoot "icon.ico"
 $sizes = 16, 24, 32, 48, 64, 128, 256
 
+# Windows convention: the visible logo should fill ~92% of the icon canvas
+# (about 4% padding on each side). The source PNG often has more padding than
+# that, which makes the icon look tiny next to other apps on the desktop, so
+# we auto-trim transparent borders before scaling each target size.
+$paddingFraction = 0.04
+
 $src = [System.Drawing.Image]::FromFile($srcPath)
+$srcBmp = New-Object System.Drawing.Bitmap $src
+
+# Find the bounding box of non-transparent pixels (alpha > 20). Step by 2 so a
+# 1024x1024 source still scans in well under a second.
+$minX = $src.Width; $minY = $src.Height; $maxX = 0; $maxY = 0
+$step = 2
+for ($y = 0; $y -lt $src.Height; $y += $step) {
+    for ($x = 0; $x -lt $src.Width; $x += $step) {
+        if ($srcBmp.GetPixel($x, $y).A -gt 20) {
+            if ($x -lt $minX) { $minX = $x }
+            if ($y -lt $minY) { $minY = $y }
+            if ($x -gt $maxX) { $maxX = $x }
+            if ($y -gt $maxY) { $maxY = $y }
+        }
+    }
+}
+$visW = [Math]::Max(1, $maxX - $minX + 1)
+$visH = [Math]::Max(1, $maxY - $minY + 1)
+$visSide = [Math]::Max($visW, $visH)
+Write-Output ("Trimmed source bbox: " + $visW + "x" + $visH + " (was " + $src.Width + "x" + $src.Height + ")")
+
 $frames = @()
 foreach ($size in $sizes) {
     $bmp = New-Object System.Drawing.Bitmap $size, $size, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
@@ -18,13 +45,23 @@ foreach ($size in $sizes) {
     $g.PixelOffsetMode   = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
     $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
     $g.Clear([System.Drawing.Color]::Transparent)
-    $g.DrawImage($src, 0, 0, $size, $size)
+
+    $target = [int]([Math]::Round($size * (1.0 - 2.0 * $paddingFraction)))
+    $scale = $target / $visSide
+    $drawW = [int]([Math]::Round($visW * $scale))
+    $drawH = [int]([Math]::Round($visH * $scale))
+    $dx = [int]([Math]::Round(($size - $drawW) / 2.0))
+    $dy = [int]([Math]::Round(($size - $drawH) / 2.0))
+    $srcRect = New-Object System.Drawing.Rectangle $minX, $minY, $visW, $visH
+    $dstRect = New-Object System.Drawing.Rectangle $dx, $dy, $drawW, $drawH
+    $g.DrawImage($src, $dstRect, $srcRect, [System.Drawing.GraphicsUnit]::Pixel)
     $g.Dispose()
     $ms = New-Object System.IO.MemoryStream
     $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
     $bmp.Dispose()
     $frames += ,@{ size = $size; bytes = $ms.ToArray() }
 }
+$srcBmp.Dispose()
 $src.Dispose()
 
 # Hand-assemble the .ico container.
