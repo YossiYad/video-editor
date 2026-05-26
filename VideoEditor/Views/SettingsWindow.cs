@@ -970,22 +970,88 @@ public class SettingsWindow : Window
         var stack = new StackPanel();
         var verRow = new StackPanel { Orientation = Orientation.Horizontal };
         verRow.Children.Add(new TextBlock { Text = "Version", FontSize = 11, Foreground = new SolidColorBrush(TextDim), VerticalAlignment = VerticalAlignment.Center, Width = 90 });
-        verRow.Children.Add(new TextBlock { Text = "1.4.0", FontFamily = new FontFamily("Consolas"), FontSize = 14, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Text), VerticalAlignment = VerticalAlignment.Center });
+        verRow.Children.Add(new TextBlock { Text = UpdateService.CurrentVersionString, FontFamily = new FontFamily("Consolas"), FontSize = 14, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Text), VerticalAlignment = VerticalAlignment.Center });
         verRow.Children.Add(MakeChip("Stable", Success));
         stack.Children.Add(verRow);
 
-        var commitRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        commitRow.Children.Add(new TextBlock { Text = "Commit", FontSize = 11, Foreground = new SolidColorBrush(TextDim), VerticalAlignment = VerticalAlignment.Center, Width = 90 });
-        commitRow.Children.Add(new TextBlock { Text = "b93dbdf · master", FontFamily = new FontFamily("Consolas"), FontSize = 12, Foreground = new SolidColorBrush(TextMute), VerticalAlignment = VerticalAlignment.Center });
-        stack.Children.Add(commitRow);
-
         card.Child = stack;
         p.Children.Add(card);
-        p.Children.Add(MakeRow("Release channel", "How often to receive updates", MakeCombo(new[] { "Stable", "Beta", "Nightly" }, 0)));
-        p.Children.Add(MakeRow("Auto-check", "Look for updates on startup", MakeToggle(true)));
+
+        var channel = MakeCombo(new[] { "Stable", "Beta", "Nightly" }, 0);
+        channel.IsEnabled = false;
+        channel.ToolTip = "Coming soon";
+        p.Children.Add(MakeRow("Release channel", "How often to receive updates", channel));
+
+        var autoCheck = MakeToggle(true);
+        autoCheck.IsEnabled = false;
+        autoCheck.ToolTip = "Coming soon";
+        p.Children.Add(MakeRow("Auto-check", "Look for updates on startup", autoCheck));
+
         var btn = MakeButton("Check for updates now", true);
+        btn.Click += async (_, _) => await CheckForUpdatesClickedAsync(btn);
         p.Children.Add(MakeRow("Manual check", "Contact the update server", btn));
         return WrapSection(p);
+    }
+
+    private async System.Threading.Tasks.Task CheckForUpdatesClickedAsync(Button btn)
+    {
+        var originalContent = btn.Content;
+        btn.IsEnabled = false;
+        btn.Content = "Checking...";
+
+        UpdateService.UpdateInfo? info;
+        try
+        {
+            info = await UpdateService.CheckAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Could not check for updates:\n\n{ex.Message}", "Updates", MessageBoxButton.OK, MessageBoxImage.Warning);
+            btn.Content = originalContent;
+            btn.IsEnabled = true;
+            return;
+        }
+
+        if (info == null)
+        {
+            MessageBox.Show(this, $"You're on the latest version ({UpdateService.CurrentVersionString}).", "Updates", MessageBoxButton.OK, MessageBoxImage.Information);
+            btn.Content = originalContent;
+            btn.IsEnabled = true;
+            return;
+        }
+
+        var size = info.SizeBytes.HasValue ? FormatBytes(info.SizeBytes.Value) : "unknown size";
+        var prompt = $"Version {UpdateService.CurrentVersionString} -> {info.Latest.Major}.{info.Latest.Minor}.{info.Latest.Build} is available.\n\nDownload {size} and install now? The app will restart.";
+        var answer = MessageBox.Show(this, prompt, "Update available", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes)
+        {
+            btn.Content = originalContent;
+            btn.IsEnabled = true;
+            return;
+        }
+
+        try
+        {
+            var progress = new Progress<double>(p => Dispatcher.Invoke(() => btn.Content = $"Downloading {p:P0}"));
+            var zip = await UpdateService.DownloadAsync(info, progress);
+            btn.Content = "Installing...";
+            UpdateService.LaunchInstallerAndExit(zip);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Update failed:\n\n{ex.Message}", "Updates", MessageBoxButton.OK, MessageBoxImage.Error);
+            btn.Content = originalContent;
+            btn.IsEnabled = true;
+        }
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        double v = bytes;
+        string[] units = { "B", "KB", "MB", "GB" };
+        var i = 0;
+        while (v >= 1024 && i < units.Length - 1) { v /= 1024; i++; }
+        return $"{v:0.#} {units[i]}";
     }
     private UIElement BuildAbout()
     {
