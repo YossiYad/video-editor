@@ -18,7 +18,9 @@ function Test-Dotnet8Sdk {
     try {
         $sdks = & dotnet --list-sdks 2>$null
         if (-not $sdks) { return $false }
-        return [bool]($sdks | Where-Object { $_ -match '^8\.' })
+        return [bool]($sdks | Where-Object {
+            if ($_ -match '^(\d+)\.') { [int]$Matches[1] -ge 8 } else { $false }
+        })
     } catch {
         return $false
     }

@@ -22,9 +22,11 @@ if (-not (Test-Path $projectFile)) {
 
 try {
     $sdks = & dotnet --list-sdks 2>$null
-    $has8 = [bool]($sdks | Where-Object { $_ -match '^8\.' })
-    if (-not $has8) {
-        throw ".NET 8 SDK is required. Install from https://dotnet.microsoft.com/download/dotnet/8.0"
+    $hasUsableSdk = [bool]($sdks | Where-Object {
+        if ($_ -match '^(\d+)\.') { [int]$Matches[1] -ge 8 } else { $false }
+    })
+    if (-not $hasUsableSdk) {
+        throw ".NET 8 SDK (or newer) is required. Install from https://dotnet.microsoft.com/download/dotnet/8.0"
     }
 } catch [System.Management.Automation.CommandNotFoundException] {
     throw "dotnet CLI not found in PATH. Install .NET 8 SDK from https://dotnet.microsoft.com/download/dotnet/8.0"
