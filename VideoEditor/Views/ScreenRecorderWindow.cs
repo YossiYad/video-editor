@@ -33,6 +33,10 @@ public class ScreenRecorderWindow : Window
     private CancellationTokenSource? _camPreviewCts;
     private bool _modelReady;
     private bool _modelDownloading;
+    // 0 = idle, 1 = AI background inference is busy on a frame. Acts as a "skip
+    // this preview frame" gate so the camera stays responsive when the model is
+    // slower than the camera's 8 fps preview.
+    private int _previewInFlight;
     // When a background mode is active we record raw to a temp file, then re-render
     // it with the background on Stop. Null means "record straight to the output".
     private string? _recordTempPath;
@@ -671,6 +675,8 @@ public class ScreenRecorderWindow : Window
         if (BackgroundRemovalService.IsModelReady())
         {
             _modelReady = true;
+            if (_bgStatus != null) _bgStatus.Text = "Warming up AI background...";
+            await _bgService.WarmUpAsync();
             if (_bgStatus != null) _bgStatus.Text = "Background preview is live.";
             return;
         }
@@ -683,6 +689,8 @@ public class ScreenRecorderWindow : Window
                 if (_bgStatus != null) _bgStatus.Text = $"Downloading AI background model... {p:P0}";
             });
             await _bgService.EnsureModelAsync(progress);
+            if (_bgStatus != null) _bgStatus.Text = "Warming up AI background...";
+            await _bgService.WarmUpAsync();
             _modelReady = true;
             if (_bgStatus != null) _bgStatus.Text = "Background preview is live.";
         }
@@ -749,14 +757,40 @@ public class ScreenRecorderWindow : Window
         {
             while (!token.IsCancellationRequested)
             {
-                // ConfigureAwait(false) keeps the (heavy) decode + inference off the
-                // UI thread; only the final Source assignment hops back via Dispatcher.
                 int read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), token).ConfigureAwait(false);
                 if (read <= 0) break;
                 for (int i = 0; i < read; i++) bytes.Add(buffer[i]);
-                while (TryExtractJpeg(bytes, out var jpg))
+
+                // Drain every queued JPEG and keep only the freshest one. The AI
+                // matting model is slower than the camera's 8 fps preview, so we
+                // must skip stale frames or the preview gets stuck minutes behind.
+                byte[]? latest = null;
+                while (TryExtractJpeg(bytes, out var jpg)) latest = jpg;
+                if (latest == null) continue;
+
+                bool aiActive = _modelReady && _bg.Mode != CameraBackgroundMode.None;
+                if (aiActive)
                 {
-                    var src = RenderPreviewFrame(jpg);
+                    // Skip new previews while the previous one is still being
+                    // inferred. Keeps the reader loop draining the ffmpeg pipe so
+                    // the camera does not appear frozen.
+                    if (Interlocked.CompareExchange(ref _previewInFlight, 1, 0) != 0) continue;
+                    var jpgCopy = latest;
+                    _ = Task.Run(() =>
+                    {
+                        try
+                        {
+                            var src = RenderPreviewFrame(jpgCopy);
+                            if (src != null)
+                                Dispatcher.Invoke(() => { if (_camPreviewImage != null) _camPreviewImage.Source = src; });
+                        }
+                        catch { }
+                        finally { Interlocked.Exchange(ref _previewInFlight, 0); }
+                    });
+                }
+                else
+                {
+                    var src = RenderPreviewFrame(latest);
                     if (src != null)
                         Dispatcher.Invoke(() => { if (_camPreviewImage != null) _camPreviewImage.Source = src; });
                 }

@@ -53,6 +53,27 @@ public sealed class BackgroundRemovalService : IDisposable
 
     public static bool IsModelReady() => File.Exists(ModelFile);
 
+    /// <summary>
+    /// Load the ONNX session and run a tiny dummy inference so the first real
+    /// frame doesn't pay the multi-second cold-start cost. Safe to call once
+    /// the model file exists; cheap to call again afterwards.
+    /// </summary>
+    public Task WarmUpAsync(CancellationToken ct = default) => Task.Run(() =>
+    {
+        if (!File.Exists(ModelFile)) return;
+        try
+        {
+            var session = GetSession();
+            var input = new DenseTensor<float>(new[] { 1, 3, ModelSize, ModelSize });
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(_inputName, input) };
+            lock (_sessionLock)
+            {
+                using var _ = session.Run(inputs);
+            }
+        }
+        catch { /* warm-up is best-effort */ }
+    }, ct);
+
     public async Task EnsureModelAsync(IProgress<double>? progress = null, CancellationToken ct = default)
     {
         if (File.Exists(ModelFile)) return;
