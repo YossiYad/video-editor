@@ -31,7 +31,7 @@ A free, open-source desktop video editor for Windows. Built on C# / WPF with FFm
 
 ### Capture
 - **Screen Recorder** - record any region of your screen.
-- **Webcam Recorder** - record from any DirectShow-compatible camera.
+- **Webcam Recorder** - record from any DirectShow-compatible camera, with an optional **AI background** (free, local): blur, remove (transparent), replace with a colour, or replace with an image - no green screen needed.
 - **Text-to-Speech** - Windows SAPI voices, saved as WAV for narration.
 - **URL Import** - paste any YouTube / TikTok / Vimeo / Twitter / Instagram / Facebook / Twitch / Reddit URL. yt-dlp downloads automatically.
 
@@ -132,7 +132,7 @@ This is **open source** - contributions are welcome!
 
 ### לכידה
 - **הקלטת מסך** - מקליט אזור על המסך שלך.
-- **הקלטת מצלמה** - מצלמת רשת או כל מצלמה תואמת.
+- **הקלטת מצלמה** - מצלמת רשת או כל מצלמה תואמת, עם **רקע AI** אופציונלי (חינמי, מקומי): טשטוש, הסרה (שקוף), החלפה בצבע, או החלפה בתמונה - בלי צורך במסך ירוק.
 - **טקסט לדיבור** - קולות Windows SAPI, נשמר כ-WAV לקריינות.
 - **הורדה מ-URL** - הדבק קישור YouTube / TikTok / Vimeo / Twitter / Instagram / Facebook / Twitch / Reddit. yt-dlp מוריד אוטומטית.
 
