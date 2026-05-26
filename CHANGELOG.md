@@ -10,6 +10,18 @@ The latest signed Windows build is always available at
 
 ---
 
+## [v1.7.1] - 2026-05-26
+
+### Fixed
+- **App icon visible size** - the desktop / taskbar / Explorer icon was
+  rendering noticeably smaller than other apps because the source PNG
+  had ~17 % transparent padding on each side. The icon-build script
+  now auto-trims the transparent border, keeps a Windows-standard
+  ~4 % padding, and rescales the logo so it fills the icon canvas
+  the same way most other Windows app icons do.
+
+---
+
 ## [v1.7.0] - 2026-05-26
 
 Major recording-experience release: AI camera background now works in
