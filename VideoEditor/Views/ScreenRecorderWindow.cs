@@ -837,6 +837,8 @@ public class ScreenRecorderWindow : Window
         foreach (var raw in ffmpegOutput.Split('\n'))
         {
             var line = raw.Trim();
+            AddQuotedDevice(line, devices, requireVideoSuffix: true);
+
             if (line.Contains("DirectShow video devices", StringComparison.OrdinalIgnoreCase))
             {
                 inVideoSection = true;
@@ -844,18 +846,20 @@ public class ScreenRecorderWindow : Window
             }
             if (line.Contains("DirectShow audio devices", StringComparison.OrdinalIgnoreCase))
                 inVideoSection = false;
-            if (!inVideoSection) continue;
-
-            var first = line.IndexOf('"');
-            var last = line.LastIndexOf('"');
-            if (first >= 0 && last > first)
-            {
-                var name = line.Substring(first + 1, last - first - 1);
-                if (!name.StartsWith("@device_", StringComparison.OrdinalIgnoreCase) && !devices.Contains(name))
-                    devices.Add(name);
-            }
+            if (inVideoSection) AddQuotedDevice(line, devices, requireVideoSuffix: false);
         }
         return devices;
+    }
+
+    private static void AddQuotedDevice(string line, List<string> devices, bool requireVideoSuffix)
+    {
+        if (requireVideoSuffix && !line.Contains("(video)", StringComparison.OrdinalIgnoreCase)) return;
+        var first = line.IndexOf('"');
+        var last = line.LastIndexOf('"');
+        if (first < 0 || last <= first) return;
+        var name = line.Substring(first + 1, last - first - 1);
+        if (!name.StartsWith("@device_", StringComparison.OrdinalIgnoreCase) && !devices.Contains(name))
+            devices.Add(name);
     }
 
     private static string EscapeRecorderArg(string value) => (value ?? "").Replace("\"", "\\\"");
