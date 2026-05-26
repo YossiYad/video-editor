@@ -138,12 +138,6 @@
                                        Foreground="{DynamicResource TextBright}" IsHitTestVisible="False"/>
                         </Grid>
                     </Grid>
-                    <Button x:Name="quickAddBlockBtn" Style="{DynamicResource GhostButton}" Click="AddBlock_Click" Height="36" Padding="10,0" ToolTip="Add Hide Block - B" Margin="0,0,6,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="■" FontSize="12" Foreground="{DynamicResource AccentHover}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <TextBlock Text="Hide Block" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
                     <Button x:Name="settingsBtn" Style="{DynamicResource IconButton}" Click="Settings_Click" ToolTip="Settings  ·  ,">
                         <!-- Settings glyph from Segoe MDL2 Assets - a real gear icon, not the
                              ⚙ (U+2699) codepoint that Windows can render as a colourful flower. -->
