@@ -30,8 +30,8 @@ A free, open-source desktop video editor for Windows. Built on C# / WPF with FFm
 - **Daily usage counter** so you know how close you are to the free-tier cap (~1500 requests / day).
 
 ### Capture
-- **Screen Recorder** - record any region of your screen.
-- **Webcam Recorder** - record from any DirectShow-compatible camera, with an optional **AI background** (free, local): blur, remove (transparent), replace with a colour, or replace with an image - no green screen needed.
+- **Screen Recorder** - record any region of your screen. Optionally add a camera layer on top as a movable PIP, with the same AI background available. The left column splits into per-item tabs (Recording / Camera / Block N) so you can edit each thing you added without losing the other settings.
+- **Webcam Recorder** - record from any DirectShow-compatible camera, with an optional **AI background** (free, local, GPU-accelerated via DirectML when available): blur, remove (transparent), replace with a colour, or replace with an image. No green screen needed. The same AI also runs on the floating camera layer in the Screen Recorder.
 - **Text-to-Speech** - Windows SAPI voices, saved as WAV for narration.
 - **URL Import** - paste any YouTube / TikTok / Vimeo / Twitter / Instagram / Facebook / Twitch / Reddit URL. yt-dlp downloads automatically.
 
@@ -131,8 +131,8 @@ This is **open source** - contributions are welcome!
 - **מונה שימוש יומי** כדי שתדע כמה קרוב אתה למגבלת המכסה החינמית (~1500 בקשות / יום).
 
 ### לכידה
-- **הקלטת מסך** - מקליט אזור על המסך שלך.
-- **הקלטת מצלמה** - מצלמת רשת או כל מצלמה תואמת, עם **רקע AI** אופציונלי (חינמי, מקומי): טשטוש, הסרה (שקוף), החלפה בצבע, או החלפה בתמונה - בלי צורך במסך ירוק.
+- **הקלטת מסך** - מקליט אזור על המסך שלך. אפשר להוסיף שכבת מצלמה מעליו כ-PIP נגררת, עם אותו רקע AI. הטור השמאלי מתחלק לטאבים לכל פריט שמוסיפים (Recording / Camera / Block N), כך שעריכת מצלמה לא משפיעה על הגדרות המסך וההפך.
+- **הקלטת מצלמה** - מצלמת רשת או כל מצלמה תואמת, עם **רקע AI** אופציונלי (חינמי, מקומי, מואץ ב-GPU דרך DirectML כשזמין): טשטוש, הסרה (שקוף), החלפה בצבע, או החלפה בתמונה. בלי צורך במסך ירוק. אותו AI רץ גם על שכבת המצלמה הצפה שבתוך הקלטת המסך.
 - **טקסט לדיבור** - קולות Windows SAPI, נשמר כ-WAV לקריינות.
 - **הורדה מ-URL** - הדבק קישור YouTube / TikTok / Vimeo / Twitter / Instagram / Facebook / Twitch / Reddit. yt-dlp מוריד אוטומטית.
 
