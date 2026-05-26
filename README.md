@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 [![Open Source](https://img.shields.io/badge/Open%20Source-%E2%9D%A4-red?style=for-the-badge)](https://github.com/YossiYad/video-editor)
 [![Platform](https://img.shields.io/badge/Platform-Windows-0078d6?style=for-the-badge&logo=windows)](https://github.com/YossiYad/video-editor/releases/latest)
-[![Changelog](https://img.shields.io/badge/%F0%9F%93%9D%20Changelog-v1.6.2-8B5CFF?style=for-the-badge)](CHANGELOG.md)
+[![Changelog](https://img.shields.io/badge/%F0%9F%93%9D%20Changelog-v1.7.0-8B5CFF?style=for-the-badge)](CHANGELOG.md)
 
 A free, open-source desktop video editor for Windows. Built on C# / WPF with FFmpeg under the hood. Designed to be powerful for creators but approachable for first-time editors.
 
@@ -105,7 +105,7 @@ This is **open source** - contributions are welcome!
 # עורך וידאו - Pro
 
 [![הורדה](https://img.shields.io/github/v/release/YossiYad/video-editor?label=%E2%AC%87%EF%B8%8F%20%D7%94%D7%95%D7%A8%D7%93%D7%94%20%D7%90%D7%97%D7%A8%D7%95%D7%A0%D7%94&style=for-the-badge&color=2ea44f)](https://github.com/YossiYad/video-editor/releases/latest)
-[![Changelog](https://img.shields.io/badge/%F0%9F%93%9D%20%D7%99%D7%95%D7%9E%D7%9F%20%D7%A9%D7%99%D7%A0%D7%95%D7%99%D7%99%D7%9D-v1.6.2-8B5CFF?style=for-the-badge)](CHANGELOG.md)
+[![Changelog](https://img.shields.io/badge/%F0%9F%93%9D%20%D7%99%D7%95%D7%9E%D7%9F%20%D7%A9%D7%99%D7%A0%D7%95%D7%99%D7%99%D7%9D-v1.7.0-8B5CFF?style=for-the-badge)](CHANGELOG.md)
 
 עורך וידאו **חינמי וקוד פתוח** ל-Windows. בנוי על C# / WPF עם FFmpeg מאחורי הקלעים. מתוכנן להיות חזק ליוצרי תוכן וגם נגיש למתחילים שלא ערכו וידאו מימיהם.
 

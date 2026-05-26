@@ -8,24 +8,90 @@ The latest signed Windows build is always available at
 
 ## [Unreleased]
 
+---
+
+## [v1.7.0] - 2026-05-26
+
+Major recording-experience release: AI camera background now works in
+the Screen Recorder + Camera PIP combo too, and the inline recorder
+left column is reorganised into per-item tabs.
+
 ### Added
-- **AI Camera Background** in the Camera Recorder - free, fully local
-  "virtual background" powered by the MODNet portrait-matting model
-  (ONNX, CPU). When you record yourself you can now:
-  - **Blur** the background (Zoom-style),
-  - **Remove** the background entirely (transparent WebM/VP9 output you
-    can overlay on a screen recording in the timeline),
-  - **Replace** it with a flat colour, or
-  - **Replace** it with your own image.
-  The model (~25 MB) downloads once on first use, just like FFmpeg and
-  the Whisper models. Nothing leaves your machine and there is no API
-  key. A live preview shows the effect while you pick a camera.
+- **AI camera background in Screen Recorder + Camera PIP** - the same
+  four modes that already worked in standalone Camera Recorder
+  (Keep original, Blur, Transparent, Replace with colour) are now
+  available when you add a camera on top of a screen recording. The
+  background is applied both to the floating camera preview while you
+  record and to the final saved file (post-processed at Stop).
+- **Per-item tabs in the inline Screen Recorder** - the left column
+  now starts with a fixed "Recording" tab holding the screen source,
+  FPS and output path. Each thing you add to the scene gets its own
+  tab next to it: "Camera" for the webcam layer (with the AI
+  background picker, device name, and Remove Camera button), and one
+  "Block N" tab per hide block (showing the block colour swatch and a
+  Delete Block button). Switching tabs swaps the left column without
+  ever hiding the live preview on the right.
+- **Live AI diagnostics + log file** - a hidden
+  `CameraDebugDiagnostics` flag in `AppSettings` enables an on-screen
+  panel that shows camera FPS, AI inference time, dropped frame
+  counters and FFmpeg-preview error tail. A persistent
+  `camera-diag.log` next to the EXE captures every camera-pipeline
+  event for the current session even when the on-screen panel is off,
+  so freezes can be diagnosed without rebuilding.
 
 ### Changed
-- **Smoother recordings** - camera and screen captures now force a
-  constant frame rate (`-fps_mode cfr`) and the camera input gets a
-  larger real-time buffer (`-rtbufsize`), fixing the slow / stuttering
-  playback some setups produced.
+- **DirectML GPU acceleration for the AI background** - the MODNet
+  portrait-matting runs on the GPU via DirectML when available,
+  falling back to CPU on machines without a compatible GPU. On a
+  recent integrated GPU per-frame inference is ~20 ms, fast enough
+  for a fully live preview.
+- **Sharper mask edges around the person** - the per-frame alpha mask
+  from MODNet is now post-processed with a small foreground bias and
+  a smoothstep curve, so the blur / colour background no longer
+  bleeds into the face and shoulders.
+- **Mirrored camera previews everywhere** - the picker, the inline
+  recorder webcam block, and the camera-only preview all show a
+  mirror-image view, matching what most webcam apps do.
+- **Higher-resolution preview pipe** - the MJPEG preview pipe between
+  FFmpeg and the app is now 640 px wide at 12 fps (was 320 px at 8
+  fps), so the AI gets a better source frame and the mask is less
+  blocky.
+- **DirectShow release timing fix** - when stopping the live camera
+  preview to start recording (or switching between background modes),
+  the app now waits for the previous FFmpeg process to actually exit
+  and gives the USB camera ~300 ms to release its DirectShow handle
+  before re-opening it. Eliminates the "Could not run graph - device
+  already in use" failure that used to freeze the camera on every
+  background switch.
+- **Safer preview retry** - if FFmpeg fails to open the camera, the
+  app schedules at most four retries with increasing back-off, and
+  ignores stale errors from processes that have already been replaced
+  by a working one (no more endless retry loops between green and
+  orange status).
+
+### Fixed
+- Camera Recorder no longer freezes its preview when you start a
+  recording: the recorder process now feeds the same on-screen image
+  during recording as the preview did before recording, with the AI
+  background still applied frame by frame on the live preview.
+- The screen recording's camera PIP overlay no longer falls back to
+  raw camera when you pick an AI background - the live overlay,
+  the floating preview block and the final exported file all use the
+  same processed camera.
+- Recording at 60 fps no longer crashes on cameras whose default
+  resolution does not support 60 fps - the app now lets the camera
+  use its native rate and resamples to the requested FPS via FFmpeg's
+  `fps` filter.
+
+### Notes
+- The MODNet ONNX model now downloads from a Hugging Face mirror
+  (was the OpenVINO Open Model Zoo). The file is still ~25 MB and
+  is verified with a minimum-size check before use.
+- The recording pipeline for screen + camera with AI uses two
+  temporary files (screen-only + raw camera) during capture, then
+  composites them with the AI-processed camera at Stop. They are
+  cleaned up automatically; if a composite fails the error is shown
+  with the FFmpeg tail.
 
 ---
 

@@ -17,7 +17,7 @@ namespace VideoEditor.Services;
 
 /// <summary>
 /// Free, fully-local "virtual background" for camera recordings. Runs the MODNet
-/// portrait-matting model (ONNX, CPU) to separate the person from the background,
+/// portrait-matting model (ONNX, GPU via DirectML when available, otherwise CPU) to separate the person from the background,
 /// then composites the chosen replacement (blur / transparent / colour / image).
 ///
 /// The model (~25 MB) auto-downloads on first use, mirroring how the app fetches
@@ -31,13 +31,15 @@ public sealed class BackgroundRemovalService : IDisposable
     private static readonly string ModelFile =
         Path.Combine(ModelFolder, "modnet_portrait_matting.onnx");
 
-    // Official, stable OpenVINO Open Model Zoo mirror of the MODNet ONNX export.
+    // Pre-converted MODNet ONNX model. The OpenVINO Model Zoo source is a PyTorch
+    // checkpoint that requires conversion, so the app downloads a ready ONNX export.
     private const string ModelUrl =
-        "https://storage.openvinotoolkit.org/repositories/open_model_zoo/public/2022.2/modnet-photographic-portrait-matting/modnet_photographic_portrait_matting.onnx";
+        "https://huggingface.co/DavG25/modnet-pretrained-models/resolve/main/models/modnet_photographic_portrait_matting.onnx?download=true";
 
     // MODNet expects a square RGB input normalised to [-1, 1] and returns a single
     // alpha channel at the same resolution.
     private const int ModelSize = 512;
+    private const long MinModelBytes = 1_000_000;
 
     public event Action<string>? Log;
 
@@ -45,13 +47,16 @@ public sealed class BackgroundRemovalService : IDisposable
     private InferenceSession? _session;
     private string _inputName = "input";
     private string _outputName = "output";
+    private string _executionProvider = "CPU";
 
     // Background image is decoded + cover-fitted once and cached for the frame size.
     private byte[]? _bgImageCache;
     private int _bgImageW, _bgImageH;
     private string? _bgImagePath;
 
-    public static bool IsModelReady() => File.Exists(ModelFile);
+    public string ExecutionProvider => _executionProvider;
+
+    public static bool IsModelReady() => IsUsableModelFile(ModelFile);
 
     /// <summary>
     /// Load the ONNX session and run a tiny dummy inference so the first real
@@ -76,8 +81,9 @@ public sealed class BackgroundRemovalService : IDisposable
 
     public async Task EnsureModelAsync(IProgress<double>? progress = null, CancellationToken ct = default)
     {
-        if (File.Exists(ModelFile)) return;
+        if (IsUsableModelFile(ModelFile)) return;
         Directory.CreateDirectory(ModelFolder);
+        try { if (File.Exists(ModelFile)) File.Delete(ModelFile); } catch { }
         Log?.Invoke("Downloading AI background model (~25 MB) - first run only...");
 
         var tmp = ModelFile + ".part";
@@ -102,11 +108,31 @@ public sealed class BackgroundRemovalService : IDisposable
                 }
             }
             File.Move(tmp, ModelFile, overwrite: true);
+            if (!IsUsableModelFile(ModelFile))
+                throw new InvalidDataException("Downloaded AI background model is incomplete or invalid. Please try again.");
             progress?.Report(1.0);
         }
         finally
         {
             try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+        }
+    }
+
+    public Task InitializeAsync(CancellationToken ct = default) => Task.Run(() =>
+    {
+        ct.ThrowIfCancellationRequested();
+        _ = GetSession();
+    }, ct);
+
+    private static bool IsUsableModelFile(string path)
+    {
+        try
+        {
+            return File.Exists(path) && new FileInfo(path).Length >= MinModelBytes;
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -116,15 +142,38 @@ public sealed class BackgroundRemovalService : IDisposable
         {
             if (_session == null)
             {
-                if (!File.Exists(ModelFile))
+                if (!IsUsableModelFile(ModelFile))
                     throw new FileNotFoundException("AI background model has not been downloaded yet.", ModelFile);
-                _session = new InferenceSession(ModelFile);
+                _session = CreateSession();
                 // Don't assume the exported names - read them from the graph so a
                 // re-export with different names still works.
                 _inputName = _session.InputMetadata.Keys.First();
                 _outputName = _session.OutputMetadata.Keys.First();
             }
             return _session;
+        }
+    }
+
+    private InferenceSession CreateSession()
+    {
+        try
+        {
+            var options = new SessionOptions
+            {
+                EnableMemoryPattern = false,
+                ExecutionMode = ExecutionMode.ORT_SEQUENTIAL,
+                GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL
+            };
+            options.AppendExecutionProvider_DML(0);
+            var session = new InferenceSession(ModelFile, options);
+            _executionProvider = "DirectML GPU";
+            return session;
+        }
+        catch (Exception ex)
+        {
+            Log?.Invoke("DirectML unavailable, using CPU for AI background: " + ex.Message);
+            _executionProvider = "CPU";
+            return new InferenceSession(ModelFile);
         }
     }
 
@@ -142,7 +191,8 @@ public sealed class BackgroundRemovalService : IDisposable
     public Bitmap ProcessBitmap(Bitmap src, CameraBackground bg)
     {
         int w = src.Width, h = src.Height;
-        var bgra = BitmapToBgra(src);
+        using var src32 = To32bppArgb(src);
+        var bgra = BitmapToBgra(src32);
         var outBgra = ProcessFrameBytes(bgra, w, h, bg);
         return BgraToBitmap(outBgra, w, h);
     }
@@ -205,7 +255,12 @@ public sealed class BackgroundRemovalService : IDisposable
         {
             var md = BitmapToBgra(maskFull);
             for (int j = 0; j < alpha.Length; j++)
-                alpha[j] = md[j * 4] / 255f;
+            {
+                float a = md[j * 4] / 255f;
+                a = Math.Clamp(a + 0.08f, 0f, 1f);
+                float t = Math.Clamp((a - 0.30f) / 0.40f, 0f, 1f);
+                alpha[j] = t * t * (3f - 2f * t);
+            }
         }
         return alpha;
     }
@@ -415,6 +470,17 @@ public sealed class BackgroundRemovalService : IDisposable
         g.InterpolationMode = InterpolationMode.HighQualityBilinear;
         g.PixelOffsetMode = PixelOffsetMode.Half;
         g.DrawImage(src, 0, 0, w, h);
+        return dst;
+    }
+
+    private static Bitmap To32bppArgb(Bitmap src)
+    {
+        if (src.PixelFormat == PixelFormat.Format32bppArgb)
+            return (Bitmap)src.Clone();
+
+        var dst = new Bitmap(src.Width, src.Height, PixelFormat.Format32bppArgb);
+        using var g = Graphics.FromImage(dst);
+        g.DrawImage(src, 0, 0, src.Width, src.Height);
         return dst;
     }
 

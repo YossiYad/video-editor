@@ -196,7 +196,7 @@ public class VideoRecorderPickerWindow : Window
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = _ff.FFmpegExe,
-                    Arguments = $"-hide_banner -loglevel error -f dshow -i video=\"{EscapeRecorderArg(name)}\" -vf fps=8,scale=520:-1 -f image2pipe -vcodec mjpeg pipe:1",
+                    Arguments = $"-hide_banner -loglevel error -f dshow -i video=\"{EscapeRecorderArg(name)}\" -vf fps=8,hflip,scale=520:-1 -f image2pipe -vcodec mjpeg pipe:1",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
