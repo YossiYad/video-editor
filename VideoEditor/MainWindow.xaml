@@ -54,7 +54,7 @@
                         <StackPanel Orientation="Horizontal" Margin="0,1,0,0">
                             <TextBlock x:Name="projDims" Text="1920×1080" FontFamily="Consolas" FontSize="10.5" Foreground="{DynamicResource TextDim}"/>
                             <Ellipse Width="3" Height="3" Fill="{DynamicResource TextDim}" Margin="6,0" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="projFps" Text="29.97 fps" FontFamily="Consolas" FontSize="10.5" Foreground="{DynamicResource TextDim}"/>
+                            <TextBlock x:Name="projFps" Text="30 fps" FontFamily="Consolas" FontSize="10.5" Foreground="{DynamicResource TextDim}"/>
                             <Button x:Name="changeFormatBtn" Style="{DynamicResource GhostButton}"
                                     Padding="6,1" Margin="8,0,0,0" Click="ChangeFormat_Click"
                                     ToolTip="Change project format">
@@ -649,7 +649,7 @@
                                 <StackPanel>
                                     <StackPanel Orientation="Horizontal">
                                         <Ellipse x:Name="inlineRecorderDot" Width="9" Height="9" Fill="{DynamicResource TextDim}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                        <TextBlock Text="Screen Recorder" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource Text}"/>
+                                        <TextBlock x:Name="inlineRecorderTitle" Text="Screen Recorder" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource Text}"/>
                                     </StackPanel>
                                     <TextBlock x:Name="inlineRecorderStatus" Text="Choose a source, record, then edit the result on the timeline." FontSize="11.5" Foreground="{DynamicResource TextMute}" Margin="17,3,0,0"/>
                                 </StackPanel>
@@ -663,14 +663,43 @@
                                 </Grid.ColumnDefinitions>
 
                                 <StackPanel Grid.Column="0" Margin="0,0,14,0">
-                                    <TextBlock Text="RECORDING SOURCE" Style="{DynamicResource FieldLabel}"/>
-                                    <ComboBox x:Name="inlineRecorderSourceBox" SelectionChanged="InlineRecorderSource_Changed" Margin="0,0,0,10"/>
+                                    <ItemsControl x:Name="inlineRecorderTabButtons" Margin="0,0,0,10" Visibility="Collapsed">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                    </ItemsControl>
 
-                                    <TextBlock Text="FRAME RATE (FPS)" Style="{DynamicResource FieldLabel}"/>
-                                    <TextBox x:Name="inlineRecorderFpsBox" Text="30" Width="90" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                                    <StackPanel x:Name="inlineRecorderSourcePanel">
+                                        <TextBlock Text="RECORDING SOURCE" Style="{DynamicResource FieldLabel}"/>
+                                        <ComboBox x:Name="inlineRecorderSourceBox" SelectionChanged="InlineRecorderSource_Changed" Margin="0,0,0,10"/>
+                                    </StackPanel>
 
-                                    <TextBlock Text="OUTPUT FILE" Style="{DynamicResource FieldLabel}"/>
-                                    <TextBox x:Name="inlineRecorderPathBox" TextWrapping="NoWrap" Margin="0,0,0,10"/>
+                                    <StackPanel x:Name="inlineRecorderCameraPanel" Visibility="Collapsed">
+                                        <TextBlock x:Name="inlineCameraBgLabel" Text="BACKGROUND (AI)" Style="{DynamicResource FieldLabel}"/>
+                                        <ComboBox x:Name="inlineCameraBgBox" SelectionChanged="InlineCameraBg_Changed" Margin="0,0,0,10"/>
+                                        <TextBlock x:Name="inlineCameraDeviceLabel" Text="" Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                        <Button x:Name="inlineCameraRemoveBtn" Content="Remove Camera" Style="{DynamicResource ToolButton}" Height="30" HorizontalAlignment="Left" Margin="0,0,0,4" Click="InlineCameraRemove_Click" Visibility="Collapsed"/>
+                                    </StackPanel>
+
+                                    <StackPanel x:Name="inlineRecorderFpsPanel">
+                                        <TextBlock Text="FRAME RATE (FPS)" Style="{DynamicResource FieldLabel}"/>
+                                        <TextBox x:Name="inlineRecorderFpsBox" Text="30" Width="90" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                                    </StackPanel>
+
+                                    <StackPanel x:Name="inlineRecorderOutputPanel">
+                                        <TextBlock Text="OUTPUT FILE" Style="{DynamicResource FieldLabel}"/>
+                                        <TextBox x:Name="inlineRecorderPathBox" TextWrapping="NoWrap" Margin="0,0,0,10"/>
+                                    </StackPanel>
+
+                                    <StackPanel x:Name="inlineRecorderBlockPanel" Visibility="Collapsed">
+                                        <TextBlock x:Name="inlineBlockTitleText" Text="" Style="{DynamicResource FieldLabel}"/>
+                                        <TextBlock Text="COLOR" Style="{DynamicResource FieldLabel}" Margin="0,4,0,4"/>
+                                        <Border x:Name="inlineBlockColorSwatch" Width="60" Height="22" BorderBrush="{DynamicResource Line}" BorderThickness="1" HorizontalAlignment="Left" Background="Black" Margin="0,0,0,8" Cursor="Hand" MouseLeftButtonUp="InlineBlockColorSwatch_Click"/>
+                                        <TextBlock Text="Edit color/opacity in the Block tab on the right (after clicking the block on the canvas)." Foreground="{DynamicResource TextDim}" FontSize="10.5" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                        <Button x:Name="inlineBlockDeleteBtn" Content="Delete Block" Style="{DynamicResource ToolButton}" Height="30" HorizontalAlignment="Left" Click="InlineBlockDelete_Click"/>
+                                    </StackPanel>
 
                                     <TextBlock Text="Use the sidebar before Start: Add Hide Block adds a mask, Camera Recorder adds a camera layer." Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,12"/>
 
@@ -695,6 +724,20 @@
                                        Foreground="{DynamicResource TextDim}"
                                        TextWrapping="Wrap"
                                        Margin="0,10,0,0"/>
+                            <TextBox Grid.Row="2" x:Name="inlineRecorderLogText"
+                                     Visibility="Collapsed"
+                                     IsReadOnly="True"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     FontFamily="Consolas"
+                                     FontSize="10"
+                                     Foreground="{DynamicResource TextDim}"
+                                     Background="{DynamicResource Bg0}"
+                                     BorderBrush="{DynamicResource Line}"
+                                     BorderThickness="1"
+                                     Margin="0,36,0,0"
+                                     MinHeight="72"
+                                     VerticalScrollBarVisibility="Auto"/>
                         </Grid>
                     </Border>
                 </Grid>
@@ -1188,8 +1231,10 @@
                                         <StackPanel Grid.Column="1" Margin="6,0,0,0">
                                             <TextBlock Text="FPS" Style="{DynamicResource FieldLabel}"/>
                                             <ComboBox x:Name="exportFpsBox">
-                                                <ComboBoxItem Content="30" IsSelected="True"/>
                                                 <ComboBoxItem Content="24"/>
+                                                <ComboBoxItem Content="25"/>
+                                                <ComboBoxItem Content="30" IsSelected="True"/>
+                                                <ComboBoxItem Content="50"/>
                                                 <ComboBoxItem Content="60"/>
                                             </ComboBox>
                                         </StackPanel>

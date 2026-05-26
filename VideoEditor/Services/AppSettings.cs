@@ -119,6 +119,11 @@ public static class AppSettings
     public static string MaxCacheSize { get; set; } = "2g";
     public static bool AutoCleanCache { get; set; } = true;
 
+    /// <summary>When true, the inline Camera Recorder shows the live AI diagnostics panel + raw
+    /// log box. Off by default. Logs still go to camera-diag.log next to the EXE either way,
+    /// so debugging a freeze later only needs flipping this flag (or asking for the file).</summary>
+    public static bool CameraDebugDiagnostics { get; set; } = false;
+
     private class Data
     {
         public string? Language { get; set; }
@@ -174,6 +179,7 @@ public static class AppSettings
         public string? CacheFolder { get; set; }
         public string? MaxCacheSize { get; set; }
         public bool AutoCleanCache { get; set; } = true;
+        public bool CameraDebugDiagnostics { get; set; }
     }
 
     static AppSettings() { Load(); }
@@ -233,6 +239,7 @@ public static class AppSettings
             if (!string.IsNullOrEmpty(d.CacheFolder)) CacheFolder = d.CacheFolder;
             if (!string.IsNullOrEmpty(d.MaxCacheSize)) MaxCacheSize = d.MaxCacheSize;
             AutoCleanCache = d.AutoCleanCache;
+            CameraDebugDiagnostics = d.CameraDebugDiagnostics;
         }
         catch (Exception ex)
         {
@@ -276,6 +283,7 @@ public static class AppSettings
                 LlmUsageToday = LlmUsageToday, LlmUsageDate = LlmUsageDate,
                 DownloadsFolder = DownloadsFolder, CacheFolder = CacheFolder,
                 MaxCacheSize = MaxCacheSize, AutoCleanCache = AutoCleanCache,
+                CameraDebugDiagnostics = CameraDebugDiagnostics,
             };
             File.WriteAllText(Path, JsonSerializer.Serialize(d, new JsonSerializerOptions { WriteIndented = true }));
             LastSaveError = null;

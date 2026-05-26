@@ -38,6 +38,7 @@ public partial class MainWindow : Window
     private VideoClip? _selectedAudio;
 
     private bool _formatPickedThisSession;
+    private bool _syncingExportFps;
     private System.Diagnostics.Process? _inlineRecorderProc;
     private DispatcherTimer? _inlineRecorderPreviewTimer;
     private List<MonitorInfo.Display> _inlineRecorderMonitors = new();
@@ -49,10 +50,55 @@ public partial class MainWindow : Window
     private System.Threading.CancellationTokenSource? _inlineRecorderWebcamPreviewCts;
     private readonly Queue<string> _inlineRecorderLogTail = new();
     private string _inlineRecorderLastError = "";
+    private readonly Queue<string> _inlineRecorderVisibleLog = new();
+    private bool _inlineRecorderCameraOnly;
+    private readonly CameraBackground _inlineCameraBackground = new();
+    private readonly BackgroundRemovalService _inlineCameraBgService = new();
+    private string? _inlineCameraRecordTempPath;
+    private bool _inlineCameraBgReady;
+    private int _inlineCameraAiPreviewInFlight;
+    private long _inlineCameraLastAiPreviewTicks;
+    private long _inlineCameraAiProcessed;
+    private long _inlineCameraAiSkippedBusy;
+    private long _inlineCameraAiSkippedThrottle;
+    private long _inlineCameraLastStatsTicks;
+    private DispatcherTimer? _inlineCameraDiagTimer;
+    private long _inlineCameraJpegsReceived;
+    private long _inlineCameraLastJpegTicks;
+    private long _inlineCameraLastAiDoneTicks;
+    private long _inlineCameraLastInferenceMs;
+    private string _inlineCameraPreviewFfmpegError = "";
+    private long _inlineCameraDiagWindowStartTicks;
+    private long _inlineCameraDiagWindowJpegsStart;
+    private long _inlineCameraDiagWindowAiStart;
+    private int _inlineCameraPreviewRetryCount;
+    private bool _inlineCameraPreviewRetryPending;
+    private bool _suppressBgComboChange;
+    private int _inlineCameraStartGen;
+    private string? _screenCamScreenTempPath;
+    private string? _screenCamRawTempPath;
+    private string? _screenCamFinalOutputPath;
+    private (int X, int Y, int W, int H, int OutW, int OutH)? _screenCamPipRect;
+    private int _screenCamAiPreviewInFlight;
+    private long _screenCamLastAiPreviewTicks;
+    private enum InlineTabKind { Recording, Camera, Block }
+    private sealed class InlineRecorderTab
+    {
+        public InlineTabKind Kind;
+        public string Title = "";
+        public VideoBlock? Block;
+        public System.Windows.Controls.Primitives.ToggleButton? Button;
+    }
+    private readonly List<InlineRecorderTab> _inlineRecorderTabList = new();
+    private InlineRecorderTab? _activeInlineTab;
 
     public MainWindow()
     {
         InitializeComponent();
+        _inlineCameraBgService.Log += msg =>
+        {
+            try { AppendInlineRecorderLog("AI: " + msg); } catch { }
+        };
 
         // Apply Language preference (RTL for Hebrew)
         ApplyLanguage();
@@ -77,6 +123,7 @@ public partial class MainWindow : Window
                 videoView.ScrubbingEnabled = AppSettings.ScrubbingQuality != "smooth";
                 UpdateTopbarDims();
                 UpdateInspectorFormatText();
+                UpdateExportFpsControls();
                 UpdatePreviewAspect();
             });
         };
@@ -406,8 +453,46 @@ public partial class MainWindow : Window
         fitPreviewHint.Visibility = fit == "contain" ? Visibility.Collapsed : Visibility.Visible;
         UpdateTopbarDims();
         UpdateInspectorFormatText();
+        UpdateExportFpsControls();
+        exportFpsBox.SelectionChanged += ExportFpsBox_SelectionChanged;
         // Defer preview-aspect computation to first Loaded so the container has a real size
         Loaded += (_, _) => UpdatePreviewAspect();
+    }
+
+    private void ExportFpsBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingExportFps) return;
+        if (exportFpsBox.SelectedItem is not ComboBoxItem item) return;
+        if (!int.TryParse(Convert.ToString(item.Content), out var fps)) return;
+
+        AppSettings.ExportFps = fps;
+        AppSettings.Save();
+        UpdateExportFpsControls();
+        status.Text = $"Export FPS set to {fps}.";
+    }
+
+    private void UpdateExportFpsControls()
+    {
+        if (exportFpsBox == null || projFps == null) return;
+
+        _syncingExportFps = true;
+        try
+        {
+            var fpsText = AppSettings.ExportFps.ToString();
+            foreach (var item in exportFpsBox.Items.OfType<ComboBoxItem>())
+            {
+                if (Convert.ToString(item.Content) == fpsText)
+                {
+                    exportFpsBox.SelectedItem = item;
+                    break;
+                }
+            }
+            projFps.Text = $"{AppSettings.ExportFps} fps";
+        }
+        finally
+        {
+            _syncingExportFps = false;
+        }
     }
 
     private void ShowFormatPicker()
@@ -887,6 +972,7 @@ public partial class MainWindow : Window
         _blockControls[b] = ctl;
         SelectBlock(b);
         UpdateStats();
+        if (IsInlineRecorderVisible() && !_inlineRecorderCameraOnly) RebuildInlineRecorderTabs();
         status.Text = timeline.Clips.Count == 0
             ? (VideoEditor.Services.Localization.IsHebrew ? "בלוק הסתרה נוסף. הוסף וידאו לפני ייצוא." : "Hide block added. Add a video before export.")
             : (VideoEditor.Services.Localization.IsHebrew ? "בלוק הסתרה נוסף." : "Hide block added.");
@@ -905,6 +991,8 @@ public partial class MainWindow : Window
     private void DeleteBlock_Click(object sender, RoutedEventArgs e)
     {
         if (_selectedBlock == null) return;
+        bool wasInlineBlock = _blockControls.TryGetValue(_selectedBlock, out var ctlPeek)
+                              && ReferenceEquals(ctlPeek.Parent, inlineRecorderOverlayCanvas);
         if (_blockControls.TryGetValue(_selectedBlock, out var ctl))
         {
             if (ctl.Parent is Canvas parentCanvas) parentCanvas.Children.Remove(ctl);
@@ -913,6 +1001,7 @@ public partial class MainWindow : Window
         timeline.Blocks.Remove(_selectedBlock);
         _selectedBlock = null;
         blockPanel.Visibility = Visibility.Collapsed;
+        if (wasInlineBlock && IsInlineRecorderVisible() && !_inlineRecorderCameraOnly) RebuildInlineRecorderTabs();
     }
 
     // ===== Selection =====
@@ -1952,7 +2041,11 @@ public partial class MainWindow : Window
     }
     private void ShowInlineScreenRecorder()
     {
+        _inlineRecorderCameraOnly = false;
+        ClearInlineRecorderVisibleLog();
         screenRecorderPanel.Visibility = Visibility.Visible;
+        inlineRecorderTitle.Text = "Screen Recorder";
+        RebuildInlineRecorderTabs();
         UpdateEmptyStartPanel();
         if (string.IsNullOrWhiteSpace(inlineRecorderPathBox.Text))
             inlineRecorderPathBox.Text = DefaultScreenRecordingPath();
@@ -1972,10 +2065,78 @@ public partial class MainWindow : Window
         _inlineRecorderPreviewTimer.Start();
     }
 
+    private void ShowInlineCameraRecorder()
+    {
+        if (_inlineRecorderProc != null && !_inlineRecorderProc.HasExited)
+        {
+            MessageBox.Show("Stop the current recording first.");
+            return;
+        }
+
+        var picker = new VideoRecorderPickerWindow(_ff, _inlineRecorderWebcamDeviceName) { Owner = this };
+        if (picker.ShowDialog() != true) return;
+
+        _inlineRecorderCameraOnly = true;
+        _inlineRecorderWebcamDeviceName = picker.SelectedCameraName;
+        ClearInlineRecorderVisibleLog();
+        _inlineCameraBgReady = false;
+        Interlocked.Exchange(ref _inlineCameraLastAiPreviewTicks, 0);
+        ResetInlineCameraAiCounters();
+        screenRecorderPanel.Visibility = Visibility.Visible;
+        inlineRecorderTitle.Text = "Camera Recorder";
+        ApplyInlineCameraOnlyPanelLayout();
+        UpdateEmptyStartPanel();
+
+        _inlineRecorderPreviewTimer?.Stop();
+        StopInlineRecorderWebcamPreview();
+        ClearInlineRecorderWebcamLayer();
+
+        inlineRecorderSourceBox.Items.Clear();
+        inlineRecorderSourceBox.Items.Add(_inlineRecorderWebcamDeviceName);
+        inlineRecorderSourceBox.SelectedIndex = 0;
+        inlineRecorderSourceBox.IsEnabled = false;
+        _suppressBgComboChange = true;
+        try
+        {
+            inlineCameraBgBox.Items.Clear();
+            inlineCameraBgBox.Items.Add("Keep original background");
+            inlineCameraBgBox.Items.Add("Blur the background");
+            inlineCameraBgBox.Items.Add("Remove background (transparent)");
+            inlineCameraBgBox.Items.Add("Replace with blue background");
+            inlineCameraBgBox.SelectedIndex = 0;
+        }
+        finally
+        {
+            _suppressBgComboChange = false;
+        }
+        _inlineCameraBackground.Mode = CameraBackgroundMode.None;
+        _inlineCameraBgReady = false;
+        inlineRecorderFpsBox.Text = "30";
+        inlineRecorderPathBox.Text = DefaultCameraRecordingPath();
+        inlineRecorderStartBtn.Content = "Start";
+        inlineRecorderStopBtn.Content = "Stop + Add";
+        inlineRecorderStartBtn.IsEnabled = true;
+        inlineRecorderStopBtn.IsEnabled = false;
+        closeInlineRecorderBtn.IsEnabled = true;
+        inlineRecorderDot.Fill = new SolidColorBrush(Color.FromRgb(0x8A, 0x91, 0xA6));
+        inlineRecorderStatus.Text = $"Camera ready: {_inlineRecorderWebcamDeviceName}.";
+        ResetInlineCameraDiagWindow();
+        inlineRecorderDiagText.Text = "Camera preview starting...";
+        AppendInlineRecorderLog($"Camera selected: {_inlineRecorderWebcamDeviceName}");
+        StartInlineCameraDiagTimer();
+        StartInlineCameraOnlyPreview();
+    }
+
     private static string DefaultScreenRecordingPath()
     {
         var videos = Environment.GetFolderPath(Environment.SpecialFolder.MyVideos);
         return Path.Combine(videos, $"screen_{DateTime.Now:yyyyMMdd_HHmmss}.mp4");
+    }
+
+    private static string DefaultCameraRecordingPath()
+    {
+        var videos = Environment.GetFolderPath(Environment.SpecialFolder.MyVideos);
+        return Path.Combine(videos, $"webcam_{DateTime.Now:yyyyMMdd_HHmmss}.mp4");
     }
 
     private void CloseInlineRecorder_Click(object sender, RoutedEventArgs e)
@@ -1987,9 +2148,41 @@ public partial class MainWindow : Window
         }
 
         _inlineRecorderPreviewTimer?.Stop();
+        StopInlineCameraDiagTimer();
         StopInlineRecorderWebcamPreview();
+        ClearInlineRecorderWebcamLayer();
+        _inlineCameraPreviewRetryCount = 0;
+        _inlineCameraPreviewRetryPending = false;
+        _inlineRecorderCameraOnly = false;
+        _inlineCameraRecordTempPath = null;
+        _inlineCameraBackground.Mode = CameraBackgroundMode.None;
+        _inlineCameraBgReady = false;
+        _screenCamScreenTempPath = null;
+        _screenCamRawTempPath = null;
+        _screenCamFinalOutputPath = null;
+        _screenCamPipRect = null;
+        _inlineRecorderTabList.Clear();
+        _activeInlineTab = null;
+        inlineRecorderTabButtons.Items.Clear();
+        inlineRecorderTabButtons.Visibility = Visibility.Collapsed;
+        inlineRecorderSourcePanel.Visibility = Visibility.Visible;
+        inlineRecorderCameraPanel.Visibility = Visibility.Collapsed;
+        inlineRecorderFpsPanel.Visibility = Visibility.Visible;
+        inlineRecorderOutputPanel.Visibility = Visibility.Visible;
+        inlineRecorderBlockPanel.Visibility = Visibility.Collapsed;
+        inlineRecorderSourceBox.IsEnabled = true;
         screenRecorderPanel.Visibility = Visibility.Collapsed;
         UpdateEmptyStartPanel();
+    }
+
+    private void ClearInlineRecorderWebcamLayer()
+    {
+        if (_inlineRecorderWebcamControl != null)
+        {
+            inlineRecorderOverlayCanvas.Children.Remove(_inlineRecorderWebcamControl);
+            _inlineRecorderWebcamControl = null;
+        }
+        _inlineRecorderWebcamBlock = null;
     }
 
     private void AddInlineRecorderWebcam()
@@ -2023,6 +2216,27 @@ public partial class MainWindow : Window
         _inlineRecorderWebcamControl.Changed += _ => { };
         inlineRecorderOverlayCanvas.Children.Add(_inlineRecorderWebcamControl);
         Panel.SetZIndex(_inlineRecorderWebcamControl, 200);
+
+        _suppressBgComboChange = true;
+        try
+        {
+            if (inlineCameraBgBox.Items.Count == 0)
+            {
+                inlineCameraBgBox.Items.Add("Keep original background");
+                inlineCameraBgBox.Items.Add("Blur the background");
+                inlineCameraBgBox.Items.Add("Remove background (transparent)");
+                inlineCameraBgBox.Items.Add("Replace with blue background");
+            }
+            inlineCameraBgBox.SelectedIndex = 0;
+        }
+        finally
+        {
+            _suppressBgComboChange = false;
+        }
+        _inlineCameraBackground.Mode = CameraBackgroundMode.None;
+        _inlineCameraBgReady = false;
+        RebuildInlineRecorderTabs();
+
         inlineRecorderStatus.Text = $"Camera layer: {_inlineRecorderWebcamDeviceName}. The blue box marks where the camera will appear in the recording.";
         status.Text = $"Camera added: {_inlineRecorderWebcamDeviceName}. Drag or resize it before Start.";
         StartInlineRecorderWebcamPreview();
@@ -2032,6 +2246,197 @@ public partial class MainWindow : Window
     {
         RefreshInlineRecorderDiag();
         CaptureInlineRecorderPreview();
+    }
+
+    private void ApplyInlineCameraOnlyPanelLayout()
+    {
+        inlineRecorderTabButtons.Visibility = Visibility.Collapsed;
+        inlineRecorderSourcePanel.Visibility = Visibility.Visible;
+        inlineRecorderCameraPanel.Visibility = Visibility.Visible;
+        inlineRecorderFpsPanel.Visibility = Visibility.Visible;
+        inlineRecorderOutputPanel.Visibility = Visibility.Visible;
+        inlineRecorderBlockPanel.Visibility = Visibility.Collapsed;
+        inlineCameraRemoveBtn.Visibility = Visibility.Collapsed;
+        _inlineRecorderTabList.Clear();
+        _activeInlineTab = null;
+        inlineRecorderTabButtons.Items.Clear();
+    }
+
+    private void RebuildInlineRecorderTabs()
+    {
+        if (_inlineRecorderCameraOnly)
+        {
+            ApplyInlineCameraOnlyPanelLayout();
+            return;
+        }
+
+        var rememberedKind = _activeInlineTab?.Kind;
+        var rememberedBlock = _activeInlineTab?.Block;
+
+        _inlineRecorderTabList.Clear();
+        _inlineRecorderTabList.Add(new InlineRecorderTab { Kind = InlineTabKind.Recording, Title = "Recording" });
+        if (_inlineRecorderWebcamBlock != null)
+            _inlineRecorderTabList.Add(new InlineRecorderTab { Kind = InlineTabKind.Camera, Title = "Camera" });
+
+        int n = 1;
+        foreach (var b in GetInlineRecorderBlocks())
+        {
+            if (ReferenceEquals(b, _inlineRecorderWebcamBlock)) continue;
+            _inlineRecorderTabList.Add(new InlineRecorderTab { Kind = InlineTabKind.Block, Title = $"Block {n++}", Block = b });
+        }
+
+        inlineRecorderTabButtons.Items.Clear();
+        foreach (var tab in _inlineRecorderTabList)
+        {
+            var rb = new RadioButton
+            {
+                Content = tab.Title,
+                GroupName = "InlineRecorderTabs",
+                Style = (Style)FindResource("InspectorTab"),
+                Margin = new Thickness(0, 0, 6, 6)
+            };
+            var tabRef = tab;
+            rb.Checked += (_, _) => SelectInlineRecorderTab(tabRef);
+            tab.Button = rb;
+            inlineRecorderTabButtons.Items.Add(rb);
+        }
+
+        inlineRecorderTabButtons.Visibility = _inlineRecorderTabList.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+
+        InlineRecorderTab? toActivate = null;
+        if (rememberedBlock != null)
+            toActivate = _inlineRecorderTabList.FirstOrDefault(t => t.Kind == InlineTabKind.Block && ReferenceEquals(t.Block, rememberedBlock));
+        if (toActivate == null && rememberedKind.HasValue && rememberedKind.Value != InlineTabKind.Block)
+            toActivate = _inlineRecorderTabList.FirstOrDefault(t => t.Kind == rememberedKind.Value);
+        toActivate ??= _inlineRecorderTabList[0];
+        if (toActivate.Button != null) toActivate.Button.IsChecked = true;
+        else SelectInlineRecorderTab(toActivate);
+    }
+
+    private void SelectInlineRecorderTab(InlineRecorderTab tab)
+    {
+        _activeInlineTab = tab;
+        inlineRecorderSourcePanel.Visibility = tab.Kind == InlineTabKind.Recording ? Visibility.Visible : Visibility.Collapsed;
+        inlineRecorderFpsPanel.Visibility = tab.Kind == InlineTabKind.Recording ? Visibility.Visible : Visibility.Collapsed;
+        inlineRecorderOutputPanel.Visibility = tab.Kind == InlineTabKind.Recording ? Visibility.Visible : Visibility.Collapsed;
+        inlineRecorderCameraPanel.Visibility = tab.Kind == InlineTabKind.Camera ? Visibility.Visible : Visibility.Collapsed;
+        inlineRecorderBlockPanel.Visibility = tab.Kind == InlineTabKind.Block ? Visibility.Visible : Visibility.Collapsed;
+        inlineCameraRemoveBtn.Visibility = tab.Kind == InlineTabKind.Camera ? Visibility.Visible : Visibility.Collapsed;
+
+        if (tab.Kind == InlineTabKind.Camera)
+        {
+            inlineCameraDeviceLabel.Text = string.IsNullOrWhiteSpace(_inlineRecorderWebcamDeviceName)
+                ? ""
+                : $"Device: {_inlineRecorderWebcamDeviceName}";
+        }
+        else if (tab.Kind == InlineTabKind.Block && tab.Block != null)
+        {
+            inlineBlockTitleText.Text = tab.Title;
+            inlineBlockColorSwatch.Background = new SolidColorBrush(tab.Block.Color);
+        }
+    }
+
+    private void InlineCameraRemove_Click(object sender, RoutedEventArgs e)
+    {
+        if (_inlineRecorderProc != null && !_inlineRecorderProc.HasExited)
+        {
+            MessageBox.Show("Stop the recording before removing the camera.");
+            return;
+        }
+        StopInlineRecorderWebcamPreview();
+        ClearInlineRecorderWebcamLayer();
+        _inlineCameraBackground.Mode = CameraBackgroundMode.None;
+        _inlineCameraBgReady = false;
+        inlineRecorderStatus.Text = "Camera removed from the scene.";
+        RebuildInlineRecorderTabs();
+    }
+
+    private void InlineBlockDelete_Click(object sender, RoutedEventArgs e)
+    {
+        if (_activeInlineTab?.Block is not VideoBlock block) return;
+        if (_blockControls.TryGetValue(block, out var control))
+        {
+            inlineRecorderOverlayCanvas.Children.Remove(control);
+            _blockControls.Remove(block);
+        }
+        RebuildInlineRecorderTabs();
+    }
+
+    private void InlineBlockColorSwatch_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (_activeInlineTab?.Block is not VideoBlock block) return;
+        if (_blockControls.TryGetValue(block, out var control))
+        {
+            _selectedBlock = block;
+            control.Focus();
+        }
+    }
+
+    private async void InlineCameraBg_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressBgComboChange) return;
+        bool screenCamMode = !_inlineRecorderCameraOnly && _inlineRecorderWebcamBlock != null;
+        if (!_inlineRecorderCameraOnly && !screenCamMode) return;
+
+        _inlineCameraBackground.Mode = inlineCameraBgBox.SelectedIndex switch
+        {
+            1 => CameraBackgroundMode.Blur,
+            2 => CameraBackgroundMode.Transparent,
+            3 => CameraBackgroundMode.Color,
+            _ => CameraBackgroundMode.None
+        };
+        _inlineCameraBackground.ColorR = 0x10;
+        _inlineCameraBackground.ColorG = 0x6E;
+        _inlineCameraBackground.ColorB = 0xBE;
+        _inlineCameraBgReady = false;
+        Interlocked.Exchange(ref _inlineCameraLastAiPreviewTicks, 0);
+        ResetInlineCameraAiCounters();
+        ResetInlineCameraDiagWindow();
+        _inlineCameraPreviewRetryCount = 0;
+        StartInlineCameraDiagTimer();
+
+        if (_inlineCameraBackground.NeedsModel)
+        {
+            inlineRecorderStatus.Text = "Preparing AI background model...";
+            AppendInlineRecorderLog($"Preparing AI background: {_inlineCameraBackground.Mode}");
+            try
+            {
+                await _inlineCameraBgService.EnsureModelAsync(new Progress<double>(p =>
+                {
+                    inlineRecorderStatus.Text = $"Downloading AI background model... {p:P0}";
+                    AppendInlineRecorderLog($"AI model download: {p:P0}");
+                }));
+                AppendInlineRecorderLog("Initializing ONNX session...");
+                await _inlineCameraBgService.InitializeAsync();
+                _inlineCameraBgReady = true;
+                inlineRecorderStatus.Text = $"Fast live AI preview ({_inlineCameraBgService.ExecutionProvider}).";
+                AppendInlineRecorderLog($"AI preview ready. Provider: {_inlineCameraBgService.ExecutionProvider}");
+            }
+            catch (Exception ex)
+            {
+                inlineRecorderStatus.Text = "AI background failed: " + ex.Message;
+                AppendInlineRecorderLog("AI background init failed: " + ex);
+            }
+        }
+        else
+        {
+            _inlineCameraBgReady = false;
+            inlineRecorderStatus.Text = $"Camera ready: {_inlineRecorderWebcamDeviceName}.";
+            AppendInlineRecorderLog("AI background disabled.");
+        }
+
+        if (_inlineRecorderProc == null || _inlineRecorderProc.HasExited)
+        {
+            bool previewAlive = _inlineRecorderWebcamPreviewProc != null && !_inlineRecorderWebcamPreviewProc.HasExited;
+            if (_inlineRecorderCameraOnly)
+            {
+                if (!previewAlive) StartInlineCameraOnlyPreview();
+            }
+            else if (screenCamMode)
+            {
+                if (!previewAlive) StartInlineRecorderWebcamPreview();
+            }
+        }
     }
 
     private void InlineRecorderPreviewTimer_Tick(object? sender, EventArgs e) => CaptureInlineRecorderPreview();
@@ -2115,7 +2520,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void InlineRecorderStart_Click(object sender, RoutedEventArgs e)
+    private async void InlineRecorderStart_Click(object sender, RoutedEventArgs e)
     {
         if (_inlineRecorderProc != null && !_inlineRecorderProc.HasExited) return;
         if (!int.TryParse(inlineRecorderFpsBox.Text, out var fpsValue) || fpsValue < 1 || fpsValue > 120)
@@ -2125,8 +2530,41 @@ public partial class MainWindow : Window
         }
 
         var outputPath = string.IsNullOrWhiteSpace(inlineRecorderPathBox.Text)
-            ? DefaultScreenRecordingPath()
+            ? (_inlineRecorderCameraOnly ? DefaultCameraRecordingPath() : DefaultScreenRecordingPath())
             : inlineRecorderPathBox.Text.Trim();
+        _inlineCameraRecordTempPath = null;
+        _screenCamScreenTempPath = null;
+        _screenCamRawTempPath = null;
+        _screenCamFinalOutputPath = null;
+        _screenCamPipRect = null;
+        if (_inlineRecorderCameraOnly && _inlineCameraBackground.NeedsModel)
+        {
+            if (_inlineCameraBackground.NeedsAlpha)
+                outputPath = Path.ChangeExtension(outputPath, ".webm");
+            _inlineCameraRecordTempPath = Path.Combine(Path.GetTempPath(), $"ve_camraw_{Guid.NewGuid():N}.mp4");
+        }
+        else if (!_inlineRecorderCameraOnly && _inlineRecorderWebcamBlock != null && _inlineCameraBackground.NeedsModel)
+        {
+            int monIdx = inlineRecorderSourceBox.SelectedIndex;
+            int outW, outH;
+            if (monIdx > 0 && monIdx - 1 < _inlineRecorderMonitors.Count)
+            {
+                var m = _inlineRecorderMonitors[monIdx - 1];
+                outW = m.Width;
+                outH = m.Height;
+            }
+            else
+            {
+                outW = (int)SystemParameters.VirtualScreenWidth;
+                outH = (int)SystemParameters.VirtualScreenHeight;
+            }
+            var (px, py, pw, ph) = ScaleInlineRecorderRect(_inlineRecorderWebcamBlock, outW, outH);
+            _screenCamPipRect = (px, py, pw, ph, outW, outH);
+            var guid = Guid.NewGuid().ToString("N");
+            _screenCamScreenTempPath = Path.Combine(Path.GetTempPath(), $"ve_scrcam_screen_{guid}.mp4");
+            _screenCamRawTempPath = Path.Combine(Path.GetTempPath(), $"ve_scrcam_raw_{guid}.mp4");
+            _screenCamFinalOutputPath = outputPath;
+        }
         inlineRecorderPathBox.Text = outputPath;
         try
         {
@@ -2139,12 +2577,20 @@ public partial class MainWindow : Window
             return;
         }
 
-        var args = BuildInlineRecorderArgs(fpsValue, outputPath);
+        var args = _inlineRecorderCameraOnly
+            ? BuildInlineCameraRecorderArgs(fpsValue, _inlineCameraRecordTempPath ?? outputPath)
+            : BuildInlineRecorderArgs(fpsValue, outputPath);
 
         try
         {
             StopInlineRecorderWebcamPreview();
-            bool hasCameraLayer = _inlineRecorderWebcamBlock != null;
+            if (_inlineRecorderCameraOnly || _inlineRecorderWebcamBlock != null)
+            {
+                inlineRecorderStartBtn.IsEnabled = false;
+                inlineRecorderStatus.Text = "Releasing camera for recording...";
+                await System.Threading.Tasks.Task.Delay(450);
+            }
+            bool hasCameraPreviewPipe = _inlineRecorderCameraOnly || _inlineRecorderWebcamBlock != null;
             _inlineRecorderLastError = "";
             _inlineRecorderLogTail.Clear();
             _inlineRecorderProc = new System.Diagnostics.Process
@@ -2164,7 +2610,7 @@ public partial class MainWindow : Window
             _inlineRecorderProc.ErrorDataReceived += (_, ev) => CaptureInlineRecorderLog(ev.Data);
             _inlineRecorderProc.Start();
             _inlineRecorderProc.BeginErrorReadLine();
-            if (hasCameraLayer)
+            if (hasCameraPreviewPipe)
                 _ = ReadMjpegPreviewAsync(_inlineRecorderProc.StandardOutput.BaseStream, System.Threading.CancellationToken.None);
             else
                 _inlineRecorderProc.BeginOutputReadLine();
@@ -2172,13 +2618,18 @@ public partial class MainWindow : Window
             inlineRecorderStopBtn.IsEnabled = true;
             closeInlineRecorderBtn.IsEnabled = false;
             inlineRecorderDot.Fill = new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x6B));
-            inlineRecorderStatus.Text = "Recording...";
-            status.Text = "Screen recording in progress.";
+            inlineRecorderStatus.Text = _inlineRecorderCameraOnly ? "Camera recording..." : "Recording...";
+            status.Text = _inlineRecorderCameraOnly ? "Camera recording in progress." : "Screen recording in progress.";
         }
         catch (Exception ex)
         {
             MessageBox.Show(ex.Message);
             _inlineRecorderProc = null;
+            inlineRecorderStartBtn.IsEnabled = true;
+            inlineRecorderStopBtn.IsEnabled = false;
+            closeInlineRecorderBtn.IsEnabled = true;
+            if (_inlineRecorderCameraOnly) StartInlineCameraOnlyPreview();
+            else if (_inlineRecorderWebcamBlock != null) StartInlineRecorderWebcamPreview();
         }
     }
 
@@ -2240,20 +2691,52 @@ public partial class MainWindow : Window
             finalPad = next;
         }
 
+        bool screenCamAiActive = useWebcam && _inlineRecorderWebcamBlock != null
+                                 && _screenCamScreenTempPath != null && _screenCamRawTempPath != null;
+
         if (useWebcam && webcamPad != null && _inlineRecorderWebcamBlock != null)
         {
-            var (x, y, w, h) = ScaleInlineRecorderRect(_inlineRecorderWebcamBlock, outputW, outputH);
-            string camPad = $"[cam{stage}]";
-            string next = $"[s{stage++}]";
-            filters.Append($";{webcamPad}split[camrec][campreview];[campreview]fps=8,scale=320:-1[camout];[camrec]scale={w}:{h}{camPad};{finalPad}{camPad}overlay={x}:{y}{next}");
-            finalPad = next;
+            if (screenCamAiActive)
+            {
+                filters.Append($";{webcamPad}hflip,split[camrec][campreview];[campreview]fps=12,scale=640:-1[camout];[camrec]format=yuv420p[finalCamRaw]");
+            }
+            else
+            {
+                var (x, y, w, h) = ScaleInlineRecorderRect(_inlineRecorderWebcamBlock, outputW, outputH);
+                string camPad = $"[cam{stage}]";
+                string next = $"[s{stage++}]";
+                filters.Append($";{webcamPad}hflip,split[camrec][campreview];[campreview]fps=12,scale=640:-1[camout];[camrec]scale={w}:{h}{camPad};{finalPad}{camPad}overlay={x}:{y}{next}");
+                finalPad = next;
+            }
         }
 
         var filterArg = filters.ToString();
-        var args = $"{inputArgs}-filter_complex \"{filterArg}\" -map \"{finalPad}\" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -fps_mode cfr -r {fpsValue} \"{outputPath}\"";
-        if (useWebcam)
-            args += " -map \"[camout]\" -f image2pipe -vcodec mjpeg pipe:1";
+        string args;
+        if (screenCamAiActive)
+        {
+            args = $"{inputArgs}-filter_complex \"{filterArg}\" " +
+                   $"-map \"{finalPad}\" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -fps_mode cfr -r {fpsValue} \"{_screenCamScreenTempPath}\" " +
+                   $"-map \"[finalCamRaw]\" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -fps_mode cfr -r {fpsValue} \"{_screenCamRawTempPath}\" " +
+                   "-map \"[camout]\" -f image2pipe -vcodec mjpeg pipe:1";
+        }
+        else
+        {
+            args = $"{inputArgs}-filter_complex \"{filterArg}\" -map \"{finalPad}\" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -fps_mode cfr -r {fpsValue} \"{outputPath}\"";
+            if (useWebcam)
+                args += " -map \"[camout]\" -f image2pipe -vcodec mjpeg pipe:1";
+        }
         return args;
+    }
+
+    private string BuildInlineCameraRecorderArgs(int fpsValue, string outputPath)
+    {
+        var cameraName = EscapeRecorderArg(_inlineRecorderWebcamDeviceName);
+        return $"-y -f dshow -rtbufsize 200M -i video=\"{cameraName}\" " +
+               $"-filter_complex \"[0:v]hflip,fps={fpsValue},split[camrec][campreview];" +
+               "[campreview]fps=12,scale=640:-1[camout];" +
+               "[camrec]format=yuv420p[record]\" " +
+               $"-map \"[record]\" -c:v libx264 -preset ultrafast -pix_fmt yuv420p -fps_mode cfr -r {fpsValue} \"{outputPath}\" " +
+               "-map \"[camout]\" -f image2pipe -vcodec mjpeg pipe:1";
     }
 
     private List<VideoBlock> GetInlineRecorderBlocks() =>
@@ -2299,7 +2782,7 @@ public partial class MainWindow : Window
                 StartInfo = new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = _ff.FFmpegExe,
-                    Arguments = $"-hide_banner -loglevel error -f dshow -i video=\"{EscapeRecorderArg(_inlineRecorderWebcamDeviceName)}\" -vf fps=8,scale=320:-1 -f image2pipe -vcodec mjpeg pipe:1",
+                    Arguments = $"-hide_banner -loglevel error -f dshow -i video=\"{EscapeRecorderArg(_inlineRecorderWebcamDeviceName)}\" -vf fps=12,hflip,scale=640:-1 -q:v 5 -f image2pipe -vcodec mjpeg pipe:1",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
@@ -2307,7 +2790,12 @@ public partial class MainWindow : Window
                 },
                 EnableRaisingEvents = true
             };
+            _inlineRecorderWebcamPreviewProc.ErrorDataReceived += (_, ev) =>
+            {
+                if (!string.IsNullOrEmpty(ev.Data)) AppendInlineRecorderLog("ffmpeg-preview: " + ev.Data);
+            };
             _inlineRecorderWebcamPreviewProc.Start();
+            _inlineRecorderWebcamPreviewProc.BeginErrorReadLine();
             _ = ReadMjpegPreviewAsync(_inlineRecorderWebcamPreviewProc.StandardOutput.BaseStream,
                 _inlineRecorderWebcamPreviewCts.Token);
         }
@@ -2315,6 +2803,111 @@ public partial class MainWindow : Window
         {
             _inlineRecorderWebcamControl.SetLivePreviewSource(null);
         }
+    }
+
+    private async void StartInlineCameraOnlyPreview()
+    {
+        int myGen = Interlocked.Increment(ref _inlineCameraStartGen);
+        StopInlineRecorderWebcamPreview();
+        Interlocked.Exchange(ref _inlineCameraJpegsReceived, 0);
+        Interlocked.Exchange(ref _inlineCameraLastJpegTicks, 0);
+        _inlineCameraPreviewFfmpegError = "";
+        ResetInlineCameraDiagWindow();
+
+        await System.Threading.Tasks.Task.Delay(300);
+        if (!_inlineRecorderCameraOnly) return;
+        if (myGen != Interlocked.CompareExchange(ref _inlineCameraStartGen, 0, 0))
+        {
+            AppendInlineRecorderLog("(preview start superseded by a newer request)");
+            return;
+        }
+
+        try
+        {
+            _inlineRecorderWebcamPreviewCts = new System.Threading.CancellationTokenSource();
+            _inlineRecorderWebcamPreviewProc = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = _ff.FFmpegExe,
+                    Arguments = $"-hide_banner -loglevel error -f dshow -i video=\"{EscapeRecorderArg(_inlineRecorderWebcamDeviceName)}\" " +
+                                "-vf fps=12,hflip,scale=640:-1 -q:v 5 -f image2pipe -vcodec mjpeg pipe:1",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                },
+                EnableRaisingEvents = true
+            };
+            var launchedProc = _inlineRecorderWebcamPreviewProc;
+            _inlineRecorderWebcamPreviewProc.ErrorDataReceived += (_, ev) =>
+            {
+                if (string.IsNullOrEmpty(ev.Data)) return;
+                _inlineCameraPreviewFfmpegError = ev.Data;
+                AppendInlineRecorderLog("ffmpeg-preview: " + ev.Data);
+                if (ev.Data.IndexOf("Could not run graph", StringComparison.OrdinalIgnoreCase) >= 0
+                    || ev.Data.IndexOf("I/O error", StringComparison.OrdinalIgnoreCase) >= 0
+                    || ev.Data.IndexOf("Error opening input", StringComparison.OrdinalIgnoreCase) >= 0
+                    || ev.Data.IndexOf("device already in use", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    Dispatcher.BeginInvoke(new Action(() => MaybeSchedulePreviewRetry(launchedProc)));
+                }
+            };
+            _inlineRecorderWebcamPreviewProc.Start();
+            _inlineRecorderWebcamPreviewProc.BeginErrorReadLine();
+            _ = ReadInlineCameraOnlyPreviewAsync(_inlineRecorderWebcamPreviewProc.StandardOutput.BaseStream,
+                _inlineRecorderWebcamPreviewCts.Token);
+        }
+        catch (Exception ex)
+        {
+            _inlineCameraPreviewFfmpegError = ex.Message;
+            AppendInlineRecorderLog("preview start failed: " + ex);
+            inlineRecorderPreviewImage.Source = null;
+            MaybeSchedulePreviewRetry(null);
+        }
+    }
+
+    private void MaybeSchedulePreviewRetry(System.Diagnostics.Process? sourceProc)
+    {
+        if (!_inlineRecorderCameraOnly) return;
+        if (sourceProc != null && !ReferenceEquals(sourceProc, _inlineRecorderWebcamPreviewProc))
+        {
+            AppendInlineRecorderLog("(ignoring stale ffmpeg-preview error from a process we already replaced)");
+            return;
+        }
+        var lastJpegTicks = Interlocked.Read(ref _inlineCameraLastJpegTicks);
+        var sinceJpegMs = lastJpegTicks == 0 ? long.MaxValue : (DateTime.UtcNow.Ticks - lastJpegTicks) / TimeSpan.TicksPerMillisecond;
+        if (sinceJpegMs < 1500)
+        {
+            AppendInlineRecorderLog($"(ignoring ffmpeg-preview error - frames still arriving, last JPEG {sinceJpegMs} ms ago)");
+            return;
+        }
+        if (_inlineCameraPreviewRetryPending) return;
+        if (_inlineCameraPreviewRetryCount >= 4)
+        {
+            AppendInlineRecorderLog("Preview retry limit reached. Close the recorder and reopen, or check whether another app is using the camera.");
+            return;
+        }
+        _inlineCameraPreviewRetryPending = true;
+        _inlineCameraPreviewRetryCount++;
+        int delayMs = 600 + _inlineCameraPreviewRetryCount * 400;
+        AppendInlineRecorderLog($"Camera busy. Retrying preview in {delayMs} ms (attempt {_inlineCameraPreviewRetryCount}/4)...");
+        var t = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(delayMs) };
+        t.Tick += (_, _) =>
+        {
+            t.Stop();
+            _inlineCameraPreviewRetryPending = false;
+            if (!_inlineRecorderCameraOnly) return;
+            var freshLast = Interlocked.Read(ref _inlineCameraLastJpegTicks);
+            var freshSince = freshLast == 0 ? long.MaxValue : (DateTime.UtcNow.Ticks - freshLast) / TimeSpan.TicksPerMillisecond;
+            if (freshSince < 1500)
+            {
+                AppendInlineRecorderLog($"(retry skipped - frames now flowing, last JPEG {freshSince} ms ago)");
+                return;
+            }
+            StartInlineCameraOnlyPreview();
+        };
+        t.Start();
     }
 
     private void StopInlineRecorderWebcamPreview()
@@ -2325,9 +2918,10 @@ public partial class MainWindow : Window
             try
             {
                 if (!_inlineRecorderWebcamPreviewProc.HasExited)
-                    _inlineRecorderWebcamPreviewProc.Kill();
+                    _inlineRecorderWebcamPreviewProc.Kill(entireProcessTree: true);
             }
             catch { }
+            try { _inlineRecorderWebcamPreviewProc.WaitForExit(1500); } catch { }
             try { _inlineRecorderWebcamPreviewProc.Dispose(); } catch { }
         }
         _inlineRecorderWebcamPreviewProc = null;
@@ -2346,17 +2940,281 @@ public partial class MainWindow : Window
                 if (read <= 0) break;
                 for (int i = 0; i < read; i++) bytes.Add(buffer[i]);
 
-                while (TryExtractJpeg(bytes, out var jpg))
+                byte[]? latest = null;
+                int extracted = 0;
+                while (TryExtractJpeg(bytes, out var jpg)) { latest = jpg; extracted++; }
+                if (latest == null) continue;
+
+                if (_inlineRecorderCameraOnly)
                 {
-                    var image = BitmapSourceFromJpeg(jpg);
-                    Dispatcher.Invoke(() => _inlineRecorderWebcamControl?.SetLivePreviewSource(image));
+                    Interlocked.Add(ref _inlineCameraJpegsReceived, extracted);
+                    Interlocked.Exchange(ref _inlineCameraLastJpegTicks, DateTime.UtcNow.Ticks);
+
+                    if (_inlineCameraBackground.NeedsModel && _inlineCameraBgReady)
+                    {
+                        QueueInlineCameraAiPreview(latest);
+                        continue;
+                    }
+
+                    var rawImage = BitmapSourceFromJpeg(latest);
+                    Dispatcher.Invoke(() => inlineRecorderPreviewImage.Source = rawImage);
+                    continue;
                 }
+
+                if (_inlineRecorderWebcamBlock != null && _inlineCameraBackground.NeedsModel && _inlineCameraBgReady)
+                {
+                    QueueScreenCamAiPreview(latest);
+                    continue;
+                }
+
+                var image = BitmapSourceFromJpeg(latest);
+                Dispatcher.Invoke(() => _inlineRecorderWebcamControl?.SetLivePreviewSource(image));
             }
         }
         catch
         {
             // Preview is best-effort; recording failures are handled by the recorder process.
         }
+    }
+
+    private async System.Threading.Tasks.Task ReadInlineCameraOnlyPreviewAsync(Stream stream, System.Threading.CancellationToken token)
+    {
+        var buffer = new byte[8192];
+        var bytes = new List<byte>(256 * 1024);
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                int read = await stream.ReadAsync(buffer, 0, buffer.Length, token);
+                if (read <= 0) break;
+                for (int i = 0; i < read; i++) bytes.Add(buffer[i]);
+
+                byte[]? latest = null;
+                int extracted = 0;
+                while (TryExtractJpeg(bytes, out var jpg)) { latest = jpg; extracted++; }
+                if (latest == null) continue;
+
+                Interlocked.Add(ref _inlineCameraJpegsReceived, extracted);
+                Interlocked.Exchange(ref _inlineCameraLastJpegTicks, DateTime.UtcNow.Ticks);
+                _inlineCameraPreviewRetryCount = 0;
+
+                if (_inlineRecorderCameraOnly && _inlineCameraBackground.NeedsModel && _inlineCameraBgReady)
+                {
+                    QueueInlineCameraAiPreview(latest);
+                    continue;
+                }
+
+                var image = BitmapSourceFromJpeg(latest);
+                Dispatcher.Invoke(() => inlineRecorderPreviewImage.Source = image);
+            }
+        }
+        catch
+        {
+            // Preview is best-effort; recording errors are shown from ffmpeg stderr.
+        }
+    }
+
+    private void QueueInlineCameraAiPreview(byte[] jpg)
+    {
+        var nowTicks = DateTime.UtcNow.Ticks;
+        ReportInlineCameraAiStats(nowTicks);
+
+        var minIntervalTicks = TimeSpan.FromMilliseconds(120).Ticks;
+        if (nowTicks - Interlocked.Read(ref _inlineCameraLastAiPreviewTicks) < minIntervalTicks)
+        {
+            Interlocked.Increment(ref _inlineCameraAiSkippedThrottle);
+            return;
+        }
+        if (Interlocked.CompareExchange(ref _inlineCameraAiPreviewInFlight, 1, 0) != 0)
+        {
+            Interlocked.Increment(ref _inlineCameraAiSkippedBusy);
+            return;
+        }
+
+        Interlocked.Exchange(ref _inlineCameraLastAiPreviewTicks, nowTicks);
+        var jpgCopy = jpg;
+        AppendInlineRecorderLog($"AI frame start: {jpgCopy.Length:N0} bytes");
+        _ = System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var image = RenderInlineCameraAiPreviewFrame(jpgCopy);
+                sw.Stop();
+                Interlocked.Increment(ref _inlineCameraAiProcessed);
+                Interlocked.Exchange(ref _inlineCameraLastInferenceMs, sw.ElapsedMilliseconds);
+                Interlocked.Exchange(ref _inlineCameraLastAiDoneTicks, DateTime.UtcNow.Ticks);
+                Dispatcher.Invoke(() =>
+                {
+                    inlineRecorderPreviewImage.Source = image;
+                    inlineRecorderStatus.Text = $"Fast live AI preview ({_inlineCameraBgService.ExecutionProvider}).";
+                    AppendInlineRecorderLog($"AI frame done: {sw.ElapsedMilliseconds} ms ({_inlineCameraBgService.ExecutionProvider})");
+                });
+            }
+            catch (Exception ex)
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    inlineRecorderStatus.Text = "Fast live AI preview failed: " + ex.Message;
+                    AppendInlineRecorderLog("Fast live AI preview failed: " + ex);
+                });
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _inlineCameraAiPreviewInFlight, 0);
+            }
+        });
+    }
+
+    private System.Windows.Media.Imaging.BitmapSource RenderInlineCameraAiPreviewFrame(byte[] jpg)
+    {
+        using var ms = new MemoryStream(jpg);
+        using var raw = new System.Drawing.Bitmap(ms);
+        using var composited = _inlineCameraBgService.ProcessBitmap(raw, _inlineCameraBackground);
+        return BitmapToBitmapSource(composited);
+    }
+
+    private void QueueScreenCamAiPreview(byte[] jpg)
+    {
+        var nowTicks = DateTime.UtcNow.Ticks;
+        var minIntervalTicks = TimeSpan.FromMilliseconds(120).Ticks;
+        if (nowTicks - Interlocked.Read(ref _screenCamLastAiPreviewTicks) < minIntervalTicks) return;
+        if (Interlocked.CompareExchange(ref _screenCamAiPreviewInFlight, 1, 0) != 0) return;
+
+        Interlocked.Exchange(ref _screenCamLastAiPreviewTicks, nowTicks);
+        var jpgCopy = jpg;
+        _ = System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                var image = RenderInlineCameraAiPreviewFrame(jpgCopy);
+                Dispatcher.Invoke(() => _inlineRecorderWebcamControl?.SetLivePreviewSource(image));
+            }
+            catch (Exception ex)
+            {
+                Dispatcher.Invoke(() => AppendInlineRecorderLog("Screen+Cam AI preview failed: " + ex.Message));
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _screenCamAiPreviewInFlight, 0);
+            }
+        });
+    }
+
+    private void ResetInlineCameraAiCounters()
+    {
+        Interlocked.Exchange(ref _inlineCameraAiProcessed, 0);
+        Interlocked.Exchange(ref _inlineCameraAiSkippedBusy, 0);
+        Interlocked.Exchange(ref _inlineCameraAiSkippedThrottle, 0);
+        Interlocked.Exchange(ref _inlineCameraLastStatsTicks, 0);
+    }
+
+    private void ReportInlineCameraAiStats(long nowTicks)
+    {
+        var intervalTicks = TimeSpan.FromSeconds(3).Ticks;
+        var last = Interlocked.Read(ref _inlineCameraLastStatsTicks);
+        if (nowTicks - last < intervalTicks) return;
+        if (Interlocked.CompareExchange(ref _inlineCameraLastStatsTicks, nowTicks, last) != last) return;
+
+        var processed = Interlocked.Read(ref _inlineCameraAiProcessed);
+        var busy = Interlocked.Read(ref _inlineCameraAiSkippedBusy);
+        var throttle = Interlocked.Read(ref _inlineCameraAiSkippedThrottle);
+        AppendInlineRecorderLog($"AI stats: processed={processed}, skipped_busy={busy}, skipped_throttle={throttle}, provider={_inlineCameraBgService.ExecutionProvider}");
+    }
+
+    private void StartInlineCameraDiagTimer()
+    {
+        if (_inlineCameraDiagTimer == null)
+        {
+            _inlineCameraDiagTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+            _inlineCameraDiagTimer.Tick += (_, _) => RefreshInlineCameraAiDiag();
+        }
+        if (!_inlineCameraDiagTimer.IsEnabled) _inlineCameraDiagTimer.Start();
+        RefreshInlineCameraAiDiag();
+    }
+
+    private void StopInlineCameraDiagTimer()
+    {
+        try { _inlineCameraDiagTimer?.Stop(); } catch { }
+    }
+
+    private void ResetInlineCameraDiagWindow()
+    {
+        var now = DateTime.UtcNow.Ticks;
+        Interlocked.Exchange(ref _inlineCameraDiagWindowStartTicks, now);
+        Interlocked.Exchange(ref _inlineCameraDiagWindowJpegsStart, Interlocked.Read(ref _inlineCameraJpegsReceived));
+        Interlocked.Exchange(ref _inlineCameraDiagWindowAiStart, Interlocked.Read(ref _inlineCameraAiProcessed));
+    }
+
+    private void RefreshInlineCameraAiDiag()
+    {
+        if (inlineRecorderDiagText == null || !_inlineRecorderCameraOnly) return;
+
+        var nowTicks = DateTime.UtcNow.Ticks;
+        var windowStart = Interlocked.Read(ref _inlineCameraDiagWindowStartTicks);
+        if (windowStart == 0)
+        {
+            ResetInlineCameraDiagWindow();
+            windowStart = Interlocked.Read(ref _inlineCameraDiagWindowStartTicks);
+        }
+        var elapsedSec = Math.Max(0.001, (nowTicks - windowStart) / (double)TimeSpan.TicksPerSecond);
+
+        long jpegsTotal = Interlocked.Read(ref _inlineCameraJpegsReceived);
+        long aiTotal = Interlocked.Read(ref _inlineCameraAiProcessed);
+        long jpegsInWindow = jpegsTotal - Interlocked.Read(ref _inlineCameraDiagWindowJpegsStart);
+        long aiInWindow = aiTotal - Interlocked.Read(ref _inlineCameraDiagWindowAiStart);
+        double jpegsFps = jpegsInWindow / elapsedSec;
+        double aiFps = aiInWindow / elapsedSec;
+
+        if (elapsedSec > 5.0)
+        {
+            Interlocked.Exchange(ref _inlineCameraDiagWindowStartTicks, nowTicks);
+            Interlocked.Exchange(ref _inlineCameraDiagWindowJpegsStart, jpegsTotal);
+            Interlocked.Exchange(ref _inlineCameraDiagWindowAiStart, aiTotal);
+        }
+
+        long lastJpegTicks = Interlocked.Read(ref _inlineCameraLastJpegTicks);
+        long lastAiTicks = Interlocked.Read(ref _inlineCameraLastAiDoneTicks);
+        bool procAlive = _inlineRecorderWebcamPreviewProc != null && !_inlineRecorderWebcamPreviewProc.HasExited;
+        bool warnFreeze = _inlineCameraBackground.NeedsModel && lastAiTicks != 0
+                          && (nowTicks - lastAiTicks) > TimeSpan.FromSeconds(2).Ticks;
+        bool warnNoFrames = lastJpegTicks != 0
+                            && (nowTicks - lastJpegTicks) > TimeSpan.FromSeconds(2).Ticks;
+        bool warn = warnFreeze || warnNoFrames || !procAlive;
+
+        if (!AppSettings.CameraDebugDiagnostics)
+        {
+            inlineRecorderDiagText.Text = "";
+            return;
+        }
+
+        string sinceJpeg = lastJpegTicks == 0 ? "n/a" : $"{(nowTicks - lastJpegTicks) / (double)TimeSpan.TicksPerSecond:F1}s";
+        string sinceAi = lastAiTicks == 0 ? "n/a" : $"{(nowTicks - lastAiTicks) / (double)TimeSpan.TicksPerSecond:F1}s";
+        long inferMs = Interlocked.Read(ref _inlineCameraLastInferenceMs);
+        long busy = Interlocked.Read(ref _inlineCameraAiSkippedBusy);
+        long throttle = Interlocked.Read(ref _inlineCameraAiSkippedThrottle);
+
+        string mode = _inlineCameraBackground.Mode.ToString();
+        string provider = _inlineCameraBgReady ? _inlineCameraBgService.ExecutionProvider : (_inlineCameraBackground.NeedsModel ? "loading..." : "off");
+        string procState = procAlive ? "alive" : "STOPPED";
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append("AI DIAGNOSTICS  ");
+        sb.Append($"bg={mode}  provider={provider}  ffmpeg={procState}\n");
+        sb.Append($"camera in: {jpegsFps:F1} fps (total {jpegsTotal}, since last {sinceJpeg})\n");
+        sb.Append($"ai render: {aiFps:F1} fps (total {aiTotal}, last inference {inferMs} ms, since last {sinceAi})\n");
+        sb.Append($"skipped (still busy with previous): {busy}    skipped (rate-limit): {throttle}");
+        if (!string.IsNullOrWhiteSpace(_inlineCameraPreviewFfmpegError))
+            sb.Append($"\nlast ffmpeg-preview line: {_inlineCameraPreviewFfmpegError}");
+
+        if (warn)
+            inlineRecorderDiagText.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xB1, 0x4D));
+        else if (_inlineCameraBackground.NeedsModel && _inlineCameraBgReady)
+            inlineRecorderDiagText.Foreground = new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50));
+        else
+            inlineRecorderDiagText.Foreground = (Brush)FindResource("TextDim");
+
+        inlineRecorderDiagText.Text = sb.ToString();
     }
 
     private static bool TryExtractJpeg(List<byte> bytes, out byte[] jpg)
@@ -2412,6 +3270,7 @@ public partial class MainWindow : Window
     private void CaptureInlineRecorderLog(string? line)
     {
         if (string.IsNullOrWhiteSpace(line)) return;
+        AppendInlineRecorderLog("ffmpeg: " + line);
         lock (_inlineRecorderLogTail)
         {
             _inlineRecorderLogTail.Enqueue(line);
@@ -2423,6 +3282,71 @@ public partial class MainWindow : Window
                     !l.Contains("time=", StringComparison.OrdinalIgnoreCase))
                 .TakeLast(8));
         }
+    }
+
+    private static readonly object _cameraLogFileLock = new();
+    private static readonly string _cameraLogFilePath =
+        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "camera-diag.log");
+    private static bool _cameraLogFileTruncated;
+
+    private void ClearInlineRecorderVisibleLog()
+    {
+        lock (_inlineRecorderVisibleLog)
+        {
+            _inlineRecorderVisibleLog.Clear();
+        }
+        if (inlineRecorderLogText != null)
+        {
+            inlineRecorderLogText.Text = "";
+            inlineRecorderLogText.Visibility = AppSettings.CameraDebugDiagnostics ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private void AppendInlineRecorderLog(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return;
+        var stamped = $"[{DateTime.Now:HH:mm:ss}] {line}";
+
+        WriteCameraLogFile(stamped);
+
+        string visibleText;
+        lock (_inlineRecorderVisibleLog)
+        {
+            _inlineRecorderVisibleLog.Enqueue(stamped);
+            while (_inlineRecorderVisibleLog.Count > 80) _inlineRecorderVisibleLog.Dequeue();
+            visibleText = string.Join(Environment.NewLine, _inlineRecorderVisibleLog);
+        }
+
+        if (!AppSettings.CameraDebugDiagnostics) return;
+
+        void UpdateUi()
+        {
+            if (inlineRecorderLogText == null) return;
+            inlineRecorderLogText.Visibility = Visibility.Visible;
+            inlineRecorderLogText.Text = visibleText;
+            inlineRecorderLogText.ScrollToEnd();
+        }
+
+        if (Dispatcher.CheckAccess()) UpdateUi();
+        else Dispatcher.Invoke(UpdateUi);
+    }
+
+    private static void WriteCameraLogFile(string stamped)
+    {
+        try
+        {
+            lock (_cameraLogFileLock)
+            {
+                if (!_cameraLogFileTruncated)
+                {
+                    File.WriteAllText(_cameraLogFilePath,
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] --- camera diagnostics log started ---" + Environment.NewLine);
+                    _cameraLogFileTruncated = true;
+                }
+                File.AppendAllText(_cameraLogFilePath, stamped + Environment.NewLine);
+            }
+        }
+        catch { }
     }
 
     private string? DetectFirstDshowVideoDevice()
@@ -2491,7 +3415,7 @@ public partial class MainWindow : Window
     }
 
 
-    private void InlineRecorderStop_Click(object sender, RoutedEventArgs e)
+    private async void InlineRecorderStop_Click(object sender, RoutedEventArgs e)
     {
         var outputPath = inlineRecorderPathBox.Text.Trim();
         StopInlineScreenRecording();
@@ -2499,6 +3423,122 @@ public partial class MainWindow : Window
         inlineRecorderStopBtn.IsEnabled = false;
         closeInlineRecorderBtn.IsEnabled = true;
         inlineRecorderDot.Fill = new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50));
+
+        if (_inlineCameraRecordTempPath != null && File.Exists(_inlineCameraRecordTempPath))
+        {
+            inlineRecorderStartBtn.IsEnabled = false;
+            inlineRecorderStopBtn.IsEnabled = false;
+            closeInlineRecorderBtn.IsEnabled = false;
+            inlineRecorderDot.Fill = new SolidColorBrush(Color.FromRgb(0xFF, 0xB1, 0x4D));
+            int.TryParse(inlineRecorderFpsBox.Text, out var fpsValue);
+            if (fpsValue < 1) fpsValue = 30;
+            var temp = _inlineCameraRecordTempPath;
+            _inlineCameraRecordTempPath = null;
+            try
+            {
+                var progress = new Progress<double>(p =>
+                    inlineRecorderStatus.Text = $"Applying AI background... {p:P0}");
+                await _inlineCameraBgService.EnsureModelAsync();
+                await _inlineCameraBgService.ProcessVideoAsync(
+                    _ff, temp, outputPath, _inlineCameraBackground, fpsValue, progress);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("AI background render failed:\n" + ex.Message,
+                    "Camera Recording Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                inlineRecorderStatus.Text = "AI background render failed.";
+                return;
+            }
+            finally
+            {
+                try { File.Delete(temp); } catch { }
+                inlineRecorderStartBtn.IsEnabled = true;
+                closeInlineRecorderBtn.IsEnabled = true;
+            }
+        }
+        else if (_screenCamScreenTempPath != null && _screenCamRawTempPath != null
+                 && _screenCamFinalOutputPath != null && _screenCamPipRect.HasValue
+                 && File.Exists(_screenCamScreenTempPath) && File.Exists(_screenCamRawTempPath))
+        {
+            inlineRecorderStartBtn.IsEnabled = false;
+            inlineRecorderStopBtn.IsEnabled = false;
+            closeInlineRecorderBtn.IsEnabled = false;
+            inlineRecorderDot.Fill = new SolidColorBrush(Color.FromRgb(0xFF, 0xB1, 0x4D));
+            int.TryParse(inlineRecorderFpsBox.Text, out var fpsValue);
+            if (fpsValue < 1) fpsValue = 30;
+            var screenTemp = _screenCamScreenTempPath;
+            var camRawTemp = _screenCamRawTempPath;
+            var finalOut = _screenCamFinalOutputPath;
+            var pip = _screenCamPipRect.Value;
+            _screenCamScreenTempPath = null;
+            _screenCamRawTempPath = null;
+            _screenCamFinalOutputPath = null;
+            _screenCamPipRect = null;
+            string camAiExt = _inlineCameraBackground.NeedsAlpha ? ".webm" : ".mp4";
+            string camAiTemp = Path.ChangeExtension(camRawTemp, ".ai" + camAiExt);
+            try
+            {
+                var progress = new Progress<double>(p =>
+                    inlineRecorderStatus.Text = $"Applying AI background to camera... {p:P0}");
+                AppendInlineRecorderLog("Screen+Cam: starting AI render on camera track");
+                await _inlineCameraBgService.EnsureModelAsync();
+                await _inlineCameraBgService.ProcessVideoAsync(
+                    _ff, camRawTemp, camAiTemp, _inlineCameraBackground, fpsValue, progress);
+
+                inlineRecorderStatus.Text = "Compositing camera onto screen...";
+                AppendInlineRecorderLog($"Screen+Cam: compositing at x={pip.X} y={pip.Y} w={pip.W} h={pip.H}");
+                outputPath = finalOut;
+                var composeArgs = $"-y -i \"{screenTemp}\" -i \"{camAiTemp}\" " +
+                                  $"-filter_complex \"[1:v]scale={pip.W}:{pip.H}[cam];[0:v][cam]overlay={pip.X}:{pip.Y}[v]\" " +
+                                  $"-map \"[v]\" -c:v libx264 -preset veryfast -pix_fmt yuv420p -r {fpsValue} \"{finalOut}\"";
+                var composeProc = new System.Diagnostics.Process
+                {
+                    StartInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = _ff.FFmpegExe,
+                        Arguments = composeArgs,
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        RedirectStandardError = true
+                    },
+                    EnableRaisingEvents = true
+                };
+                _inlineRecorderLastError = "";
+                composeProc.ErrorDataReceived += (_, ev) =>
+                {
+                    if (!string.IsNullOrEmpty(ev.Data))
+                    {
+                        AppendInlineRecorderLog("compose: " + ev.Data);
+                        _inlineRecorderLastError = ev.Data;
+                    }
+                };
+                composeProc.Start();
+                composeProc.BeginErrorReadLine();
+                await composeProc.WaitForExitAsync();
+                if (composeProc.ExitCode != 0)
+                    throw new Exception($"Composit failed (ffmpeg exit {composeProc.ExitCode}). {_inlineRecorderLastError}");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Screen+Camera AI render failed:\n" + ex.Message,
+                    "Screen Recording Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                inlineRecorderStatus.Text = "Screen+Camera AI render failed.";
+                try { File.Delete(screenTemp); } catch { }
+                try { File.Delete(camRawTemp); } catch { }
+                try { File.Delete(camAiTemp); } catch { }
+                inlineRecorderStartBtn.IsEnabled = true;
+                closeInlineRecorderBtn.IsEnabled = true;
+                return;
+            }
+            finally
+            {
+                try { File.Delete(screenTemp); } catch { }
+                try { File.Delete(camRawTemp); } catch { }
+                try { File.Delete(camAiTemp); } catch { }
+                inlineRecorderStartBtn.IsEnabled = true;
+                closeInlineRecorderBtn.IsEnabled = true;
+            }
+        }
 
         if (!File.Exists(outputPath))
         {
@@ -2512,9 +3552,10 @@ public partial class MainWindow : Window
         }
 
         inlineRecorderStatus.Text = "Saved and added to the timeline: " + Path.GetFileName(outputPath);
-        status.Text = "Screen recording added to timeline: " + Path.GetFileName(outputPath);
+        status.Text = (_inlineRecorderCameraOnly ? "Camera recording" : "Screen recording") + " added to timeline: " + Path.GetFileName(outputPath);
         AddFiles(new[] { outputPath });
-        inlineRecorderPathBox.Text = DefaultScreenRecordingPath();
+        inlineRecorderPathBox.Text = _inlineRecorderCameraOnly ? DefaultCameraRecordingPath() : DefaultScreenRecordingPath();
+        if (_inlineRecorderCameraOnly) StartInlineCameraOnlyPreview();
     }
 
     private void StopInlineScreenRecording()
@@ -2543,7 +3584,7 @@ public partial class MainWindow : Window
     private void Record_Click(object s, RoutedEventArgs e)
     {
         if (IsInlineRecorderVisible()) AddInlineRecorderWebcam();
-        else OpenScreenRecorder(webcam: true);
+        else ShowInlineCameraRecorder();
     }
 
     private void Settings_Click(object s, RoutedEventArgs e) => new SettingsWindow() { Owner = this }.ShowDialog();
