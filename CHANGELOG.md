@@ -12,6 +12,22 @@ The latest signed Windows build is always available at
 
 ## [v1.7.1] - 2026-05-26
 
+### Added
+- **In-app updater** - Settings -> About -> "Check for updates now"
+  now actually does something. The app queries the GitHub releases
+  API for the latest tag, compares it against the assembly version,
+  downloads the win-x64 ZIP if a newer version is available, and
+  launches a PowerShell installer that waits for the running process
+  to exit, copies the new files over the install dir, and relaunches
+  the app. The "Release channel" dropdown and "Auto-check on startup"
+  toggle remain visible but are explicitly disabled with a "Coming
+  soon" tooltip until they are wired up.
+- The displayed version in Settings -> About is now read from the
+  assembly version (was a hardcoded `1.4.0` string), and the csproj
+  carries explicit `Version` / `AssemblyVersion` / `FileVersion` /
+  `InformationalVersion` properties so the assembly reports the real
+  version to the updater.
+
 ### Fixed
 - **App icon visible size** - the desktop / taskbar / Explorer icon was
   rendering noticeably smaller than other apps because the source PNG
