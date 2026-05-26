@@ -12,6 +12,38 @@ The latest signed Windows build is always available at
 
 ## [v1.7.1] - 2026-05-26
 
+### Added
+- **In-app updater** - Settings -> About -> "Check for updates now"
+  now actually does something. The app queries the GitHub releases
+  API for the latest tag, compares it against the assembly version,
+  downloads the win-x64 ZIP if a newer version is available, and
+  launches a PowerShell installer that waits for the running process
+  to exit, copies the new files over the install dir, and relaunches
+  the app. The "Release channel" dropdown and "Auto-check on startup"
+  toggle remain visible but are explicitly disabled with a "Coming
+  soon" tooltip until they are wired up.
+- The displayed version in Settings -> About is now read from the
+  assembly version (was a hardcoded `1.4.0` string), and the csproj
+  carries explicit `Version` / `AssemblyVersion` / `FileVersion` /
+  `InformationalVersion` properties so the assembly reports the real
+  version to the updater.
+- **`RUN.cmd` smart launcher** for users who downloaded the source
+  code (git clone or "Code -> Download ZIP") instead of a packaged
+  release. If the machine has the .NET 8 SDK the launcher builds and
+  runs from source; otherwise it pulls the latest pre-built release
+  ZIP from GitHub Releases and runs that. So even users without
+  .NET installed can now run the app straight from the source repo
+  by double-clicking `RUN.cmd`.
+- **`build-release.ps1`** helper - one command produces a portable,
+  self-contained `VideoEditor.exe` (single-file, includes the .NET 8
+  runtime, ready to drop on any Windows 10 / 11 x64 machine).
+  Optional `-Zip` flag packs it into a redistributable archive.
+- README rewrite (both English and Hebrew) - now states explicitly
+  that the release ZIP needs no .NET install, documents the new
+  `RUN.cmd` launcher path for source downloads, and lists the MODNet
+  AI background model alongside FFmpeg / Whisper as another asset
+  that auto-downloads on first use.
+
 ### Fixed
 - **App icon visible size** - the desktop / taskbar / Explorer icon was
   rendering noticeably smaller than other apps because the source PNG
@@ -19,6 +51,13 @@ The latest signed Windows build is always available at
   now auto-trims the transparent border, keeps a Windows-standard
   ~4 % padding, and rescales the logo so it fills the icon canvas
   the same way most other Windows app icons do.
+
+### Housekeeping
+- `.gitignore` now also ignores `models/` (where the MODNet AI
+  background ONNX is auto-downloaded on first use) and
+  `.launcher-cache/` (where `RUN.cmd` stashes the release ZIP it
+  pulls from GitHub when there is no local .NET 8 SDK). Both are
+  per-machine runtime caches that re-create themselves on demand.
 
 ---
 

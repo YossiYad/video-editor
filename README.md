@@ -10,7 +10,9 @@ A free, open-source desktop video editor for Windows. Built on C# / WPF with FFm
 
 ## ⬇️ Download
 
-**[Click here to download the latest release](https://github.com/YossiYad/video-editor/releases/latest)** - extract the ZIP and run `VideoEditor.exe`. No installer, no admin rights. Everything you need (FFmpeg, yt-dlp, whisper.cpp) downloads automatically on first use.
+**[Click here to download the latest release](https://github.com/YossiYad/video-editor/releases/latest)** - extract the ZIP and run `VideoEditor.exe`. No installer, no admin rights, **no .NET install needed** (the runtime is bundled inside the EXE). Everything else (FFmpeg, yt-dlp, whisper.cpp, the AI background model) downloads automatically on first use.
+
+> Downloaded the **source code** instead of a release (`git clone` or "Code -> Download ZIP")? Just double-click `RUN.cmd` in the repo root. It builds from source if you have the .NET 8 SDK, otherwise it auto-fetches the latest release ZIP for you.
 
 ## What it does
 
@@ -62,10 +64,22 @@ Crop · Resize · Rotate · Flip · Loop · Speed · Stabilize · Remove Logo ·
 ```powershell
 git clone https://github.com/YossiYad/video-editor.git
 cd video-editor
-dotnet run --project VideoEditor
+.\RUN.cmd
 ```
 
-On first launch the app auto-downloads `ffmpeg.exe` + `ffprobe.exe` into `bin\Debug\net8.0-windows\ffmpeg\`. If the download fails, grab them from <https://www.gyan.dev/ffmpeg/builds/> and drop both binaries in that folder.
+`RUN.cmd` is a smart launcher. It detects what you have on the machine and does the right thing:
+
+- **With .NET 8 SDK installed** -> builds and runs from your local source (`dotnet run --project VideoEditor`).
+- **Without .NET 8 SDK** -> downloads the latest pre-built release ZIP from GitHub Releases (self-contained, no .NET install needed) and launches it. So even people who downloaded the source code can run the app without installing anything.
+
+If you prefer to do it manually with the .NET SDK, `dotnet run --project VideoEditor` still works. To produce your own portable self-contained EXE that runs on any Windows 10 / 11 x64 machine without a .NET install, run:
+
+```powershell
+pwsh .\build-release.ps1            # -> publish\portable\VideoEditor.exe
+pwsh .\build-release.ps1 -Zip       # also packs it into a redistributable ZIP
+```
+
+On first launch the app auto-downloads `ffmpeg.exe` + `ffprobe.exe` into `bin\Debug\net8.0-windows\ffmpeg\`. If the download fails, grab them from <https://www.gyan.dev/ffmpeg/builds/> and drop both binaries in that folder. The Whisper model and the MODNet AI background model download the same way - on first use, inside the app.
 
 ## Project layout
 
@@ -111,7 +125,9 @@ This is **open source** - contributions are welcome!
 
 ## ⬇️ הורדה
 
-**[לחץ כאן להורדת הגרסה האחרונה](https://github.com/YossiYad/video-editor/releases/latest)** - חלץ את קובץ ה-ZIP והרץ את `VideoEditor.exe`. בלי התקנה, בלי הרשאות מנהל. כל מה שצריך (FFmpeg, yt-dlp, whisper.cpp) יורד אוטומטית בשימוש הראשון.
+**[לחץ כאן להורדת הגרסה האחרונה](https://github.com/YossiYad/video-editor/releases/latest)** - חלץ את קובץ ה-ZIP והרץ את `VideoEditor.exe`. בלי התקנה, בלי הרשאות מנהל, **בלי צורך להתקין .NET** (הסביבה של .NET 8 ארוזה בתוך ה-EXE). כל השאר (FFmpeg, yt-dlp, whisper.cpp, ומודל ה-AI לרקע) יורד אוטומטית בשימוש הראשון.
+
+> הורדת את **קוד המקור** במקום גרסה מוכנה (`git clone` או "Code -> Download ZIP")? תעשה דאבל-קליק על `RUN.cmd` בתיקיית הריפו. הסקריפט בודק אם יש .NET 8 SDK במחשב: אם יש, הוא בונה ומריץ מהקוד המקומי. אם אין, הוא מוריד אוטומטית את ה-ZIP המוכן האחרון מ-GitHub Releases ומריץ אותו.
 
 ## מה האפליקציה עושה
 
@@ -163,10 +179,22 @@ This is **open source** - contributions are welcome!
 ```powershell
 git clone https://github.com/YossiYad/video-editor.git
 cd video-editor
-dotnet run --project VideoEditor
+.\RUN.cmd
 ```
 
-בהפעלה הראשונה האפליקציה תוריד אוטומטית את `ffmpeg.exe` ו-`ffprobe.exe` לתיקייה `bin\Debug\net8.0-windows\ffmpeg\`. אם ההורדה נכשלה, הורד ידנית מ-<https://www.gyan.dev/ffmpeg/builds/> ושים את שני הקבצים שם.
+`RUN.cmd` הוא Launcher חכם שמזהה מה יש לך במחשב ומחליט מה לעשות:
+
+- **אם יש .NET 8 SDK** - בונה ומריץ מהקוד המקומי (`dotnet run --project VideoEditor`).
+- **אם אין .NET 8 SDK** - מוריד את גרסת ה-ZIP המוכנה האחרונה מ-GitHub Releases (Self-Contained, לא דורש .NET) ומריץ אותה. כך גם משתמשים בלי .NET יכולים להריץ ישר מקוד המקור.
+
+אם אתה מעדיף ידני עם .NET SDK, גם `dotnet run --project VideoEditor` עובד. כדי לבנות בעצמך EXE נייד Self-Contained שרץ על כל Windows 10 / 11 x64 בלי התקנת .NET, הרץ:
+
+```powershell
+pwsh .\build-release.ps1            # -> publish\portable\VideoEditor.exe
+pwsh .\build-release.ps1 -Zip       # גם אורז ל-ZIP מוכן להפצה
+```
+
+בהפעלה הראשונה האפליקציה תוריד אוטומטית את `ffmpeg.exe` ו-`ffprobe.exe` לתיקייה `bin\Debug\net8.0-windows\ffmpeg\`. אם ההורדה נכשלה, הורד ידנית מ-<https://www.gyan.dev/ffmpeg/builds/> ושים את שני הקבצים שם. גם מודל ה-Whisper וגם מודל ה-AI לרקע (MODNet) יורדים באותה צורה - בפעם הראשונה שצריך אותם, מתוך האפליקציה.
 
 ## תרומה לפרויקט
 
