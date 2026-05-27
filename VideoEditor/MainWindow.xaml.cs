@@ -381,6 +381,74 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    // Click-away: a MouseDown anywhere outside the inspector / preview / recorder area
+    // collapses the inspector (or in recorder mode, returns to the Recording tab).
+    // We use PreviewMouseDown so we run before child handlers — but we don't set e.Handled,
+    // so existing click logic still runs.
+    private void Window_PreviewMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is not DependencyObject src) return;
+        // ResizableBlock click handlers fire from this same press → those are object
+        // selections, not deselections.
+        if (FindAncestor<VideoEditor.Controls.ResizableBlock>(src) != null) return;
+        if (IsInInspectorKeepZone(src)) return;
+        if (IsInRecorderPreviewKeepZone(src)) return;
+
+        bool inRecorder = IsInlineRecorderVisible();
+        bool hadSelection = _selectedBlock != null || _selectedClip != null;
+        // If we're in recorder mode and a Block tab is open via SelectBlock, click-away
+        // returns to the Recording tab so the user keeps the recorder context. If we're
+        // outside recorder mode and something was selected, fully deselect.
+        if (inRecorder)
+        {
+            if (hadSelection || recorderInspectorPanel.Visibility != Visibility.Visible)
+            {
+                _selectedBlock = null;
+                _selectedClip = null;
+                try { timeline.SelectBlock(null); } catch { }
+                try { timeline.SelectClip(null); } catch { }
+                ShowInspectorTab("recording");
+            }
+        }
+        else if (hadSelection || blockPanel.Visibility == Visibility.Visible
+                              || clipPanel.Visibility == Visibility.Visible
+                              || emptyInspector.Visibility == Visibility.Visible)
+        {
+            _selectedBlock = null;
+            _selectedClip = null;
+            try { timeline.SelectBlock(null); } catch { }
+            try { timeline.SelectClip(null); } catch { }
+            ShowInspectorTab("none");
+        }
+    }
+
+    // Click landed inside the right-side inspector — keep current tab open.
+    private bool IsInInspectorKeepZone(DependencyObject src)
+    {
+        for (var node = src; node != null; node = VisualTreeHelper.GetParent(node))
+            if (node is FrameworkElement fe && ReferenceEquals(fe, inspectorBorder)) return true;
+        return false;
+    }
+
+    // Click landed on the centre recorder preview area — RecorderPreview_Clicked handles
+    // re-opening the tab; don't also collapse it here.
+    private bool IsInRecorderPreviewKeepZone(DependencyObject src)
+    {
+        for (var node = src; node != null; node = VisualTreeHelper.GetParent(node))
+            if (node is FrameworkElement fe && ReferenceEquals(fe, screenRecorderPanel)) return true;
+        return false;
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? node) where T : DependencyObject
+    {
+        while (node != null)
+        {
+            if (node is T t) return t;
+            node = VisualTreeHelper.GetParent(node);
+        }
+        return null;
+    }
+
     private async void AddFiles(string[] files, double? insertAtSec = null)
     {
         var exts = new[] { ".mp4", ".mov", ".mkv", ".avi", ".webm", ".wmv", ".flv", ".m4v" };
@@ -1148,42 +1216,87 @@ public partial class MainWindow : Window
         if (_playingClip == _selectedClip) ApplyClipTransform(_selectedClip);
     }
 
-    // Show the relevant inspector panel. "none" leaves the tab row and all panels empty.
-    // "recorder" hides the normal tabs and shows only the recorder tab.
-    // "multi" shows the "N items selected" placeholder for multi-selection.
+    // Show the relevant inspector panel.
+    //   "none"      → tab row and all panels empty.
+    //   "block"/"clip"/"export" → static inspector tab + matching panel.
+    //   "recording" → recorderInspectorPanel with source/fps/output visible (Start/Stop).
+    //   "camera"    → recorderInspectorPanel with camera controls visible.
+    //   "multi"     → multi-select placeholder shows "N items selected".
+    // In recorder mode the static tabs (Block/Clip/Export) stay hidden — the dynamic
+    // recorderTabHost holds Recording / Camera / Block N tabs instead.
     private void ShowInspectorTab(string key)
     {
-        bool isBlock = key == "block";
-        bool isClip  = key == "clip";
-        bool isExp   = key == "export";
-        bool isRec   = key == "recorder";
-        bool isMulti = key == "multi";
-        blockPanel.Visibility    = isBlock ? Visibility.Visible : Visibility.Collapsed;
-        clipPanel.Visibility     = isClip  ? Visibility.Visible : Visibility.Collapsed;
-        emptyInspector.Visibility = isExp  ? Visibility.Visible : Visibility.Collapsed;
-        recorderInspectorPanel.Visibility = isRec ? Visibility.Visible : Visibility.Collapsed;
+        // "recorder" is kept as an alias for "recording" — older code paths still call it.
+        if (key == "recorder") key = "recording";
+
+        bool isBlock     = key == "block";
+        bool isClip      = key == "clip";
+        bool isExp       = key == "export";
+        bool isRecording = key == "recording";
+        bool isCamera    = key == "camera";
+        bool isMulti     = key == "multi";
+        bool inRecorder  = IsInlineRecorderVisible();
+
+        // Content panels
+        blockPanel.Visibility             = isBlock ? Visibility.Visible : Visibility.Collapsed;
+        clipPanel.Visibility              = isClip  ? Visibility.Visible : Visibility.Collapsed;
+        emptyInspector.Visibility         = isExp   ? Visibility.Visible : Visibility.Collapsed;
+        recorderInspectorPanel.Visibility = (isRecording || isCamera) ? Visibility.Visible : Visibility.Collapsed;
         if (multiSelectInspector != null)
         {
             multiSelectInspector.Visibility = isMulti ? Visibility.Visible : Visibility.Collapsed;
             if (isMulti && multiSelectCountText != null)
                 multiSelectCountText.Text = $"{timeline.TotalSelectionCount} items selected";
         }
+
+        // Sub-sections inside the recorder panel
+        inlineRecorderSourcePanel.Visibility = isRecording ? Visibility.Visible : Visibility.Collapsed;
+        inlineRecorderFpsPanel.Visibility    = isRecording ? Visibility.Visible : Visibility.Collapsed;
+        inlineRecorderOutputPanel.Visibility = isRecording ? Visibility.Visible : Visibility.Collapsed;
+        inlineRecorderCameraPanel.Visibility = isCamera    ? Visibility.Visible : Visibility.Collapsed;
+
+
         _suppress = true;
-        tabBlockBtn.IsChecked = isBlock;
-        tabClipBtn.IsChecked  = isClip;
-        tabExportBtn.IsChecked = isExp;
-        tabRecorderBtn.IsChecked = isRec;
-        // Show a tab button only when its panel is the one being displayed; the user wants
-        // the tab row to be empty when no panel is selected.
-        tabBlockBtn.Visibility    = isBlock ? Visibility.Visible : Visibility.Collapsed;
-        tabClipBtn.Visibility     = isClip  ? Visibility.Visible : Visibility.Collapsed;
-        tabExportBtn.Visibility   = isExp   ? Visibility.Visible : Visibility.Collapsed;
-        normalTabsBar.Visibility  = (isBlock || isClip || isExp) ? Visibility.Visible : Visibility.Collapsed;
-        tabRecorderBtn.Visibility = isRec ? Visibility.Visible : Visibility.Collapsed;
+        // Static tabs are only used outside recorder mode.
+        tabBlockBtn.IsChecked  = !inRecorder && isBlock;
+        tabClipBtn.IsChecked   = !inRecorder && isClip;
+        tabExportBtn.IsChecked = !inRecorder && isExp;
+        tabBlockBtn.Visibility  = (!inRecorder && isBlock) ? Visibility.Visible : Visibility.Collapsed;
+        tabClipBtn.Visibility   = (!inRecorder && isClip)  ? Visibility.Visible : Visibility.Collapsed;
+        tabExportBtn.Visibility = (!inRecorder && isExp)   ? Visibility.Visible : Visibility.Collapsed;
+        normalTabsBar.Visibility = (!inRecorder && (isBlock || isClip || isExp))
+            ? Visibility.Visible : Visibility.Collapsed;
+        // The dynamic recorder tabs (Recording / Camera / Block N) are built by
+        // RebuildRecorderTopLevelTabs. Here we just check the right one if applicable.
+        if (inRecorder) MarkRecorderTopLevelTabChecked(key, isBlock ? _selectedBlock : null);
+        // Whole tab bar shows iff at least one tab is visible. recorderTabHost manages its
+        // own visibility in RebuildRecorderTopLevelTabs.
+        UpdateInspectorTabsBarVisibility();
         if (tabBlockDot != null) tabBlockDot.Visibility = _selectedBlock != null ? Visibility.Visible : Visibility.Collapsed;
         if (tabClipDot != null)  tabClipDot.Visibility  = _selectedClip != null ? Visibility.Visible : Visibility.Collapsed;
         tabClipBtn.Visibility = _selectedClip != null ? Visibility.Visible : Visibility.Collapsed;
         _suppress = false;
+    }
+
+    // Outer inspectorTabsBar is collapsed when neither static tabs nor recorder tabs show.
+    private void UpdateInspectorTabsBarVisibility()
+    {
+        bool anyVisible = normalTabsBar.Visibility == Visibility.Visible
+                          || recorderTabHost.Visibility == Visibility.Visible;
+        inspectorTabsBar.Visibility = anyVisible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // Find and check the dynamic RadioButton matching the current panel.
+    private void MarkRecorderTopLevelTabChecked(string key, VideoBlock? selectedBlock)
+    {
+        foreach (var tab in _inlineRecorderTabList)
+        {
+            if (tab.Button == null) continue;
+            bool match = (key == "recording" && tab.Kind == InlineTabKind.Recording)
+                      || (key == "camera"    && tab.Kind == InlineTabKind.Camera)
+                      || (key == "block"     && tab.Kind == InlineTabKind.Block && ReferenceEquals(tab.Block, selectedBlock));
+            tab.Button.IsChecked = match;
+        }
     }
 
     private void TabBlock_Click(object sender, RoutedEventArgs e)
@@ -1201,23 +1314,18 @@ public partial class MainWindow : Window
         if (_suppress) return;
         ShowInspectorTab("export");
     }
-    private void TabRecorder_Click(object sender, RoutedEventArgs e)
-    {
-        if (_suppress) return;
-        ShowInspectorTab("recorder");
-        HideRecordingHint();
-    }
 
-    // Recording is in progress — hide the inspector tab so the preview gets full width.
-    // The tab button itself is also hidden so the row is empty; the only way to bring the
-    // controls back is to click the centre preview.
+    // Recording is in progress — hide the inspector tabs and panel so the preview gets full
+    // width. The only way to bring controls back is to click the centre preview.
     private void CollapseRecorderTab()
     {
         _suppress = true;
-        tabRecorderBtn.IsChecked = false;
-        tabRecorderBtn.Visibility = Visibility.Collapsed;
+        foreach (var tab in _inlineRecorderTabList)
+            if (tab.Button != null) tab.Button.IsChecked = false;
         recorderInspectorPanel.Visibility = Visibility.Collapsed;
+        recorderTabHost.Visibility = Visibility.Collapsed;
         normalTabsBar.Visibility = Visibility.Collapsed;
+        UpdateInspectorTabsBarVisibility();
         _suppress = false;
     }
 
@@ -1227,8 +1335,10 @@ public partial class MainWindow : Window
     private void RecorderPreview_Clicked(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         if (!IsInlineRecorderVisible()) return;
-        if (recorderInspectorPanel.Visibility == Visibility.Visible) return;
-        ShowInspectorTab("recorder");
+        if (recorderInspectorPanel.Visibility == Visibility.Visible
+            && recorderTabHost.Visibility == Visibility.Visible) return;
+        recorderTabHost.Visibility = _inlineRecorderTabList.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ShowInspectorTab("recording");
         HideRecordingHint();
         e.Handled = true;
     }
@@ -2310,19 +2420,30 @@ public partial class MainWindow : Window
         _screenCamRawTempPath = null;
         _screenCamFinalOutputPath = null;
         _screenCamPipRect = null;
+        // Hide blocks added in recorder mode are scene-only; closing the recorder discards
+        // them so they don't ghost into the timeline's block list. Also clears _selectedBlock
+        // if it pointed to one of them — otherwise the inspector would re-open a Block tab
+        // bound to a deleted control.
+        foreach (var b in GetInlineRecorderBlocks().ToList())
+        {
+            if (_blockControls.TryGetValue(b, out var ctl))
+            {
+                inlineRecorderOverlayCanvas.Children.Remove(ctl);
+                _blockControls.Remove(b);
+            }
+            if (ReferenceEquals(_selectedBlock, b)) _selectedBlock = null;
+        }
         _inlineRecorderTabList.Clear();
         _activeInlineTab = null;
-        inlineRecorderTabButtons.Items.Clear();
-        inlineRecorderTabButtons.Visibility = Visibility.Collapsed;
+        recorderTabHost.Items.Clear();
+        recorderTabHost.Visibility = Visibility.Collapsed;
         inlineRecorderSourcePanel.Visibility = Visibility.Visible;
         inlineRecorderCameraPanel.Visibility = Visibility.Collapsed;
         inlineRecorderFpsPanel.Visibility = Visibility.Visible;
         inlineRecorderOutputPanel.Visibility = Visibility.Visible;
-        inlineRecorderBlockPanel.Visibility = Visibility.Collapsed;
         inlineRecorderSourceBox.IsEnabled = true;
         if (wasCameraOnly)
         {
-            if (tabRecorderBtn != null) tabRecorderBtn.Visibility = Visibility.Collapsed;
             recorderInspectorPanel.Visibility = Visibility.Collapsed;
         }
         screenRecorderPanel.Visibility = Visibility.Collapsed;
@@ -2409,20 +2530,25 @@ public partial class MainWindow : Window
         CaptureInlineRecorderPreview();
     }
 
+    // Camera-only mode (user clicked Camera Record): no need for tabs — one combined panel.
     private void ApplyInlineCameraOnlyPanelLayout()
     {
-        inlineRecorderTabButtons.Visibility = Visibility.Collapsed;
         inlineRecorderSourcePanel.Visibility = Visibility.Visible;
         inlineRecorderCameraPanel.Visibility = Visibility.Visible;
-        inlineRecorderFpsPanel.Visibility = Visibility.Visible;
+        inlineRecorderFpsPanel.Visibility    = Visibility.Visible;
         inlineRecorderOutputPanel.Visibility = Visibility.Visible;
-        inlineRecorderBlockPanel.Visibility = Visibility.Collapsed;
-        inlineCameraRemoveBtn.Visibility = Visibility.Collapsed;
+        inlineCameraRemoveBtn.Visibility     = Visibility.Collapsed;
+        recorderInspectorPanel.Visibility    = Visibility.Visible;
         _inlineRecorderTabList.Clear();
         _activeInlineTab = null;
-        inlineRecorderTabButtons.Items.Clear();
+        recorderTabHost.Items.Clear();
+        recorderTabHost.Visibility = Visibility.Collapsed;
+        UpdateInspectorTabsBarVisibility();
     }
 
+    // Rebuild the dynamic top-level tabs in recorderTabHost: Recording / Camera (if a camera
+    // layer is in the scene) / Block N (one per recorder-scoped hide block). Old name kept
+    // because there are existing call sites in AddBlock_Click / DeleteBlock_Click.
     private void RebuildInlineRecorderTabs()
     {
         if (_inlineRecorderCameraOnly)
@@ -2431,7 +2557,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        var rememberedKind = _activeInlineTab?.Kind;
+        // Remember what was active so we can re-select it after rebuild (e.g. Block N tab
+        // that was just edited should stay selected even when a new block is added).
+        var rememberedKind  = _activeInlineTab?.Kind;
         var rememberedBlock = _activeInlineTab?.Block;
 
         _inlineRecorderTabList.Clear();
@@ -2446,23 +2574,23 @@ public partial class MainWindow : Window
             _inlineRecorderTabList.Add(new InlineRecorderTab { Kind = InlineTabKind.Block, Title = $"Block {n++}", Block = b });
         }
 
-        inlineRecorderTabButtons.Items.Clear();
+        recorderTabHost.Items.Clear();
         foreach (var tab in _inlineRecorderTabList)
         {
             var rb = new RadioButton
             {
                 Content = tab.Title,
-                GroupName = "InlineRecorderTabs",
+                GroupName = "InspectorTabs",
                 Style = (Style)FindResource("InspectorTab"),
                 Margin = new Thickness(0, 0, 6, 6)
             };
             var tabRef = tab;
-            rb.Checked += (_, _) => SelectInlineRecorderTab(tabRef);
+            rb.Click += (_, _) => ActivateRecorderTopLevelTab(tabRef);
             tab.Button = rb;
-            inlineRecorderTabButtons.Items.Add(rb);
+            recorderTabHost.Items.Add(rb);
         }
-
-        inlineRecorderTabButtons.Visibility = _inlineRecorderTabList.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+        recorderTabHost.Visibility = _inlineRecorderTabList.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateInspectorTabsBarVisibility();
 
         InlineRecorderTab? toActivate = null;
         if (rememberedBlock != null)
@@ -2470,30 +2598,29 @@ public partial class MainWindow : Window
         if (toActivate == null && rememberedKind.HasValue && rememberedKind.Value != InlineTabKind.Block)
             toActivate = _inlineRecorderTabList.FirstOrDefault(t => t.Kind == rememberedKind.Value);
         toActivate ??= _inlineRecorderTabList[0];
-        if (toActivate.Button != null) toActivate.Button.IsChecked = true;
-        else SelectInlineRecorderTab(toActivate);
+        ActivateRecorderTopLevelTab(toActivate);
     }
 
-    private void SelectInlineRecorderTab(InlineRecorderTab tab)
+    // Click handler for the dynamic recorder tabs. Routes to the right ShowInspectorTab key
+    // or, for Block tabs, to SelectBlock so the full blockPanel is shown.
+    private void ActivateRecorderTopLevelTab(InlineRecorderTab tab)
     {
         _activeInlineTab = tab;
-        inlineRecorderSourcePanel.Visibility = tab.Kind == InlineTabKind.Recording ? Visibility.Visible : Visibility.Collapsed;
-        inlineRecorderFpsPanel.Visibility = tab.Kind == InlineTabKind.Recording ? Visibility.Visible : Visibility.Collapsed;
-        inlineRecorderOutputPanel.Visibility = tab.Kind == InlineTabKind.Recording ? Visibility.Visible : Visibility.Collapsed;
-        inlineRecorderCameraPanel.Visibility = tab.Kind == InlineTabKind.Camera ? Visibility.Visible : Visibility.Collapsed;
-        inlineRecorderBlockPanel.Visibility = tab.Kind == InlineTabKind.Block ? Visibility.Visible : Visibility.Collapsed;
-        inlineCameraRemoveBtn.Visibility = tab.Kind == InlineTabKind.Camera ? Visibility.Visible : Visibility.Collapsed;
-
-        if (tab.Kind == InlineTabKind.Camera)
+        switch (tab.Kind)
         {
-            inlineCameraDeviceLabel.Text = string.IsNullOrWhiteSpace(_inlineRecorderWebcamDeviceName)
-                ? ""
-                : $"Device: {_inlineRecorderWebcamDeviceName}";
-        }
-        else if (tab.Kind == InlineTabKind.Block && tab.Block != null)
-        {
-            inlineBlockTitleText.Text = tab.Title;
-            inlineBlockColorSwatch.Background = new SolidColorBrush(tab.Block.Color);
+            case InlineTabKind.Recording:
+                ShowInspectorTab("recording");
+                break;
+            case InlineTabKind.Camera:
+                inlineCameraDeviceLabel.Text = string.IsNullOrWhiteSpace(_inlineRecorderWebcamDeviceName)
+                    ? ""
+                    : $"Device: {_inlineRecorderWebcamDeviceName}";
+                inlineCameraRemoveBtn.Visibility = Visibility.Visible;
+                ShowInspectorTab("camera");
+                break;
+            case InlineTabKind.Block when tab.Block is not null:
+                SelectBlock(tab.Block);
+                break;
         }
     }
 
@@ -2510,27 +2637,6 @@ public partial class MainWindow : Window
         _inlineCameraBgReady = false;
         inlineRecorderStatus.Text = "Camera removed from the scene.";
         RebuildInlineRecorderTabs();
-    }
-
-    private void InlineBlockDelete_Click(object sender, RoutedEventArgs e)
-    {
-        if (_activeInlineTab?.Block is not VideoBlock block) return;
-        if (_blockControls.TryGetValue(block, out var control))
-        {
-            inlineRecorderOverlayCanvas.Children.Remove(control);
-            _blockControls.Remove(block);
-        }
-        RebuildInlineRecorderTabs();
-    }
-
-    private void InlineBlockColorSwatch_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    {
-        if (_activeInlineTab?.Block is not VideoBlock block) return;
-        if (_blockControls.TryGetValue(block, out var control))
-        {
-            _selectedBlock = block;
-            control.Focus();
-        }
     }
 
     private async void InlineCameraBg_Changed(object sender, SelectionChangedEventArgs e)
