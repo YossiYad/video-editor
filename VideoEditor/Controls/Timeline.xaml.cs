@@ -460,24 +460,275 @@ public partial class Timeline : UserControl
 
     public void SelectBlock(VideoBlock? b)
     {
-        var prev = _selectedBlock;
+        ClearAllSelectionSets();
         _selectedBlock = b;
-        if (b != null) { _selectedClip = null; _selectedAudio = null; UpdateAudioBarSelection(); }
-        if (prev != null && _blockBars.TryGetValue(prev, out var pb)) pb.SetSelected(false);
-        if (b != null && _blockBars.TryGetValue(b, out var nb)) nb.SetSelected(true);
-        if (_selectedClip == null) ClearClipSelectionVisuals();
+        if (b != null) _selectedBlocks.Add(b);
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
     }
     public void SelectClip(VideoClip? c)
     {
-        var prev = _selectedClip;
+        ClearAllSelectionSets();
         _selectedClip = c;
-        if (c != null) { _selectedBlock = null; _selectedAudio = null; UpdateAudioBarSelection(); }
-        if (prev != null && _clipBars.TryGetValue(prev, out var pb)) pb.SetSelected(false);
-        if (c != null && _clipBars.TryGetValue(c, out var nb)) nb.SetSelected(true);
-        if (_selectedBlock == null) ClearBlockSelectionVisuals();
+        if (c != null) _selectedClips.Add(c);
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
     }
     private void ClearClipSelectionVisuals() { foreach (var cb in _clipBars.Values) cb.SetSelected(false); }
     private void ClearBlockSelectionVisuals() { foreach (var bb in _blockBars.Values) bb.SetSelected(false); }
+
+    private void ClearAllSelectionSets()
+    {
+        _selectedClip = null;
+        _selectedBlock = null;
+        _selectedTextOverlay = null;
+        _selectedAudio = null;
+        _selectedClips.Clear();
+        _selectedBlocks.Clear();
+        _selectedTextOverlays.Clear();
+        _selectedAudios.Clear();
+    }
+
+    public void ClearAllSelection()
+    {
+        ClearAllSelectionSets();
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
+    }
+
+    private void RefreshAllVisuals()
+    {
+        foreach (var kv in _clipBars) kv.Value.SetSelected(_selectedClips.Contains(kv.Key));
+        foreach (var kv in _blockBars) kv.Value.SetSelected(_selectedBlocks.Contains(kv.Key));
+        foreach (var kv in _textBars) kv.Value.SetSelected(_selectedTextOverlays.Contains(kv.Key));
+        foreach (var kv in _audioBars) kv.Value.SetSelected(_selectedAudios.Contains(kv.Key));
+    }
+
+    // === Ctrl-aware click routers (called from each Bar's MouseLeftButtonDown).
+    // Without Ctrl: replaces the selection with just this item. With Ctrl: toggles
+    // membership in the matching set, unless a different type is currently selected
+    // (per-type rule) - in that case the click acts like a fresh single-select.
+
+    internal void HandleClipClick(VideoClip c, bool ctrl)
+    {
+        if (!ctrl) { SelectClip(c); return; }
+        bool otherTypeSelected = _selectedBlocks.Count + _selectedTextOverlays.Count + _selectedAudios.Count > 0;
+        if (otherTypeSelected) { SelectClip(c); return; }
+        if (_selectedClips.Contains(c))
+        {
+            _selectedClips.Remove(c);
+            if (_selectedClip == c) _selectedClip = _selectedClips.LastOrDefault();
+        }
+        else
+        {
+            _selectedClips.Add(c);
+            _selectedClip = c;
+        }
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
+    }
+
+    internal void HandleBlockClick(VideoBlock b, bool ctrl)
+    {
+        if (!ctrl) { SelectBlock(b); return; }
+        bool otherTypeSelected = _selectedClips.Count + _selectedTextOverlays.Count + _selectedAudios.Count > 0;
+        if (otherTypeSelected) { SelectBlock(b); return; }
+        if (_selectedBlocks.Contains(b))
+        {
+            _selectedBlocks.Remove(b);
+            if (_selectedBlock == b) _selectedBlock = _selectedBlocks.LastOrDefault();
+        }
+        else
+        {
+            _selectedBlocks.Add(b);
+            _selectedBlock = b;
+        }
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
+    }
+
+    internal void HandleTextOverlayClick(TextOverlay o, bool ctrl)
+    {
+        if (!ctrl) { SelectTextOverlay(o); return; }
+        bool otherTypeSelected = _selectedClips.Count + _selectedBlocks.Count + _selectedAudios.Count > 0;
+        if (otherTypeSelected) { SelectTextOverlay(o); return; }
+        if (_selectedTextOverlays.Contains(o))
+        {
+            _selectedTextOverlays.Remove(o);
+            if (_selectedTextOverlay == o) _selectedTextOverlay = _selectedTextOverlays.LastOrDefault();
+        }
+        else
+        {
+            _selectedTextOverlays.Add(o);
+            _selectedTextOverlay = o;
+        }
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
+    }
+
+    internal void HandleAudioClick(VideoClip c, bool ctrl)
+    {
+        if (!ctrl) { SelectAudio(c); return; }
+        bool otherTypeSelected = _selectedClips.Count + _selectedBlocks.Count + _selectedTextOverlays.Count > 0;
+        if (otherTypeSelected) { SelectAudio(c); return; }
+        if (_selectedAudios.Contains(c))
+        {
+            _selectedAudios.Remove(c);
+            if (_selectedAudio == c) _selectedAudio = _selectedAudios.LastOrDefault();
+        }
+        else
+        {
+            _selectedAudios.Add(c);
+            _selectedAudio = c;
+        }
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
+    }
+
+    // === Multi-drag: cache start positions of all selected items at DragStarted,
+    // apply the same clamped delta to all of them on each DragDelta.
+
+    private Dictionary<VideoClip, double>? _multiDragStartClipTL;
+    private Dictionary<VideoBlock, (double start, double end)>? _multiDragStartBlocks;
+    private Dictionary<TextOverlay, (double start, double end)>? _multiDragStartOverlays;
+    private Dictionary<VideoClip, double>? _multiDragStartAudioTL;
+
+    internal void BeginMultiDrag()
+    {
+        _multiDragStartClipTL = _selectedClips.Count > 1
+            ? _selectedClips.ToDictionary(c => c, c => c.TimelineStart) : null;
+        _multiDragStartBlocks = _selectedBlocks.Count > 1
+            ? _selectedBlocks.ToDictionary(b => b, b => (b.StartSeconds, b.EndSeconds)) : null;
+        _multiDragStartOverlays = _selectedTextOverlays.Count > 1
+            ? _selectedTextOverlays.ToDictionary(o => o, o => (o.StartSeconds, o.EndSeconds)) : null;
+        _multiDragStartAudioTL = _selectedAudios.Count > 1
+            ? _selectedAudios.ToDictionary(c => c, c => c.TimelineStart) : null;
+    }
+
+    internal bool EndMultiDrag()
+    {
+        bool wasMulti = _multiDragStartClipTL != null || _multiDragStartBlocks != null
+                       || _multiDragStartOverlays != null || _multiDragStartAudioTL != null;
+        _multiDragStartClipTL = null;
+        _multiDragStartBlocks = null;
+        _multiDragStartOverlays = null;
+        _multiDragStartAudioTL = null;
+        return wasMulti;
+    }
+
+    internal bool TryApplyMultiClipDrag(double dxSec)
+    {
+        if (_multiDragStartClipTL == null) return false;
+        double minStart = _multiDragStartClipTL.Values.Min();
+        double clampedDx = Math.Max(dxSec, -minStart);
+        foreach (var kv in _multiDragStartClipTL) kv.Key.TimelineStart = kv.Value + clampedDx;
+        return true;
+    }
+
+    internal bool TryApplyMultiBlockDrag(double dxSec)
+    {
+        if (_multiDragStartBlocks == null) return false;
+        double minStart = _multiDragStartBlocks.Values.Min(v => v.start);
+        double clampedDx = Math.Max(dxSec, -minStart);
+        foreach (var kv in _multiDragStartBlocks)
+        {
+            kv.Key.StartSeconds = kv.Value.start + clampedDx;
+            kv.Key.EndSeconds = kv.Value.end + clampedDx;
+        }
+        return true;
+    }
+
+    internal bool TryApplyMultiTextOverlayDrag(double dxSec)
+    {
+        if (_multiDragStartOverlays == null) return false;
+        double minStart = _multiDragStartOverlays.Values.Min(v => v.start);
+        double clampedDx = Math.Max(dxSec, -minStart);
+        foreach (var kv in _multiDragStartOverlays)
+        {
+            kv.Key.StartSeconds = kv.Value.start + clampedDx;
+            kv.Key.EndSeconds = kv.Value.end + clampedDx;
+            NotifyTextOverlayChanged(kv.Key);
+        }
+        return true;
+    }
+
+    internal bool TryApplyMultiAudioDrag(double dxSec)
+    {
+        if (_multiDragStartAudioTL == null) return false;
+        double minStart = _multiDragStartAudioTL.Values.Min();
+        double clampedDx = Math.Max(dxSec, -minStart);
+        foreach (var kv in _multiDragStartAudioTL) kv.Key.TimelineStart = kv.Value + clampedDx;
+        return true;
+    }
+
+    // Called by MarqueeSelector when the user clicks an empty canvas without dragging.
+    internal void OnEmptyCanvasClick(Canvas canvas, Point pos)
+    {
+        SetCurrent(pos.X / PixelsPerSecond);
+        Seek?.Invoke(CurrentSeconds);
+        ClearAllSelection();
+    }
+
+    // Called by MarqueeSelector when the user finishes a rubber-band drag.
+    internal void ApplyMarqueeSelection(MarqueeKind kind, Rect marquee, bool ctrl)
+    {
+        static bool Hits(Rect m, FrameworkElement el)
+        {
+            double l = Canvas.GetLeft(el); if (double.IsNaN(l)) l = 0;
+            double t = Canvas.GetTop(el); if (double.IsNaN(t)) t = 0;
+            double w = el.Width > 0 ? el.Width : (el.ActualWidth > 0 ? el.ActualWidth : 1);
+            double h = el.Height > 0 ? el.Height : (el.ActualHeight > 0 ? el.ActualHeight : 1);
+            return m.IntersectsWith(new Rect(l, t, w, h));
+        }
+
+        switch (kind)
+        {
+            case MarqueeKind.Clip:
+            {
+                var hits = _clipBars.Where(kv => Hits(marquee, kv.Value.Root)).Select(kv => kv.Key).ToList();
+                bool otherType = _selectedBlocks.Count + _selectedTextOverlays.Count + _selectedAudios.Count > 0;
+                if (!ctrl || otherType) ClearAllSelectionSets();
+                foreach (var c in hits) _selectedClips.Add(c);
+                if (hits.Count > 0) _selectedClip = hits.Last();
+                else if (_selectedClip != null && !_selectedClips.Contains(_selectedClip)) _selectedClip = _selectedClips.LastOrDefault();
+                break;
+            }
+            case MarqueeKind.Audio:
+            {
+                var hits = _audioBars.Where(kv => Hits(marquee, kv.Value.Root)).Select(kv => kv.Key).ToList();
+                bool otherType = _selectedClips.Count + _selectedBlocks.Count + _selectedTextOverlays.Count > 0;
+                if (!ctrl || otherType) ClearAllSelectionSets();
+                foreach (var c in hits) _selectedAudios.Add(c);
+                if (hits.Count > 0) _selectedAudio = hits.Last();
+                else if (_selectedAudio != null && !_selectedAudios.Contains(_selectedAudio)) _selectedAudio = _selectedAudios.LastOrDefault();
+                break;
+            }
+            case MarqueeKind.BlockOrText:
+            {
+                var blockHits = _blockBars.Where(kv => Hits(marquee, kv.Value.Root)).Select(kv => kv.Key).ToList();
+                var textHits = _textBars.Where(kv => Hits(marquee, kv.Value.Root)).Select(kv => kv.Key).ToList();
+                // Per-type rule: pick the type with more hits; tie → blocks.
+                bool pickBlocks = blockHits.Count >= textHits.Count;
+                bool otherType = pickBlocks
+                    ? (_selectedClips.Count + _selectedTextOverlays.Count + _selectedAudios.Count > 0)
+                    : (_selectedClips.Count + _selectedBlocks.Count + _selectedAudios.Count > 0);
+                if (!ctrl || otherType) ClearAllSelectionSets();
+                if (pickBlocks)
+                {
+                    foreach (var b in blockHits) _selectedBlocks.Add(b);
+                    if (blockHits.Count > 0) _selectedBlock = blockHits.Last();
+                }
+                else
+                {
+                    foreach (var o in textHits) _selectedTextOverlays.Add(o);
+                    if (textHits.Count > 0) _selectedTextOverlay = textHits.Last();
+                }
+                break;
+            }
+        }
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
+    }
 
     public double GetClipStart(VideoClip clip) => clip.TimelineStart;
 
