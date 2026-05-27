@@ -755,7 +755,7 @@
                                     <Ellipse x:Name="tabBlockDot" Width="5" Height="5" Fill="{DynamicResource Accent}" Margin="5,0,0,0" Visibility="Collapsed" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </RadioButton>
-                            <RadioButton x:Name="tabClipBtn" Grid.Column="1" Style="{DynamicResource InspectorTab}" GroupName="InspectorTabs" Click="TabClip_Click">
+                            <RadioButton x:Name="tabClipBtn" Grid.Column="1" Style="{DynamicResource InspectorTab}" GroupName="InspectorTabs" Click="TabClip_Click" Visibility="Collapsed">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="▤" FontSize="11"/>
                                     <TextBlock Text="Clip" Margin="6,0,0,0"/>

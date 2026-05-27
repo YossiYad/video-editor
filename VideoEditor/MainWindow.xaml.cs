@@ -1099,6 +1099,7 @@ public partial class MainWindow : Window
             UpdateCanvasLabels(_selectedClip);
             _suppress = false;
         };
+        if (_playingClip != c) ScrubToClipFrame(c, c.InPoint);
     }
 
     private void UpdateCanvasLabels(VideoClip c)
@@ -1162,6 +1163,7 @@ public partial class MainWindow : Window
         tabExportBtn.IsChecked = isExp;
         if (tabBlockDot != null) tabBlockDot.Visibility = _selectedBlock != null ? Visibility.Visible : Visibility.Collapsed;
         if (tabClipDot != null)  tabClipDot.Visibility  = _selectedClip != null ? Visibility.Visible : Visibility.Collapsed;
+        tabClipBtn.Visibility = _selectedClip != null ? Visibility.Visible : Visibility.Collapsed;
         _suppress = false;
     }
 
