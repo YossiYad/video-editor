@@ -8,7 +8,8 @@
         Background="{DynamicResource Bg0}"
         WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI, Heebo"
-        AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver">
+        AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver"
+        PreviewMouseDown="Window_PreviewMouseDown">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="56"/>
@@ -682,10 +683,10 @@
             </Grid>
 
             <!-- ============ INSPECTOR ============ -->
-            <Border Grid.Column="2" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource LineStrong}" BorderThickness="1,0,0,0">
+            <Border x:Name="inspectorBorder" Grid.Column="2" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource LineStrong}" BorderThickness="1,0,0,0">
                 <DockPanel>
                     <!-- Tabs -->
-                    <Border DockPanel.Dock="Top" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" Padding="10,10,10,8">
+                    <Border x:Name="inspectorTabsBar" DockPanel.Dock="Top" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" Padding="10,10,10,8" Visibility="Collapsed">
                         <Grid>
                             <Grid x:Name="normalTabsBar" Visibility="Collapsed">
                                 <Grid.ColumnDefinitions>
@@ -714,12 +715,13 @@
                                     </StackPanel>
                                 </RadioButton>
                             </Grid>
-                            <RadioButton x:Name="tabRecorderBtn" Visibility="Collapsed" Style="{DynamicResource InspectorTab}" GroupName="InspectorTabs" Click="TabRecorder_Click" HorizontalAlignment="Stretch">
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                    <TextBlock Text="●" FontSize="11" Foreground="#FF6B6B"/>
-                                    <TextBlock Text="Recorder" Margin="6,0,0,0"/>
-                                </StackPanel>
-                            </RadioButton>
+                            <ItemsControl x:Name="recorderTabHost" Visibility="Collapsed">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
                         </Grid>
                     </Border>
 
@@ -1283,14 +1285,6 @@
                             <!-- =========== SCREEN RECORDER PANEL =========== -->
                             <Border x:Name="recorderInspectorPanel" Visibility="Collapsed">
                                 <StackPanel Margin="14,12,14,14">
-                                    <ItemsControl x:Name="inlineRecorderTabButtons" Margin="0,0,0,10" Visibility="Collapsed">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                    </ItemsControl>
-
                                     <StackPanel x:Name="inlineRecorderSourcePanel">
                                         <TextBlock Text="RECORDING SOURCE" Style="{DynamicResource FieldLabel}"/>
                                         <ComboBox x:Name="inlineRecorderSourceBox" SelectionChanged="InlineRecorderSource_Changed" Margin="0,0,0,10"/>
@@ -1311,14 +1305,6 @@
                                     <StackPanel x:Name="inlineRecorderOutputPanel">
                                         <TextBlock Text="OUTPUT FILE" Style="{DynamicResource FieldLabel}"/>
                                         <TextBox x:Name="inlineRecorderPathBox" TextWrapping="NoWrap" Margin="0,0,0,10"/>
-                                    </StackPanel>
-
-                                    <StackPanel x:Name="inlineRecorderBlockPanel" Visibility="Collapsed">
-                                        <TextBlock x:Name="inlineBlockTitleText" Text="" Style="{DynamicResource FieldLabel}"/>
-                                        <TextBlock Text="COLOR" Style="{DynamicResource FieldLabel}" Margin="0,4,0,4"/>
-                                        <Border x:Name="inlineBlockColorSwatch" Width="60" Height="22" BorderBrush="{DynamicResource Line}" BorderThickness="1" HorizontalAlignment="Left" Background="Black" Margin="0,0,0,8" Cursor="Hand" MouseLeftButtonUp="InlineBlockColorSwatch_Click"/>
-                                        <TextBlock Text="Edit color/opacity in the Block tab on the right (after clicking the block on the canvas)." Foreground="{DynamicResource TextDim}" FontSize="10.5" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                                        <Button x:Name="inlineBlockDeleteBtn" Content="Delete Block" Style="{DynamicResource ToolButton}" Height="30" HorizontalAlignment="Left" Click="InlineBlockDelete_Click"/>
                                     </StackPanel>
 
                                     <TextBlock Text="Use the sidebar before Start: Add Hide Block adds a mask, Camera Recorder adds a camera layer." Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,12"/>
