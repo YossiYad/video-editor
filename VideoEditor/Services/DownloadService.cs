@@ -17,10 +17,30 @@ public class DownloadService
     public static string YtDlpExePath => Path.Combine(YtDlpFolder, "yt-dlp.exe");
     private const string YtDlpDownloadUrl = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
 
+    public static string DownloadLogPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "VideoEditor", "yt-dlp.log");
+
     public event Action<string>? Log;
     public event Action<double>? Progress;
 
     public static bool IsYtDlpInstalled() => File.Exists(YtDlpExePath);
+
+    private static readonly object _logFileLock = new();
+    private void WriteLogFile(string line)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(DownloadLogPath);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            lock (_logFileLock)
+            {
+                File.AppendAllText(DownloadLogPath,
+                    $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {line}{Environment.NewLine}");
+            }
+        }
+        catch { /* logging must never crash the download */ }
+    }
 
     public static bool LooksLikeStreamingSite(string url)
     {
@@ -93,10 +113,27 @@ public class DownloadService
 
     public async Task<string> DownloadViaYtDlpAsync(string url, string outputFolder, string ffmpegPath, IProgress<double>? progress = null, CancellationToken ct = default)
     {
+        WriteLogFile($"===== yt-dlp run started for URL: {url} =====");
+        WriteLogFile($"yt-dlp.exe path: {YtDlpExePath}");
+        WriteLogFile($"yt-dlp.exe exists before run: {File.Exists(YtDlpExePath)}");
+
         if (!File.Exists(YtDlpExePath))
         {
             Log?.Invoke("yt-dlp.exe not found · downloading now...");
-            await EnsureYtDlpAsync(progress);
+            WriteLogFile("yt-dlp.exe missing - attempting download from GitHub...");
+            try
+            {
+                await EnsureYtDlpAsync(progress);
+                WriteLogFile($"yt-dlp.exe download succeeded. File exists: {File.Exists(YtDlpExePath)}");
+            }
+            catch (Exception ex)
+            {
+                WriteLogFile($"yt-dlp.exe download FAILED: {ex.GetType().Name}: {ex.Message}");
+                throw new Exception(
+                    "Could not download yt-dlp.exe from GitHub. This usually means antivirus " +
+                    "or a firewall is blocking it. Please allow GitHub releases and the " +
+                    $"file {YtDlpExePath}, then try again. (Details: {ex.Message})", ex);
+            }
         }
 
         Directory.CreateDirectory(outputFolder);
@@ -117,6 +154,7 @@ public class DownloadService
         };
 
         Log?.Invoke($"yt-dlp · {psi.Arguments}");
+        WriteLogFile($"Running: {YtDlpExePath} {psi.Arguments}");
         string? finalPath = null;
 
         using var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
@@ -124,6 +162,7 @@ public class DownloadService
         {
             if (string.IsNullOrEmpty(e.Data)) return;
             Log?.Invoke(e.Data);
+            WriteLogFile($"OUT: {e.Data}");
             // Parse progress: "[download]  42.3% of 123.45MiB at ..."
             var idx = e.Data.IndexOf("[download]", StringComparison.Ordinal);
             if (idx >= 0)
@@ -154,8 +193,24 @@ public class DownloadService
                 finalPath = rest;
             }
         };
-        p.ErrorDataReceived += (_, e) => { if (!string.IsNullOrEmpty(e.Data)) Log?.Invoke("ERR: " + e.Data); };
-        p.Start();
+        p.ErrorDataReceived += (_, e) =>
+        {
+            if (string.IsNullOrEmpty(e.Data)) return;
+            Log?.Invoke("ERR: " + e.Data);
+            WriteLogFile($"ERR: {e.Data}");
+        };
+        try
+        {
+            p.Start();
+        }
+        catch (System.ComponentModel.Win32Exception wex)
+        {
+            WriteLogFile($"Failed to launch yt-dlp.exe: {wex.Message} (NativeErrorCode={wex.NativeErrorCode})");
+            throw new Exception(
+                $"Could not launch yt-dlp.exe at {YtDlpExePath}. The file may have been " +
+                $"quarantined by antivirus or is corrupted. Try deleting it and re-running. " +
+                $"(System error: {wex.Message})", wex);
+        }
         p.BeginOutputReadLine();
         p.BeginErrorReadLine();
         try
@@ -166,9 +221,15 @@ public class DownloadService
         {
             // User cancelled - make sure we don't leave yt-dlp running in the background.
             try { if (!p.HasExited) p.Kill(entireProcessTree: true); } catch { }
+            WriteLogFile("yt-dlp run cancelled by user.");
             throw;
         }
-        if (p.ExitCode != 0) throw new Exception($"yt-dlp exited with code {p.ExitCode}. See log for details.");
+        WriteLogFile($"yt-dlp exited with code {p.ExitCode}");
+        if (p.ExitCode != 0)
+            throw new Exception(
+                $"yt-dlp exited with code {p.ExitCode}. Common causes: outdated yt-dlp, " +
+                $"YouTube anti-bot block, or geo-restricted video. " +
+                $"Full log: {DownloadLogPath}");
 
         // If we didn't capture a final path, scan the folder for the newest video file.
         if (string.IsNullOrEmpty(finalPath) || !File.Exists(finalPath))
@@ -182,6 +243,7 @@ public class DownloadService
         if (string.IsNullOrEmpty(finalPath) || !File.Exists(finalPath))
             throw new Exception("Download finished but file path not detected.");
         Log?.Invoke($"yt-dlp done → {finalPath}");
+        WriteLogFile($"yt-dlp done → {finalPath}");
         return finalPath;
     }
 

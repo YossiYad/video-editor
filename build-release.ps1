@@ -59,6 +59,23 @@ if (-not (Test-Path $exe)) {
     throw "Build finished but VideoEditor.exe is missing from $OutputDir."
 }
 
+# Bundle yt-dlp.exe so URL downloads (YouTube, Vimeo, TikTok, ...) work out of the
+# box without needing a runtime download. yt-dlp is updated frequently to keep up
+# with YouTube changes, so each release pulls the latest at build time.
+$ytDlpDir = Join-Path $OutputDir "ffmpeg"
+$ytDlpExe = Join-Path $ytDlpDir "yt-dlp.exe"
+New-Item -ItemType Directory -Force -Path $ytDlpDir | Out-Null
+Write-Host "Fetching yt-dlp.exe (latest) ..." -ForegroundColor Cyan
+try {
+    Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" `
+        -OutFile $ytDlpExe -UseBasicParsing -ErrorAction Stop
+    $ytDlpMB = [Math]::Round((Get-Item $ytDlpExe).Length / 1MB, 1)
+    Write-Host "  yt-dlp.exe bundled ($ytDlpMB MB)" -ForegroundColor Green
+} catch {
+    Write-Host "  WARNING: failed to download yt-dlp.exe ($($_.Exception.Message))." -ForegroundColor Yellow
+    Write-Host "           The app will try to download it on first use instead." -ForegroundColor Yellow
+}
+
 $sizeMB = [Math]::Round((Get-Item $exe).Length / 1MB, 1)
 Write-Host ""
 Write-Host "Build complete." -ForegroundColor Green

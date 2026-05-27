@@ -4174,7 +4174,11 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
         catch (Exception ex)
         {
             status.Text = "Download failed: " + ex.Message;
-            MessageBox.Show("Failed to download:\n\n" + ex.Message, "Download Error",
+            var logPath = DownloadService.DownloadLogPath;
+            var msg = "Failed to download:\n\n" + ex.Message;
+            if (System.IO.File.Exists(logPath))
+                msg += $"\n\nFull log saved at:\n{logPath}";
+            MessageBox.Show(msg, "Download Error",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
