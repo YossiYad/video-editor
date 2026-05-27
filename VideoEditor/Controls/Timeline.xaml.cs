@@ -318,6 +318,22 @@ public partial class Timeline : UserControl
     private VideoBlock? _selectedBlock;
     private VideoClip? _selectedClip;
 
+    // Multi-selection sets. The "_selectedXxx" singular fields above are the ANCHOR
+    // (the most recently clicked item), which drives the inspector when exactly one
+    // item is selected. The anchor is always a member of its set (or null when empty).
+    private readonly HashSet<VideoClip> _selectedClips = new();
+    private readonly HashSet<VideoBlock> _selectedBlocks = new();
+    private readonly HashSet<TextOverlay> _selectedTextOverlays = new();
+    private readonly HashSet<VideoClip> _selectedAudios = new();
+
+    public IReadOnlyCollection<VideoClip> SelectedClips => _selectedClips;
+    public IReadOnlyCollection<VideoBlock> SelectedBlocks => _selectedBlocks;
+    public IReadOnlyCollection<TextOverlay> SelectedTextOverlays => _selectedTextOverlays;
+    public IReadOnlyCollection<VideoClip> SelectedAudios => _selectedAudios;
+    public int TotalSelectionCount => _selectedClips.Count + _selectedBlocks.Count + _selectedTextOverlays.Count + _selectedAudios.Count;
+
+    public event Action? SelectionChanged;
+
     private readonly Dictionary<VideoClip, ClipBar> _clipBars = new();
     private readonly Dictionary<VideoClip, AudioBar> _audioBars = new();
     private readonly Dictionary<VideoBlock, BlockBar> _blockBars = new();
