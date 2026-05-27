@@ -1670,14 +1670,16 @@ internal class BlockBar
 
         Root.MouseLeftButtonDown += (s, e) =>
         {
-            _owner.RaiseBlockSelected(Block);
+            bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+            _owner.HandleBlockClick(Block, ctrl);
             e.Handled = true;
         };
 
         _dragThumb.DragStarted += (_, _) =>
         {
             if (Block.CoversWholeVideo) Block.CoversWholeVideo = false;
-            _owner.RaiseBlockSelected(Block);
+            if (!_owner.SelectedBlocks.Contains(Block)) _owner.HandleBlockClick(Block, false);
+            _owner.BeginMultiDrag();
             _owner.BeginDrag();
             _dragStartStart = Block.StartSeconds;
             _dragStartEnd = Block.EndSeconds;
@@ -1687,17 +1689,18 @@ internal class BlockBar
             // Free positioning - block can be dragged anywhere on the timeline, even past current end.
             // The timeline auto-expands via RecomputeTotal (which considers block.EndSeconds).
             var totalDxSec = e.HorizontalChange / _owner.PixelsPerSecond;
+            if (_owner.TryApplyMultiBlockDrag(totalDxSec)) return;
             var len = _dragStartEnd - _dragStartStart;
             var newStart = Math.Max(0, _dragStartStart + totalDxSec);
             Block.StartSeconds = newStart;
             Block.EndSeconds = newStart + len;
         };
-        _dragThumb.DragCompleted += (_, _) => _owner.EndDrag();
+        _dragThumb.DragCompleted += (_, _) => { _owner.EndMultiDrag(); _owner.EndDrag(); };
 
         _leftHandle.DragStarted += (_, _) =>
         {
             if (Block.CoversWholeVideo) Block.CoversWholeVideo = false;
-            _owner.RaiseBlockSelected(Block);
+            _owner.HandleBlockClick(Block, false);
             _owner.BeginDrag();
             _dragStartStart = Block.StartSeconds;
             _dragStartEnd = Block.EndSeconds;
@@ -1712,7 +1715,7 @@ internal class BlockBar
         _rightHandle.DragStarted += (_, _) =>
         {
             if (Block.CoversWholeVideo) Block.CoversWholeVideo = false;
-            _owner.RaiseBlockSelected(Block);
+            _owner.HandleBlockClick(Block, false);
             _owner.BeginDrag();
             _dragStartStart = Block.StartSeconds;
             _dragStartEnd = Block.EndSeconds;
