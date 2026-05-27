@@ -8,6 +8,23 @@ The latest signed Windows build is always available at
 
 ## [Unreleased]
 
+### Changed
+- **yt-dlp.exe is now bundled inside the release ZIP** instead of being
+  downloaded from GitHub on first URL import. This fixes "Failed to
+  download" errors on machines where antivirus blocked the runtime
+  download or where the GitHub release endpoint was unreachable.
+
+### Added
+- **Persistent yt-dlp log file** at
+  `%LOCALAPPDATA%\VideoEditor\yt-dlp.log`. Every URL import run is
+  appended (with command line, stdout, stderr, exit code) so failures
+  can be diagnosed after the fact instead of disappearing with the
+  status bar text. The "Download Error" dialog now points to this log.
+- **Friendlier error messages** when yt-dlp.exe cannot be downloaded
+  from GitHub (firewall / antivirus / no network) or when the bundled
+  yt-dlp.exe cannot be launched (quarantined by antivirus). The user
+  gets a clear next step instead of a raw stack trace.
+
 ---
 
 ## [v1.8.0] - 2026-05-27
