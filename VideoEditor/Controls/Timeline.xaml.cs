@@ -410,6 +410,21 @@ public partial class Timeline : UserControl
         rulerCanvas.MouseMove += Ruler_MouseMove;
         rulerCanvas.MouseLeftButtonUp += Ruler_MouseUp;
         rulerCanvas.Cursor = Cursors.Hand;
+
+        // Marquee (rubber-band) selectors per canvas. Each instance hooks MouseMove
+        // and MouseLeftButtonUp internally; the per-canvas MouseLeftButtonDown handlers
+        // start it. audioCanvas needs its own handler because it has none in XAML.
+        _clipMarquee  = new MarqueeSelector(this, clipCanvas,  MarqueeKind.Clip);
+        _audioMarquee = new MarqueeSelector(this, audioCanvas, MarqueeKind.Audio);
+        _trackMarquee = new MarqueeSelector(this, trackCanvas, MarqueeKind.BlockOrText);
+        audioCanvas.MouseLeftButtonDown += AudioCanvas_MouseLeftButtonDown;
+    }
+
+    private MarqueeSelector? _clipMarquee, _audioMarquee, _trackMarquee;
+
+    private void AudioCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource == audioCanvas) _audioMarquee?.OnMouseDown(e);
     }
 
     private bool _rulerDragging;
@@ -1135,23 +1150,12 @@ public partial class Timeline : UserControl
 
     private void trackCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.OriginalSource == trackCanvas)
-        {
-            var pos = e.GetPosition(trackCanvas);
-            SetCurrent(pos.X / PixelsPerSecond);
-            Seek?.Invoke(CurrentSeconds);
-        }
+        if (e.OriginalSource == trackCanvas) _trackMarquee?.OnMouseDown(e);
     }
 
     private void ClipCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.OriginalSource == clipCanvas)
-        {
-            var pos = e.GetPosition(clipCanvas);
-            SetCurrent(pos.X / PixelsPerSecond);
-            Seek?.Invoke(CurrentSeconds);
-            SelectClip(null);
-        }
+        if (e.OriginalSource == clipCanvas) _clipMarquee?.OnMouseDown(e);
     }
 
     private void ClipCanvas_DragOver(object sender, DragEventArgs e)
@@ -2223,5 +2227,97 @@ internal class AudioBar
             _waveImg.Source = bmp;
         }
         catch { }
+    }
+}
+
+// ============================ MarqueeSelector ============================
+// Rubber-band (drag-rectangle) selector for one canvas. Hooks MouseMove/MouseLeftButtonUp
+// on its canvas internally; the existing per-canvas MouseLeftButtonDown handlers on
+// Timeline start it. On release, intersects the rectangle against the bars in the
+// canvas and updates the matching selection set on the owning Timeline. A click with
+// no drag falls back to the legacy "seek playhead + clear selection" behaviour.
+
+internal enum MarqueeKind { Clip, Audio, BlockOrText }
+
+internal class MarqueeSelector
+{
+    private const double DragThresholdPx = 3.0;
+
+    private readonly Timeline _owner;
+    private readonly Canvas _canvas;
+    private readonly MarqueeKind _kind;
+
+    private Point _startPt;
+    private bool _active;
+    private bool _dragged;
+    private bool _ctrlAtStart;
+    private Rectangle? _rect;
+
+    public MarqueeSelector(Timeline owner, Canvas canvas, MarqueeKind kind)
+    {
+        _owner = owner;
+        _canvas = canvas;
+        _kind = kind;
+        canvas.MouseMove += OnMouseMove;
+        canvas.MouseLeftButtonUp += OnMouseUp;
+    }
+
+    public void OnMouseDown(MouseButtonEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0) return;
+        _startPt = e.GetPosition(_canvas);
+        _ctrlAtStart = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        _active = true;
+        _dragged = false;
+        _canvas.CaptureMouse();
+    }
+
+    private void OnMouseMove(object? sender, MouseEventArgs e)
+    {
+        if (!_active) return;
+        var p = e.GetPosition(_canvas);
+        if (!_dragged)
+        {
+            if (Math.Abs(p.X - _startPt.X) < DragThresholdPx && Math.Abs(p.Y - _startPt.Y) < DragThresholdPx) return;
+            _dragged = true;
+            _rect = new Rectangle
+            {
+                Stroke = new SolidColorBrush(Color.FromRgb(0xFF, 0xD4, 0x3B)),
+                StrokeThickness = 1,
+                Fill = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xD4, 0x3B)),
+                IsHitTestVisible = false
+            };
+            _canvas.Children.Add(_rect);
+        }
+        if (_rect == null) return;
+        double x = Math.Min(_startPt.X, p.X);
+        double y = Math.Min(_startPt.Y, p.Y);
+        Canvas.SetLeft(_rect, x);
+        Canvas.SetTop(_rect, y);
+        _rect.Width = Math.Abs(p.X - _startPt.X);
+        _rect.Height = Math.Abs(p.Y - _startPt.Y);
+    }
+
+    private void OnMouseUp(object? sender, MouseButtonEventArgs e)
+    {
+        if (!_active) return;
+        _active = false;
+        _canvas.ReleaseMouseCapture();
+
+        if (!_dragged)
+        {
+            _owner.OnEmptyCanvasClick(_canvas, _startPt);
+            return;
+        }
+
+        var p = e.GetPosition(_canvas);
+        var marqueeRect = new Rect(
+            Math.Min(_startPt.X, p.X),
+            Math.Min(_startPt.Y, p.Y),
+            Math.Abs(p.X - _startPt.X),
+            Math.Abs(p.Y - _startPt.Y));
+        if (_rect != null) _canvas.Children.Remove(_rect);
+        _rect = null;
+        _owner.ApplyMarqueeSelection(_kind, marqueeRect, _ctrlAtStart);
     }
 }
