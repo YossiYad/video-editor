@@ -2,9 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Speech.Synthesis;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using NAudio.Wave;
+using Windows.Media.SpeechSynthesis;
+using Windows.Storage.Streams;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -42,8 +45,16 @@ public partial class MainWindow : Window
     private bool _syncingExportFps;
     private System.Diagnostics.Process? _inlineRecorderProc;
 
-    private SpeechSynthesizer? _ttsPreviewSynth;
+    private WaveOutEvent? _ttsPreviewPlayer;
+    private WaveFileReader? _ttsPreviewReader;
+    private MemoryStream? _ttsPreviewStream;
     private bool _ttsVoicesLoaded;
+
+    private sealed record TtsVoiceItem(string Id, string DisplayName, string Language)
+    {
+        public override string ToString() =>
+            string.IsNullOrEmpty(Language) ? DisplayName : $"{DisplayName} ({Language})";
+    }
     private DispatcherTimer? _inlineRecorderPreviewTimer;
     private List<MonitorInfo.Display> _inlineRecorderMonitors = new();
     private VideoBlock? _inlineRecorderWebcamBlock;
@@ -609,9 +620,6 @@ public partial class MainWindow : Window
         btnRecord.ToolTip = "Record from your camera by itself, or add a camera layer when Screen Recorder is open.";
         addBlockOverlayBtn.ToolTip = "Add a draggable hide block to the current video or screen recording scene.";
         deleteBlockBtn.ToolTip = "Delete the selected hide block.";
-        btnTrim.ToolTip = "Select a clip, then trim its start/end.";
-        btnCrop.ToolTip = "Select a clip, then crop the visible area.";
-        btnResize.ToolTip = "Select a clip, then resize it.";
         btnAddText.ToolTip = "Select a clip, then add text that can be edited on the timeline.";
         btnAiCaptions.ToolTip = "Generate editable caption text overlays from the project audio.";
         splitBtn.ToolTip = "Split the selected/current clip at the playhead.";
@@ -2169,6 +2177,9 @@ public partial class MainWindow : Window
         StopInlineRecorderWebcamPreview();
         ClearInlineRecorderWebcamLayer();
 
+        if (picker.LastPreviewFrame != null)
+            inlineRecorderPreviewImage.Source = picker.LastPreviewFrame;
+
         inlineRecorderSourceBox.Items.Clear();
         inlineRecorderSourceBox.Items.Add(_inlineRecorderWebcamDeviceName);
         inlineRecorderSourceBox.SelectedIndex = 0;
@@ -2298,6 +2309,9 @@ public partial class MainWindow : Window
         _inlineRecorderWebcamControl.Changed += _ => { };
         inlineRecorderOverlayCanvas.Children.Add(_inlineRecorderWebcamControl);
         Panel.SetZIndex(_inlineRecorderWebcamControl, 200);
+
+        if (picker.LastPreviewFrame != null)
+            _inlineRecorderWebcamControl.SetLivePreviewSource(picker.LastPreviewFrame);
 
         _suppressBgComboChange = true;
         try
@@ -3673,18 +3687,54 @@ public partial class MainWindow : Window
         if (_ttsVoicesLoaded) return;
         try
         {
-            using var synth = new SpeechSynthesizer();
-            foreach (var v in synth.GetInstalledVoices())
-                ttsVoiceBox.Items.Add(v.VoiceInfo.Name);
-            if (ttsVoiceBox.Items.Count > 0) ttsVoiceBox.SelectedIndex = 0;
+            string? defaultId = null;
+            try { defaultId = SpeechSynthesizer.DefaultVoice?.Id; } catch { }
+            foreach (var v in SpeechSynthesizer.AllVoices)
+                ttsVoiceBox.Items.Add(new TtsVoiceItem(v.Id, v.DisplayName, v.Language));
+            if (defaultId != null)
+            {
+                for (int i = 0; i < ttsVoiceBox.Items.Count; i++)
+                {
+                    if (ttsVoiceBox.Items[i] is TtsVoiceItem it && it.Id == defaultId)
+                    {
+                        ttsVoiceBox.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
+            if (ttsVoiceBox.SelectedIndex < 0 && ttsVoiceBox.Items.Count > 0) ttsVoiceBox.SelectedIndex = 0;
         }
         catch { }
         _ttsVoicesLoaded = true;
     }
 
-    private void TtsPreview_Click(object sender, RoutedEventArgs e)
+    // WinRT SpeechSynthesizer.Options.SpeakingRate is 0.5..6.0 with 1.0 = default.
+    // Map the legacy -10..+10 slider symmetrically: 0 → 1.0, +10 → 2.0, -10 → 0.5.
+    private static double SliderToSpeakingRate(double sliderValue)
+        => Math.Clamp(Math.Pow(2.0, sliderValue / 10.0), 0.5, 6.0);
+
+    private async Task<byte[]?> SynthesizeAsync(string text)
     {
-        if (_ttsPreviewSynth != null)
+        using var synth = new SpeechSynthesizer();
+        if (ttsVoiceBox.SelectedItem is TtsVoiceItem item)
+        {
+            var voice = SpeechSynthesizer.AllVoices.FirstOrDefault(v => v.Id == item.Id);
+            if (voice != null) synth.Voice = voice;
+        }
+        synth.Options.SpeakingRate = SliderToSpeakingRate(ttsRateSlider.Value);
+        using var stream = await synth.SynthesizeTextToStreamAsync(text);
+        var size = (uint)stream.Size;
+        if (size == 0) return null;
+        var buffer = new byte[size];
+        using var reader = new DataReader(stream.GetInputStreamAt(0));
+        await reader.LoadAsync(size);
+        reader.ReadBytes(buffer);
+        return buffer;
+    }
+
+    private async void TtsPreview_Click(object sender, RoutedEventArgs e)
+    {
+        if (_ttsPreviewPlayer != null)
         {
             StopTtsPreview();
             return;
@@ -3695,38 +3745,59 @@ public partial class MainWindow : Window
             ttsStatusText.Text = "Type some text to preview.";
             return;
         }
+        ttsPreviewBtn.IsEnabled = false;
+        ttsStatusText.Text = "Synthesizing...";
         try
         {
-            var synth = new SpeechSynthesizer();
-            if (ttsVoiceBox.SelectedItem is string v) synth.SelectVoice(v);
-            synth.Rate = (int)ttsRateSlider.Value;
-            synth.SetOutputToDefaultAudioDevice();
-            synth.SpeakCompleted += (_, _) => Dispatcher.Invoke(StopTtsPreview);
-            _ttsPreviewSynth = synth;
+            var bytes = await SynthesizeAsync(text);
+            if (bytes == null)
+            {
+                ttsStatusText.Text = "TTS produced no audio.";
+                return;
+            }
+            _ttsPreviewStream = new MemoryStream(bytes);
+            _ttsPreviewReader = new WaveFileReader(_ttsPreviewStream);
+            _ttsPreviewPlayer = new WaveOutEvent();
+            _ttsPreviewPlayer.Init(_ttsPreviewReader);
+            _ttsPreviewPlayer.PlaybackStopped += (_, _) => Dispatcher.Invoke(StopTtsPreview);
+            _ttsPreviewPlayer.Play();
             ttsPreviewBtn.Content = "⏹ Stop";
             ttsStatusText.Text = "Playing...";
-            synth.SpeakAsync(text);
         }
         catch (Exception ex)
         {
             StopTtsPreview();
             ttsStatusText.Text = "Preview failed: " + ex.Message;
         }
+        finally
+        {
+            ttsPreviewBtn.IsEnabled = true;
+        }
     }
 
     private void StopTtsPreview()
     {
-        if (_ttsPreviewSynth != null)
+        if (_ttsPreviewPlayer != null)
         {
-            try { _ttsPreviewSynth.SpeakAsyncCancelAll(); } catch { }
-            try { _ttsPreviewSynth.Dispose(); } catch { }
-            _ttsPreviewSynth = null;
+            try { _ttsPreviewPlayer.Stop(); } catch { }
+            try { _ttsPreviewPlayer.Dispose(); } catch { }
+            _ttsPreviewPlayer = null;
+        }
+        if (_ttsPreviewReader != null)
+        {
+            try { _ttsPreviewReader.Dispose(); } catch { }
+            _ttsPreviewReader = null;
+        }
+        if (_ttsPreviewStream != null)
+        {
+            try { _ttsPreviewStream.Dispose(); } catch { }
+            _ttsPreviewStream = null;
         }
         if (ttsPreviewBtn != null) ttsPreviewBtn.Content = "▶ Preview";
         if (ttsStatusText != null && ttsStatusText.Text == "Playing...") ttsStatusText.Text = "";
     }
 
-    private void TtsSaveWav_Click(object sender, RoutedEventArgs e)
+    private async void TtsSaveWav_Click(object sender, RoutedEventArgs e)
     {
         var text = ttsTextBox.Text;
         if (string.IsNullOrWhiteSpace(text))
@@ -3735,20 +3806,28 @@ public partial class MainWindow : Window
             return;
         }
         StopTtsPreview();
+        var sfd = new SaveFileDialog { FileName = "tts.wav", Filter = "WAV|*.wav" };
+        if (sfd.ShowDialog(this) != true) return;
+        ttsSaveBtn.IsEnabled = false;
+        ttsStatusText.Text = "Synthesizing...";
         try
         {
-            var sfd = new SaveFileDialog { FileName = "tts.wav", Filter = "WAV|*.wav" };
-            if (sfd.ShowDialog(this) != true) return;
-            using var synth = new SpeechSynthesizer();
-            if (ttsVoiceBox.SelectedItem is string v) synth.SelectVoice(v);
-            synth.Rate = (int)ttsRateSlider.Value;
-            synth.SetOutputToWaveFile(sfd.FileName);
-            synth.Speak(text);
+            var bytes = await SynthesizeAsync(text);
+            if (bytes == null)
+            {
+                ttsStatusText.Text = "TTS produced no audio.";
+                return;
+            }
+            await File.WriteAllBytesAsync(sfd.FileName, bytes);
             ttsStatusText.Text = "Saved: " + sfd.FileName;
         }
         catch (Exception ex)
         {
             ttsStatusText.Text = "TTS failed: " + ex.Message;
+        }
+        finally
+        {
+            ttsSaveBtn.IsEnabled = true;
         }
     }
     private async void Merge_Click(object s, RoutedEventArgs e)
