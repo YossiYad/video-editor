@@ -1348,9 +1348,12 @@
                                     <TextBlock Text="RATE" Style="{DynamicResource FieldLabel}"/>
                                     <Slider x:Name="ttsRateSlider" Minimum="-10" Maximum="10" Value="0" Margin="0,0,0,12"/>
 
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                        <Button x:Name="ttsPreviewBtn" Content="▶ Preview" Style="{DynamicResource ToolButton}" Click="TtsPreview_Click" Height="34" MinWidth="110"/>
+                                    </StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                        <Button x:Name="ttsPreviewBtn" Content="▶ Preview" Style="{DynamicResource ToolButton}" Click="TtsPreview_Click" Height="34" MinWidth="110" Margin="0,0,8,0"/>
-                                        <Button x:Name="ttsSaveBtn" Content="💾 Save WAV" Style="{DynamicResource PrimaryButton}" Click="TtsSaveWav_Click" Height="34" MinWidth="120"/>
+                                        <Button x:Name="ttsAddToTimelineBtn" Content="➕ Add to Timeline" Style="{DynamicResource PrimaryButton}" Click="TtsAddToTimeline_Click" Height="34" MinWidth="150" Margin="0,0,8,0"/>
+                                        <Button x:Name="ttsSaveBtn" Content="💾 Save to disk" Style="{DynamicResource ToolButton}" Click="TtsSaveWav_Click" Height="34" MinWidth="130"/>
                                     </StackPanel>
                                     <TextBlock x:Name="ttsStatusText" Text="" Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap"/>
                                 </StackPanel>

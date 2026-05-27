@@ -3797,18 +3797,17 @@ public partial class MainWindow : Window
         if (ttsStatusText != null && ttsStatusText.Text == "Playing...") ttsStatusText.Text = "";
     }
 
-    private async void TtsSaveWav_Click(object sender, RoutedEventArgs e)
+    private async Task<string?> SynthesizeAndSaveAsync()
     {
         var text = ttsTextBox.Text;
         if (string.IsNullOrWhiteSpace(text))
         {
-            ttsStatusText.Text = "Type some text to save.";
-            return;
+            ttsStatusText.Text = "Type some text first.";
+            return null;
         }
         StopTtsPreview();
         var sfd = new SaveFileDialog { FileName = "tts.wav", Filter = "WAV|*.wav" };
-        if (sfd.ShowDialog(this) != true) return;
-        ttsSaveBtn.IsEnabled = false;
+        if (sfd.ShowDialog(this) != true) return null;
         ttsStatusText.Text = "Synthesizing...";
         try
         {
@@ -3816,18 +3815,73 @@ public partial class MainWindow : Window
             if (bytes == null)
             {
                 ttsStatusText.Text = "TTS produced no audio.";
-                return;
+                return null;
             }
             await File.WriteAllBytesAsync(sfd.FileName, bytes);
             ttsStatusText.Text = "Saved: " + sfd.FileName;
+            return sfd.FileName;
         }
         catch (Exception ex)
         {
             ttsStatusText.Text = "TTS failed: " + ex.Message;
+            return null;
+        }
+    }
+
+    private async void TtsSaveWav_Click(object sender, RoutedEventArgs e)
+    {
+        ttsSaveBtn.IsEnabled = false;
+        ttsAddToTimelineBtn.IsEnabled = false;
+        try { await SynthesizeAndSaveAsync(); }
+        finally
+        {
+            ttsSaveBtn.IsEnabled = true;
+            ttsAddToTimelineBtn.IsEnabled = true;
+        }
+    }
+
+    private async void TtsAddToTimeline_Click(object sender, RoutedEventArgs e)
+    {
+        ttsSaveBtn.IsEnabled = false;
+        ttsAddToTimelineBtn.IsEnabled = false;
+        try
+        {
+            var path = await SynthesizeAndSaveAsync();
+            if (path != null) await AddTtsClipToTimelineAsync(path);
         }
         finally
         {
             ttsSaveBtn.IsEnabled = true;
+            ttsAddToTimelineBtn.IsEnabled = true;
+        }
+    }
+
+    private async Task AddTtsClipToTimelineAsync(string wavPath)
+    {
+        try
+        {
+            var (_, _, d) = await _ff.ProbeAsync(wavPath);
+            var duration = d > 0 ? d : 1;
+            var clip = new VideoClip
+            {
+                SourceFile = wavPath,
+                OriginalDuration = duration,
+                InPoint = 0,
+                OutPoint = duration,
+                VideoWidth = 0,
+                VideoHeight = 0,
+                AccentColor = System.Windows.Media.Color.FromRgb(0x6E, 0x44, 0xD6),
+                IsAudioOnly = true,
+                TimelineStart = timeline.CurrentSeconds
+            };
+            timeline.Clips.Add(clip);
+            timeline.SelectAudio(clip);
+            UpdateStats();
+            status.Text = $"Added TTS audio to timeline: {Path.GetFileName(wavPath)} · {Timeline.FormatTime(duration)}";
+        }
+        catch (Exception ex)
+        {
+            ttsStatusText.Text = "Add to timeline failed: " + ex.Message;
         }
     }
     private async void Merge_Click(object s, RoutedEventArgs e)
