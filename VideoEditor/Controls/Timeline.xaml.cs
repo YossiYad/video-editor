@@ -1820,7 +1820,12 @@ internal class TextOverlayBar
 
         Canvas.SetTop(Root, _row * 30 + 6);
 
-        Root.MouseLeftButtonDown += (_, e) => { _owner.RaiseTextOverlaySelected(Overlay); e.Handled = true; };
+        Root.MouseLeftButtonDown += (_, e) =>
+        {
+            bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+            _owner.HandleTextOverlayClick(Overlay, ctrl);
+            e.Handled = true;
+        };
 
         Root.MouseRightButtonUp += (_, e) =>
         {
@@ -1837,7 +1842,8 @@ internal class TextOverlayBar
 
         _dragThumb.DragStarted += (_, _) =>
         {
-            _owner.RaiseTextOverlaySelected(Overlay);
+            if (!_owner.SelectedTextOverlays.Contains(Overlay)) _owner.HandleTextOverlayClick(Overlay, false);
+            _owner.BeginMultiDrag();
             _owner.BeginDrag();
             _dragStartStart = Overlay.StartSeconds;
             _dragStartEnd = Overlay.EndSeconds;
@@ -1845,17 +1851,18 @@ internal class TextOverlayBar
         _dragThumb.DragDelta += (_, e) =>
         {
             var totalDxSec = e.HorizontalChange / _owner.PixelsPerSecond;
+            if (_owner.TryApplyMultiTextOverlayDrag(totalDxSec)) return;
             var len = _dragStartEnd - _dragStartStart;
             var newStart = Math.Max(0, _dragStartStart + totalDxSec);
             Overlay.StartSeconds = newStart;
             Overlay.EndSeconds = newStart + len;
             _owner.NotifyTextOverlayChanged(Overlay);
         };
-        _dragThumb.DragCompleted += (_, _) => _owner.EndDrag();
+        _dragThumb.DragCompleted += (_, _) => { _owner.EndMultiDrag(); _owner.EndDrag(); };
 
         _leftHandle.DragStarted += (_, _) =>
         {
-            _owner.RaiseTextOverlaySelected(Overlay);
+            _owner.HandleTextOverlayClick(Overlay, false);
             _owner.BeginDrag();
             _dragStartStart = Overlay.StartSeconds;
             _dragStartEnd = Overlay.EndSeconds;
@@ -1870,7 +1877,7 @@ internal class TextOverlayBar
 
         _rightHandle.DragStarted += (_, _) =>
         {
-            _owner.RaiseTextOverlaySelected(Overlay);
+            _owner.HandleTextOverlayClick(Overlay, false);
             _owner.BeginDrag();
             _dragStartStart = Overlay.StartSeconds;
             _dragStartEnd = Overlay.EndSeconds;
