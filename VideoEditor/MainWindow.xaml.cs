@@ -970,8 +970,7 @@ public partial class MainWindow : Window
         };
         if (!IsInlineRecorderVisible()) timeline.Blocks.Add(b);
         var ctl = new ResizableBlock(b);
-        ctl.Selected += rb => SelectBlock(rb.Model);
-        ctl.Changed += _ => SyncBlockInspector();
+        WireResizableBlock(ctl);
         targetCanvas.Children.Add(ctl);
         _blockControls[b] = ctl;
         SelectBlock(b);
@@ -1158,10 +1157,17 @@ public partial class MainWindow : Window
         bool isClip  = key == "clip";
         bool isExp   = key == "export";
         bool isRec   = key == "recorder";
+        bool isMulti = key == "multi";
         blockPanel.Visibility    = isBlock ? Visibility.Visible : Visibility.Collapsed;
         clipPanel.Visibility     = isClip  ? Visibility.Visible : Visibility.Collapsed;
         emptyInspector.Visibility = isExp  ? Visibility.Visible : Visibility.Collapsed;
         if (recorderPanel != null) recorderPanel.Visibility = isRec ? Visibility.Visible : Visibility.Collapsed;
+        if (multiSelectInspector != null)
+        {
+            multiSelectInspector.Visibility = isMulti ? Visibility.Visible : Visibility.Collapsed;
+            if (isMulti && multiSelectCountText != null)
+                multiSelectCountText.Text = $"{timeline.TotalSelectionCount} items selected";
+        }
         _suppress = true;
         tabBlockBtn.IsChecked = isBlock;
         tabClipBtn.IsChecked  = isClip;
@@ -1238,8 +1244,7 @@ public partial class MainWindow : Window
         };
         timeline.Blocks.Add(nb);
         var ctl = new VideoEditor.Controls.ResizableBlock(nb);
-        ctl.Selected += rb => SelectBlock(rb.Model);
-        ctl.Changed  += _  => SyncBlockInspector();
+        WireResizableBlock(ctl);
         overlayCanvas.Children.Add(ctl);
         _blockControls[nb] = ctl;
         SelectBlock(nb);
@@ -1451,33 +1456,105 @@ public partial class MainWindow : Window
         }
         else if (e.Key == Key.Delete || e.Key == Key.Back)
         {
-            if (_selectedAudio != null && _selectedAudio.IsAudioOnly)
+            if (DeleteAllSelected()) e.Handled = true;
+        }
+    }
+
+    // Deletes/mutes every currently-selected item (single or multi). Each item is routed
+    // through the existing per-type handling so side effects (block visual cleanup,
+    // stopping video preview on a playing clip, attached-audio mute vs. audio-only remove)
+    // match what the user already gets in single-select.
+    private bool DeleteAllSelected()
+    {
+        if (timeline.TotalSelectionCount == 0) return false;
+        int muted = 0, deleted = 0;
+        // Snapshot before mutation - the sets get cleared at the end.
+        var audios = timeline.SelectedAudios.ToList();
+        var clips  = timeline.SelectedClips.ToList();
+        var blocks = timeline.SelectedBlocks.ToList();
+        var texts  = timeline.SelectedTextOverlays.ToList();
+        foreach (var a in audios)
+        {
+            if (a.IsAudioOnly) { timeline.Clips.Remove(a); deleted++; }
+            else { a.Volume = 0; muted++; }
+        }
+        foreach (var c in clips)
+        {
+            if (_playingClip == c) { _playingClip = null; videoView.Stop(); }
+            timeline.Clips.Remove(c);
+            deleted++;
+        }
+        foreach (var b in blocks)
+        {
+            if (_blockControls.TryGetValue(b, out var ctl))
             {
-                // Audio-only clip: full delete - it's an independent entity, not just a mute target.
-                var ac = _selectedAudio;
-                timeline.Clips.Remove(ac);
-                _selectedAudio = null;
-                _selectedClip = null;
-                status.Text = $"Deleted audio clip: {ac.DisplayName}";
-                e.Handled = true;
+                if (ctl.Parent is Canvas parentCanvas) parentCanvas.Children.Remove(ctl);
+                _blockControls.Remove(b);
             }
-            else if (_selectedAudio != null)
-            {
-                // Attached audio (sub-bar of a video clip): mute, don't destroy the clip.
-                _selectedAudio.Volume = 0;
-                status.Text = $"Muted: {_selectedAudio.DisplayName}. Right-click for Remove track / Restore.";
-                e.Handled = true;
-            }
-            else if (_selectedClip != null)
-            {
-                ClipDelete_Click(this, new RoutedEventArgs());
-                e.Handled = true;
-            }
-            else if (_selectedBlock != null)
-            {
-                DeleteBlock_Click(this, new RoutedEventArgs());
-                e.Handled = true;
-            }
+            timeline.Blocks.Remove(b);
+            deleted++;
+        }
+        foreach (var o in texts) { timeline.TextOverlays.Remove(o); deleted++; }
+        _selectedBlock = null;
+        _selectedClip = null;
+        _selectedAudio = null;
+        timeline.ClearAllSelection();
+        if (deleted > 0 && muted > 0) status.Text = $"Deleted {deleted}, muted {muted}";
+        else if (deleted > 0) status.Text = $"Deleted {deleted} item{(deleted == 1 ? "" : "s")}";
+        else if (muted > 0) status.Text = $"Muted {muted} audio track{(muted == 1 ? "" : "s")}";
+        return true;
+    }
+
+    // Wires a ResizableBlock for Ctrl-aware selection. Ctrl is read synchronously from
+    // Keyboard.Modifiers because Selected fires from MouseLeftButtonDown / DragStarted
+    // while modifier state is still current. Note: multi-drag of preview-canvas blocks
+    // is intentionally out of scope for v1 (each block still drags itself); Ctrl+click
+    // multi-select and group Delete still work.
+    private void WireResizableBlock(VideoEditor.Controls.ResizableBlock ctl)
+    {
+        ctl.Selected += rb =>
+        {
+            bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+            timeline.HandleBlockClick(rb.Model, ctrl);
+        };
+        ctl.Changed += _ => SyncBlockInspector();
+    }
+
+    // Routes timeline selection changes to the inspector and to ResizableBlock outlines
+    // on the preview canvas. Single-selection delegates to the existing per-type
+    // SelectBlock/SelectClip; multi-selection shows the "N items selected" panel.
+    private void OnTimelineSelectionChanged()
+    {
+        foreach (var kv in _blockControls)
+            kv.Value.SetSelected(timeline.SelectedBlocks.Contains(kv.Key));
+
+        int count = timeline.TotalSelectionCount;
+        if (count > 1) { ShowInspectorTab("multi"); UpdateBlockVisibility(); return; }
+        if (count == 0)
+        {
+            _selectedBlock = null; _selectedClip = null; _selectedAudio = null;
+            ShowInspectorTab("export");
+            UpdateBlockVisibility();
+            return;
+        }
+        if (timeline.SelectedBlocks.Count == 1)
+        {
+            var b = timeline.SelectedBlocks.First();
+            if (_selectedBlock != b) SelectBlock(b);
+        }
+        else if (timeline.SelectedClips.Count == 1)
+        {
+            var c = timeline.SelectedClips.First();
+            if (_selectedClip != c) SelectClip(c);
+        }
+        else if (timeline.SelectedAudios.Count == 1)
+        {
+            var c = timeline.SelectedAudios.First();
+            if (_selectedAudio != c) OnAudioSelected(c);
+        }
+        else if (timeline.SelectedTextOverlays.Count == 1)
+        {
+            ShowInspectorTab("export");
         }
     }
 
@@ -1667,8 +1744,7 @@ public partial class MainWindow : Window
             };
             timeline.Blocks.Add(newBlock);
             var ctl = new ResizableBlock(newBlock);
-            ctl.Selected += rb => SelectBlock(rb.Model);
-            ctl.Changed += _ => SyncBlockInspector();
+            WireResizableBlock(ctl);
             overlayCanvas.Children.Add(ctl);
             _blockControls[newBlock] = ctl;
             SelectBlock(newBlock);
