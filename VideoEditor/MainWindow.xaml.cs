@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Speech.Synthesis;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -40,6 +41,9 @@ public partial class MainWindow : Window
     private bool _formatPickedThisSession;
     private bool _syncingExportFps;
     private System.Diagnostics.Process? _inlineRecorderProc;
+
+    private SpeechSynthesizer? _ttsPreviewSynth;
+    private bool _ttsVoicesLoaded;
     private DispatcherTimer? _inlineRecorderPreviewTimer;
     private List<MonitorInfo.Display> _inlineRecorderMonitors = new();
     private VideoBlock? _inlineRecorderWebcamBlock;
@@ -1155,15 +1159,19 @@ public partial class MainWindow : Window
         bool isClip  = key == "clip";
         bool isExp   = key == "export";
         bool isRec   = key == "recorder";
+        bool isTts   = key == "tts";
         blockPanel.Visibility    = isBlock ? Visibility.Visible : Visibility.Collapsed;
         clipPanel.Visibility     = isClip  ? Visibility.Visible : Visibility.Collapsed;
         emptyInspector.Visibility = isExp  ? Visibility.Visible : Visibility.Collapsed;
         recorderInspectorPanel.Visibility = isRec ? Visibility.Visible : Visibility.Collapsed;
+        ttsInspectorPanel.Visibility = isTts ? Visibility.Visible : Visibility.Collapsed;
+        if (!isTts) StopTtsPreview();
         _suppress = true;
         tabBlockBtn.IsChecked = isBlock;
         tabClipBtn.IsChecked  = isClip;
         tabExportBtn.IsChecked = isExp;
         tabRecorderBtn.IsChecked = isRec;
+        tabTtsBtn.IsChecked = isTts;
         // Show a tab button only when its panel is the one being displayed; the user wants
         // the tab row to be empty when no panel is selected.
         tabBlockBtn.Visibility    = isBlock ? Visibility.Visible : Visibility.Collapsed;
@@ -1171,6 +1179,7 @@ public partial class MainWindow : Window
         tabExportBtn.Visibility   = isExp   ? Visibility.Visible : Visibility.Collapsed;
         normalTabsBar.Visibility  = (isBlock || isClip || isExp) ? Visibility.Visible : Visibility.Collapsed;
         tabRecorderBtn.Visibility = isRec ? Visibility.Visible : Visibility.Collapsed;
+        tabTtsBtn.Visibility = isTts ? Visibility.Visible : Visibility.Collapsed;
         if (tabBlockDot != null) tabBlockDot.Visibility = _selectedBlock != null ? Visibility.Visible : Visibility.Collapsed;
         if (tabClipDot != null)  tabClipDot.Visibility  = _selectedClip != null ? Visibility.Visible : Visibility.Collapsed;
         _suppress = false;
@@ -1196,6 +1205,11 @@ public partial class MainWindow : Window
         if (_suppress) return;
         ShowInspectorTab("recorder");
         HideRecordingHint();
+    }
+    private void TabTts_Click(object sender, RoutedEventArgs e)
+    {
+        if (_suppress) return;
+        ShowInspectorTab("tts");
     }
 
     // Recording is in progress — hide the inspector tab so the preview gets full width.
@@ -3648,7 +3662,95 @@ public partial class MainWindow : Window
         _inlineRecorderProc = null;
     }
 
-    private void Tts_Click(object s, RoutedEventArgs e) => new TextToSpeechWindow() { Owner = this }.ShowDialog();
+    private void Tts_Click(object s, RoutedEventArgs e)
+    {
+        PopulateTtsVoicesOnce();
+        ShowInspectorTab("tts");
+    }
+
+    private void PopulateTtsVoicesOnce()
+    {
+        if (_ttsVoicesLoaded) return;
+        try
+        {
+            using var synth = new SpeechSynthesizer();
+            foreach (var v in synth.GetInstalledVoices())
+                ttsVoiceBox.Items.Add(v.VoiceInfo.Name);
+            if (ttsVoiceBox.Items.Count > 0) ttsVoiceBox.SelectedIndex = 0;
+        }
+        catch { }
+        _ttsVoicesLoaded = true;
+    }
+
+    private void TtsPreview_Click(object sender, RoutedEventArgs e)
+    {
+        if (_ttsPreviewSynth != null)
+        {
+            StopTtsPreview();
+            return;
+        }
+        var text = ttsTextBox.Text;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            ttsStatusText.Text = "Type some text to preview.";
+            return;
+        }
+        try
+        {
+            var synth = new SpeechSynthesizer();
+            if (ttsVoiceBox.SelectedItem is string v) synth.SelectVoice(v);
+            synth.Rate = (int)ttsRateSlider.Value;
+            synth.SetOutputToDefaultAudioDevice();
+            synth.SpeakCompleted += (_, _) => Dispatcher.Invoke(StopTtsPreview);
+            _ttsPreviewSynth = synth;
+            ttsPreviewBtn.Content = "⏹ Stop";
+            ttsStatusText.Text = "Playing...";
+            synth.SpeakAsync(text);
+        }
+        catch (Exception ex)
+        {
+            StopTtsPreview();
+            ttsStatusText.Text = "Preview failed: " + ex.Message;
+        }
+    }
+
+    private void StopTtsPreview()
+    {
+        if (_ttsPreviewSynth != null)
+        {
+            try { _ttsPreviewSynth.SpeakAsyncCancelAll(); } catch { }
+            try { _ttsPreviewSynth.Dispose(); } catch { }
+            _ttsPreviewSynth = null;
+        }
+        if (ttsPreviewBtn != null) ttsPreviewBtn.Content = "▶ Preview";
+        if (ttsStatusText != null && ttsStatusText.Text == "Playing...") ttsStatusText.Text = "";
+    }
+
+    private void TtsSaveWav_Click(object sender, RoutedEventArgs e)
+    {
+        var text = ttsTextBox.Text;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            ttsStatusText.Text = "Type some text to save.";
+            return;
+        }
+        StopTtsPreview();
+        try
+        {
+            var sfd = new SaveFileDialog { FileName = "tts.wav", Filter = "WAV|*.wav" };
+            if (sfd.ShowDialog(this) != true) return;
+            using var synth = new SpeechSynthesizer();
+            if (ttsVoiceBox.SelectedItem is string v) synth.SelectVoice(v);
+            synth.Rate = (int)ttsRateSlider.Value;
+            synth.SetOutputToWaveFile(sfd.FileName);
+            synth.Speak(text);
+            ttsStatusText.Text = "Saved: " + sfd.FileName;
+        }
+        catch (Exception ex)
+        {
+            ttsStatusText.Text = "TTS failed: " + ex.Message;
+        }
+    }
     private async void Merge_Click(object s, RoutedEventArgs e)
     {
         if (timeline.Clips.Count < 2) { MessageBox.Show("Need at least 2 clips."); return; }

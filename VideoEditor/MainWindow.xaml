@@ -720,6 +720,12 @@
                                     <TextBlock Text="Recorder" Margin="6,0,0,0"/>
                                 </StackPanel>
                             </RadioButton>
+                            <RadioButton x:Name="tabTtsBtn" Visibility="Collapsed" Style="{DynamicResource InspectorTab}" GroupName="InspectorTabs" Click="TabTts_Click" HorizontalAlignment="Stretch">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <TextBlock Text="🎙" FontSize="11"/>
+                                    <TextBlock Text="Text to Speech" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </RadioButton>
                         </Grid>
                     </Border>
 
@@ -1327,6 +1333,26 @@
                                         <Button x:Name="inlineRecorderStartBtn" Content="Start" Style="{DynamicResource PrimaryButton}" Click="InlineRecorderStart_Click" Height="34" MinWidth="96" Margin="0,0,8,0"/>
                                         <Button x:Name="inlineRecorderStopBtn" Content="Stop + Add" Style="{DynamicResource ToolButton}" Click="InlineRecorderStop_Click" Height="34" MinWidth="112" IsEnabled="False"/>
                                     </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- =========== TEXT TO SPEECH PANEL =========== -->
+                            <Border x:Name="ttsInspectorPanel" Visibility="Collapsed">
+                                <StackPanel Margin="14,12,14,14">
+                                    <TextBlock Text="TEXT" Style="{DynamicResource FieldLabel}"/>
+                                    <TextBox x:Name="ttsTextBox" AcceptsReturn="True" TextWrapping="Wrap" Height="140" VerticalScrollBarVisibility="Auto" Margin="0,0,0,10"/>
+
+                                    <TextBlock Text="VOICE" Style="{DynamicResource FieldLabel}"/>
+                                    <ComboBox x:Name="ttsVoiceBox" Margin="0,0,0,10"/>
+
+                                    <TextBlock Text="RATE" Style="{DynamicResource FieldLabel}"/>
+                                    <Slider x:Name="ttsRateSlider" Minimum="-10" Maximum="10" Value="0" Margin="0,0,0,12"/>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                        <Button x:Name="ttsPreviewBtn" Content="▶ Preview" Style="{DynamicResource ToolButton}" Click="TtsPreview_Click" Height="34" MinWidth="110" Margin="0,0,8,0"/>
+                                        <Button x:Name="ttsSaveBtn" Content="💾 Save WAV" Style="{DynamicResource PrimaryButton}" Click="TtsSaveWav_Click" Height="34" MinWidth="120"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="ttsStatusText" Text="" Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Border>
                         </StackPanel>
