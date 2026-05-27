@@ -2001,12 +2001,13 @@ internal class AudioBar
         Root.Cursor = Cursors.Hand;
         Root.MouseLeftButtonDown += (s, e) =>
         {
-            _owner.RaiseAudioSelected(Clip);
+            bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+            _owner.HandleAudioClick(Clip, ctrl);
             e.Handled = true;
         };
         Root.MouseRightButtonUp += (s, e) =>
         {
-            _owner.RaiseAudioSelected(Clip);
+            if (!_owner.SelectedAudios.Contains(Clip)) _owner.HandleAudioClick(Clip, false);
             ShowAudioContextMenu();
             e.Handled = true;
         };
@@ -2017,15 +2018,20 @@ internal class AudioBar
         {
             double dragStartTL = 0;
             Point dragStartMouse = default;
+            bool multiAudioDrag = false;
             Root.Cursor = Cursors.SizeAll;
             Root.MouseLeftButtonDown += (s, e) =>
             {
                 // Don't start a drag when the user is Shift-clicking to split (handled by the preview handler).
                 if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0) return;
+                // Ctrl is the multi-select modifier; don't start a drag in that case.
+                if ((Keyboard.Modifiers & ModifierKeys.Control) != 0) return;
                 if (e.ClickCount == 1)
                 {
                     dragStartTL = Clip.TimelineStart;
                     dragStartMouse = e.GetPosition(_owner);
+                    multiAudioDrag = _owner.SelectedAudios.Contains(Clip) && _owner.SelectedAudios.Count > 1;
+                    if (multiAudioDrag) _owner.BeginMultiDrag();
                     Root.CaptureMouse();
                 }
             };
@@ -2035,12 +2041,18 @@ internal class AudioBar
                 {
                     var p = e.GetPosition(_owner);
                     var dxPx = p.X - dragStartMouse.X;
-                    Clip.TimelineStart = Math.Max(0, dragStartTL + dxPx / _owner.PixelsPerSecond);
+                    var totalDxSec = dxPx / _owner.PixelsPerSecond;
+                    if (multiAudioDrag && _owner.TryApplyMultiAudioDrag(totalDxSec)) return;
+                    Clip.TimelineStart = Math.Max(0, dragStartTL + totalDxSec);
                 }
             };
             Root.MouseLeftButtonUp += (s, e) =>
             {
-                if (Root.IsMouseCaptured) Root.ReleaseMouseCapture();
+                if (Root.IsMouseCaptured)
+                {
+                    Root.ReleaseMouseCapture();
+                    if (multiAudioDrag) { _owner.EndMultiDrag(); multiAudioDrag = false; }
+                }
             };
 
             // Shift+Click → split at clicked position (same as ClipBar)
@@ -2052,7 +2064,7 @@ internal class AudioBar
                     var w = Root.Width > 0 ? Root.Width : 1;
                     var fraction = Math.Max(0.05, Math.Min(0.95, p.X / w));
                     _owner.LastRequestedSplitSourceSec = Clip.InPoint + fraction * (Clip.OutPoint - Clip.InPoint);
-                    _owner.RaiseAudioSelected(Clip);
+                    _owner.HandleAudioClick(Clip, false);
                     _owner.RaiseClipContext(Clip, "splitHere");
                     e.Handled = true;
                 }
@@ -2070,7 +2082,7 @@ internal class AudioBar
             double tIn = 0, tOut = 0, tTL = 0;
             leftHandle.DragStarted += (_, _) =>
             {
-                _owner.RaiseAudioSelected(Clip);
+                _owner.HandleAudioClick(Clip, false);
                 tIn = Clip.InPoint; tOut = Clip.OutPoint; tTL = Clip.TimelineStart;
             };
             leftHandle.DragDelta += (_, e) =>
@@ -2086,7 +2098,7 @@ internal class AudioBar
             };
             rightHandle.DragStarted += (_, _) =>
             {
-                _owner.RaiseAudioSelected(Clip);
+                _owner.HandleAudioClick(Clip, false);
                 tIn = Clip.InPoint; tOut = Clip.OutPoint;
             };
             rightHandle.DragDelta += (_, e) =>
