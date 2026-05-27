@@ -1211,12 +1211,12 @@ public partial class MainWindow : Window
         _suppress = false;
     }
 
-    // Click on the central recording preview — only meaningful while recording is active
-    // and the tab is hidden. Brings the controls tab back.
+    // Click on the central recording preview — whenever recorder mode is open (whether or
+    // not recording has started), bring the Recorder tab back. Selecting a clip/block
+    // switches the inspector away, so this is the way back.
     private void RecorderPreview_Clicked(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        bool recording = _inlineRecorderProc != null && !_inlineRecorderProc.HasExited;
-        if (!recording) return;
+        if (!IsInlineRecorderVisible()) return;
         if (recorderInspectorPanel.Visibility == Visibility.Visible) return;
         ShowInspectorTab("recorder");
         HideRecordingHint();
