@@ -2233,6 +2233,9 @@ public partial class MainWindow : Window
         StopInlineRecorderWebcamPreview();
         ClearInlineRecorderWebcamLayer();
 
+        if (picker.LastPreviewFrame != null)
+            inlineRecorderPreviewImage.Source = picker.LastPreviewFrame;
+
         inlineRecorderSourceBox.Items.Clear();
         inlineRecorderSourceBox.Items.Add(_inlineRecorderWebcamDeviceName);
         inlineRecorderSourceBox.SelectedIndex = 0;
@@ -2369,6 +2372,9 @@ public partial class MainWindow : Window
         _inlineRecorderWebcamControl.Changed += _ => { };
         inlineRecorderOverlayCanvas.Children.Add(_inlineRecorderWebcamControl);
         Panel.SetZIndex(_inlineRecorderWebcamControl, 200);
+
+        if (picker.LastPreviewFrame != null)
+            _inlineRecorderWebcamControl.SetLivePreviewSource(picker.LastPreviewFrame);
 
         _suppressBgComboChange = true;
         try

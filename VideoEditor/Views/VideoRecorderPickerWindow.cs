@@ -21,6 +21,7 @@ public class VideoRecorderPickerWindow : Window
     private System.Threading.CancellationTokenSource? _previewCts;
 
     public string SelectedCameraName { get; private set; } = "USB Video Device";
+    public BitmapSource? LastPreviewFrame { get; private set; }
 
     public VideoRecorderPickerWindow(FFmpegService ff, string? initialCamera = null)
     {
@@ -187,6 +188,7 @@ public class VideoRecorderPickerWindow : Window
         var name = _cameraBox.Text?.Trim();
         if (string.IsNullOrWhiteSpace(name)) return;
         StopPreview();
+        LastPreviewFrame = null;
         _statusText.Text = "Starting preview...";
         try
         {
@@ -243,6 +245,7 @@ public class VideoRecorderPickerWindow : Window
                 while (TryExtractJpeg(bytes, out var jpg))
                 {
                     var image = BitmapSourceFromJpeg(jpg);
+                    LastPreviewFrame = image;
                     Dispatcher.Invoke(() =>
                     {
                         _previewImage.Source = image;
