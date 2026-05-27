@@ -91,6 +91,9 @@ public partial class MainWindow : Window
     }
     private readonly List<InlineRecorderTab> _inlineRecorderTabList = new();
     private InlineRecorderTab? _activeInlineTab;
+    private string? _lastInspectorTabBeforeRecorder;
+    private System.Windows.Controls.Panel? _inlineRecorderControlsOriginalParent;
+    private int _inlineRecorderControlsOriginalIndex = -1;
 
     public MainWindow()
     {
@@ -155,6 +158,7 @@ public partial class MainWindow : Window
             UpdateTimeDisplays();
         };
         timeline.BlocksChanged += () => UpdateStats();
+        timeline.SelectionChanged += OnTimelineSelectionChanged;
 
         overlayCanvas.SizeChanged += (_, _) =>
         {
@@ -1147,19 +1151,22 @@ public partial class MainWindow : Window
         if (_playingClip == _selectedClip) ApplyClipTransform(_selectedClip);
     }
 
-    // Show one of the three inspector panels (block / clip / export).
+    // Show one of the inspector panels (block / clip / export / recorder).
     private void ShowInspectorTab(string key)
     {
         bool isBlock = key == "block";
         bool isClip  = key == "clip";
         bool isExp   = key == "export";
+        bool isRec   = key == "recorder";
         blockPanel.Visibility    = isBlock ? Visibility.Visible : Visibility.Collapsed;
         clipPanel.Visibility     = isClip  ? Visibility.Visible : Visibility.Collapsed;
         emptyInspector.Visibility = isExp  ? Visibility.Visible : Visibility.Collapsed;
+        if (recorderPanel != null) recorderPanel.Visibility = isRec ? Visibility.Visible : Visibility.Collapsed;
         _suppress = true;
         tabBlockBtn.IsChecked = isBlock;
         tabClipBtn.IsChecked  = isClip;
         tabExportBtn.IsChecked = isExp;
+        if (tabRecorderBtn != null) tabRecorderBtn.IsChecked = isRec;
         if (tabBlockDot != null) tabBlockDot.Visibility = _selectedBlock != null ? Visibility.Visible : Visibility.Collapsed;
         if (tabClipDot != null)  tabClipDot.Visibility  = _selectedClip != null ? Visibility.Visible : Visibility.Collapsed;
         _suppress = false;
@@ -1179,6 +1186,11 @@ public partial class MainWindow : Window
     {
         if (_suppress) return;
         ShowInspectorTab("export");
+    }
+    private void TabRecorder_Click(object sender, RoutedEventArgs e)
+    {
+        if (_suppress) return;
+        ShowInspectorTab("recorder");
     }
 
     // Segmented mode buttons drive the hidden ComboBox so existing logic still runs.
@@ -2065,6 +2077,90 @@ public partial class MainWindow : Window
         _inlineRecorderPreviewTimer.Start();
     }
 
+    private void MoveRecorderControlsToInspectorTab()
+    {
+        if (inlineRecorderControlsHost == null || recorderPanelHost == null) return;
+        if (ReferenceEquals(inlineRecorderControlsHost.Parent, recorderPanelHost)) return;
+
+        if (inlineRecorderControlsHost.Parent is Panel original)
+        {
+            _inlineRecorderControlsOriginalParent = original;
+            _inlineRecorderControlsOriginalIndex = original.Children.IndexOf(inlineRecorderControlsHost);
+            original.Children.Remove(inlineRecorderControlsHost);
+        }
+
+        inlineRecorderControlsHost.ClearValue(Grid.ColumnProperty);
+        inlineRecorderControlsHost.Margin = new Thickness(0);
+        recorderPanelHost.Children.Add(inlineRecorderControlsHost);
+
+        if (inlineRecorderHeaderRow != null) inlineRecorderHeaderRow.Visibility = Visibility.Collapsed;
+        if (inlineRecorderControlsCol != null) inlineRecorderControlsCol.Width = new GridLength(0);
+        if (inlineRecorderDiagText != null) inlineRecorderDiagText.Visibility = Visibility.Collapsed;
+    }
+
+    private void RestoreRecorderControlsFromInspectorTab()
+    {
+        if (inlineRecorderHeaderRow != null) inlineRecorderHeaderRow.Visibility = Visibility.Visible;
+        if (inlineRecorderControlsCol != null) inlineRecorderControlsCol.Width = new GridLength(260);
+        if (inlineRecorderDiagText != null) inlineRecorderDiagText.Visibility = Visibility.Visible;
+
+        if (inlineRecorderControlsHost == null) return;
+        if (_inlineRecorderControlsOriginalParent == null) return;
+        if (ReferenceEquals(inlineRecorderControlsHost.Parent, _inlineRecorderControlsOriginalParent)) return;
+
+        if (inlineRecorderControlsHost.Parent is Panel current)
+            current.Children.Remove(inlineRecorderControlsHost);
+
+        Grid.SetColumn(inlineRecorderControlsHost, 0);
+        inlineRecorderControlsHost.Margin = new Thickness(0, 0, 14, 0);
+
+        int idx = _inlineRecorderControlsOriginalIndex;
+        if (idx < 0 || idx > _inlineRecorderControlsOriginalParent.Children.Count)
+            idx = _inlineRecorderControlsOriginalParent.Children.Count;
+        _inlineRecorderControlsOriginalParent.Children.Insert(idx, inlineRecorderControlsHost);
+
+        _inlineRecorderControlsOriginalParent = null;
+        _inlineRecorderControlsOriginalIndex = -1;
+    }
+
+    private void OpenCameraRecorderInspectorTab()
+    {
+        if (tabRecorderBtn == null) return;
+        MoveRecorderControlsToInspectorTab();
+        if (recorderTabTitle != null) recorderTabTitle.Text = VideoEditor.Services.Localization.T("Camera Recorder");
+        if (tabRecorderLabel != null) tabRecorderLabel.Text = VideoEditor.Services.Localization.T("Recorder");
+        UpdateRecorderTabStatusFromMain();
+        if (_lastInspectorTabBeforeRecorder == null)
+        {
+            _lastInspectorTabBeforeRecorder =
+                clipPanel.Visibility == Visibility.Visible ? "clip" :
+                blockPanel.Visibility == Visibility.Visible ? "block" :
+                "export";
+        }
+        tabRecorderBtn.Visibility = Visibility.Visible;
+        if (recorderHint != null) recorderHint.Visibility = Visibility.Collapsed;
+        ShowInspectorTab("recorder");
+    }
+
+    private void UpdateRecorderTabStatusFromMain()
+    {
+        if (recorderTabStatus != null && inlineRecorderStatus != null)
+            recorderTabStatus.Text = inlineRecorderStatus.Text;
+    }
+
+    private bool IsCameraOnlyRecordingActive()
+        => _inlineRecorderCameraOnly && _inlineRecorderProc != null && !_inlineRecorderProc.HasExited;
+
+    private void ScreenRecorderPanel_PreviewClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (!IsCameraOnlyRecordingActive()) return;
+        if (tabRecorderBtn == null) return;
+        tabRecorderBtn.Visibility = Visibility.Visible;
+        ShowInspectorTab("recorder");
+        if (recorderHint != null) recorderHint.Visibility = Visibility.Collapsed;
+        e.Handled = true;
+    }
+
     private void ShowInlineCameraRecorder()
     {
         if (_inlineRecorderProc != null && !_inlineRecorderProc.HasExited)
@@ -2085,6 +2181,7 @@ public partial class MainWindow : Window
         screenRecorderPanel.Visibility = Visibility.Visible;
         inlineRecorderTitle.Text = "Camera Recorder";
         ApplyInlineCameraOnlyPanelLayout();
+        OpenCameraRecorderInspectorTab();
         UpdateEmptyStartPanel();
 
         _inlineRecorderPreviewTimer?.Stop();
@@ -2120,6 +2217,7 @@ public partial class MainWindow : Window
         closeInlineRecorderBtn.IsEnabled = true;
         inlineRecorderDot.Fill = new SolidColorBrush(Color.FromRgb(0x8A, 0x91, 0xA6));
         inlineRecorderStatus.Text = $"Camera ready: {_inlineRecorderWebcamDeviceName}.";
+        UpdateRecorderTabStatusFromMain();
         ResetInlineCameraDiagWindow();
         inlineRecorderDiagText.Text = "Camera preview starting...";
         AppendInlineRecorderLog($"Camera selected: {_inlineRecorderWebcamDeviceName}");
@@ -2147,6 +2245,8 @@ public partial class MainWindow : Window
             return;
         }
 
+        bool wasCameraOnly = _inlineRecorderCameraOnly;
+
         _inlineRecorderPreviewTimer?.Stop();
         StopInlineCameraDiagTimer();
         StopInlineRecorderWebcamPreview();
@@ -2171,6 +2271,16 @@ public partial class MainWindow : Window
         inlineRecorderOutputPanel.Visibility = Visibility.Visible;
         inlineRecorderBlockPanel.Visibility = Visibility.Collapsed;
         inlineRecorderSourceBox.IsEnabled = true;
+        if (wasCameraOnly)
+        {
+            if (tabRecorderBtn != null) tabRecorderBtn.Visibility = Visibility.Collapsed;
+            if (recorderPanel != null) recorderPanel.Visibility = Visibility.Collapsed;
+            if (recorderHint != null) recorderHint.Visibility = Visibility.Collapsed;
+            var fallback = _lastInspectorTabBeforeRecorder ?? "export";
+            _lastInspectorTabBeforeRecorder = null;
+            ShowInspectorTab(fallback);
+            RestoreRecorderControlsFromInspectorTab();
+        }
         screenRecorderPanel.Visibility = Visibility.Collapsed;
         UpdateEmptyStartPanel();
     }
@@ -2619,7 +2729,21 @@ public partial class MainWindow : Window
             closeInlineRecorderBtn.IsEnabled = false;
             inlineRecorderDot.Fill = new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x6B));
             inlineRecorderStatus.Text = _inlineRecorderCameraOnly ? "Camera recording..." : "Recording...";
+            UpdateRecorderTabStatusFromMain();
             status.Text = _inlineRecorderCameraOnly ? "Camera recording in progress." : "Screen recording in progress.";
+
+            if (_inlineRecorderCameraOnly)
+            {
+                if (tabRecorderBtn != null) tabRecorderBtn.Visibility = Visibility.Collapsed;
+                if (recorderPanel != null) recorderPanel.Visibility = Visibility.Collapsed;
+                ShowInspectorTab(_lastInspectorTabBeforeRecorder ?? "export");
+                if (recorderHint != null)
+                {
+                    if (recorderHintText != null)
+                        recorderHintText.Text = VideoEditor.Services.Localization.T("Click the preview to open the recorder");
+                    recorderHint.Visibility = Visibility.Visible;
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -3555,7 +3679,10 @@ public partial class MainWindow : Window
         status.Text = (_inlineRecorderCameraOnly ? "Camera recording" : "Screen recording") + " added to timeline: " + Path.GetFileName(outputPath);
         AddFiles(new[] { outputPath });
         inlineRecorderPathBox.Text = _inlineRecorderCameraOnly ? DefaultCameraRecordingPath() : DefaultScreenRecordingPath();
-        if (_inlineRecorderCameraOnly) StartInlineCameraOnlyPreview();
+        if (_inlineRecorderCameraOnly)
+        {
+            CloseInlineRecorder_Click(this, new RoutedEventArgs());
+        }
     }
 
     private void StopInlineScreenRecording()
@@ -3600,6 +3727,13 @@ public partial class MainWindow : Window
         helpBtn.ToolTip = isHe ? "מדריך למשתמש · ?" : "User Guide · ?";
 
         VideoEditor.Services.Localization.TranslateTree(this);
+
+        if (recorderHintText != null)
+            recorderHintText.Text = VideoEditor.Services.Localization.T("Click the preview to open the recorder");
+        if (tabRecorderLabel != null)
+            tabRecorderLabel.Text = VideoEditor.Services.Localization.T("Recorder");
+        if (recorderTabTitle != null)
+            recorderTabTitle.Text = VideoEditor.Services.Localization.T("Camera Recorder");
     }
 
 private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { Owner = this }.ShowDialog();
