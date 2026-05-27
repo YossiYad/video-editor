@@ -1331,14 +1331,15 @@ internal class ClipBar
                 var w = Root.Width > 0 ? Root.Width : 1;
                 var fraction = Math.Max(0.05, Math.Min(0.95, p.X / w));
                 _owner.LastRequestedSplitSourceSec = Clip.InPoint + fraction * (Clip.OutPoint - Clip.InPoint);
-                _owner.RaiseClipSelected(Clip);
+                _owner.HandleClipClick(Clip, false);
                 _owner.RaiseClipContext(Clip, "splitHere");
                 e.Handled = true;
             }
         };
         Root.MouseLeftButtonDown += (s, e) =>
         {
-            _owner.RaiseClipSelected(Clip);
+            bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+            _owner.HandleClipClick(Clip, ctrl);
             if (e.ClickCount == 2) _owner.RaiseClipDoubleClicked(Clip);
             e.Handled = true;
         };
@@ -1349,7 +1350,7 @@ internal class ClipBar
             var w = Root.Width > 0 ? Root.Width : 1;
             var fraction = Math.Max(0.05, Math.Min(0.95, p.X / w));
             _owner.LastRequestedSplitSourceSec = Clip.InPoint + fraction * (Clip.OutPoint - Clip.InPoint);
-            _owner.RaiseClipSelected(Clip);
+            if (!_owner.SelectedClips.Contains(Clip)) _owner.HandleClipClick(Clip, false);
             ShowContextMenu();
             e.Handled = true;
         };
@@ -1358,7 +1359,9 @@ internal class ClipBar
         // On release: magnetic snap to nearby edges + overlap resolution if any. ===
         _dragThumb.DragStarted += (_, _) =>
         {
-            _owner.RaiseClipSelected(Clip);
+            // Don't reset selection if this clip is already part of a multi-select.
+            if (!_owner.SelectedClips.Contains(Clip)) _owner.HandleClipClick(Clip, false);
+            _owner.BeginMultiDrag();
             _owner.BeginDrag();
             _dragStartTimelineStart = Clip.TimelineStart;
             _bg.Opacity = 0.7;
@@ -1367,6 +1370,7 @@ internal class ClipBar
         _dragThumb.DragDelta += (_, e) =>
         {
             var totalDxSec = e.HorizontalChange / _owner.PixelsPerSecond;
+            if (_owner.TryApplyMultiClipDrag(totalDxSec)) return;
             Clip.TimelineStart = Math.Max(0, _dragStartTimelineStart + totalDxSec);
             // No insert indicator during free drag - the clip itself shows you where it's going.
         };
@@ -1375,8 +1379,9 @@ internal class ClipBar
             _bg.Opacity = 1.0;
             Panel.SetZIndex(Root, 0);
             _owner.HideInsertIndicator();
-            // Apply magnetic snap + overlap resolution at the current free position
-            _owner.ReorderClipToPosition(Clip, Clip.TimelineStart);
+            bool wasMulti = _owner.EndMultiDrag();
+            // Snap + overlap-resolve only for single-clip drags; multi-drag keeps free positions.
+            if (!wasMulti) _owner.ReorderClipToPosition(Clip, Clip.TimelineStart);
             _owner.EndDrag();
         };
 
@@ -1385,7 +1390,8 @@ internal class ClipBar
         // Use it directly - do NOT accumulate.
         _leftHandle.DragStarted += (_, _) =>
         {
-            _owner.RaiseClipSelected(Clip);
+            // Trim handles stay single-item; force single-select on this clip.
+            _owner.HandleClipClick(Clip, false);
             _dragStartInPoint = Clip.InPoint;
             _dragStartOutPoint = Clip.OutPoint;
             _dragStartTimelineStart = Clip.TimelineStart;
@@ -1426,7 +1432,7 @@ internal class ClipBar
         // === Right edge drag - DEFERRED ===
         _rightHandle.DragStarted += (_, _) =>
         {
-            _owner.RaiseClipSelected(Clip);
+            _owner.HandleClipClick(Clip, false);
             _dragStartInPoint = Clip.InPoint;
             _dragStartOutPoint = Clip.OutPoint;
             _dragStartTimelineStart = Clip.TimelineStart;
