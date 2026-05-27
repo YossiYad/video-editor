@@ -625,9 +625,7 @@
                             CornerRadius="8"
                             Padding="14"
                             HorizontalAlignment="Stretch"
-                            VerticalAlignment="Stretch"
-                            MaxWidth="980"
-                            MaxHeight="620">
+                            VerticalAlignment="Stretch">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
@@ -635,103 +633,49 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <Grid Grid.Row="0" Margin="0,0,0,12">
+                            <Grid Grid.Row="0" Margin="0,0,0,10">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <StackPanel Orientation="Horizontal">
-                                        <Ellipse x:Name="inlineRecorderDot" Width="9" Height="9" Fill="{DynamicResource TextDim}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                        <TextBlock x:Name="inlineRecorderTitle" Text="Screen Recorder" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource Text}"/>
-                                    </StackPanel>
-                                    <TextBlock x:Name="inlineRecorderStatus" Text="Choose a source, record, then edit the result on the timeline." FontSize="11.5" Foreground="{DynamicResource TextMute}" Margin="17,3,0,0"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse x:Name="inlineRecorderDot" Width="9" Height="9" Fill="{DynamicResource TextDim}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="inlineRecorderTitle" Text="Screen Recorder" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource Text}" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="inlineRecorderStatus" Text="" FontSize="11.5" Foreground="{DynamicResource TextMute}" Margin="12,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                 </StackPanel>
-                                <Button Grid.Column="1" x:Name="closeInlineRecorderBtn" Content="Close" Style="{DynamicResource ToolButtonSmall}" Click="CloseInlineRecorder_Click" Height="30" Padding="12,0"/>
+                                <Button Grid.Column="1" x:Name="closeInlineRecorderBtn" Content="Close" Style="{DynamicResource ToolButtonSmall}" Click="CloseInlineRecorder_Click" Height="28" Padding="12,0"/>
                             </Grid>
 
-                            <Grid Grid.Row="1">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="260"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
+                            <Border Grid.Row="1" Background="Black" BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="6" ClipToBounds="True" Cursor="Hand">
+                                <Grid Background="Transparent" MouseLeftButtonDown="RecorderPreview_Clicked">
+                                    <Image x:Name="inlineRecorderPreviewImage" Stretch="Uniform"/>
+                                    <Canvas x:Name="inlineRecorderOverlayCanvas" Background="Transparent"/>
+                                </Grid>
+                            </Border>
 
-                                <StackPanel Grid.Column="0" Margin="0,0,14,0">
-                                    <ItemsControl x:Name="inlineRecorderTabButtons" Margin="0,0,0,10" Visibility="Collapsed">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                    </ItemsControl>
-
-                                    <StackPanel x:Name="inlineRecorderSourcePanel">
-                                        <TextBlock Text="RECORDING SOURCE" Style="{DynamicResource FieldLabel}"/>
-                                        <ComboBox x:Name="inlineRecorderSourceBox" SelectionChanged="InlineRecorderSource_Changed" Margin="0,0,0,10"/>
-                                    </StackPanel>
-
-                                    <StackPanel x:Name="inlineRecorderCameraPanel" Visibility="Collapsed">
-                                        <TextBlock x:Name="inlineCameraBgLabel" Text="BACKGROUND (AI)" Style="{DynamicResource FieldLabel}"/>
-                                        <ComboBox x:Name="inlineCameraBgBox" SelectionChanged="InlineCameraBg_Changed" Margin="0,0,0,10"/>
-                                        <TextBlock x:Name="inlineCameraDeviceLabel" Text="" Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                                        <Button x:Name="inlineCameraRemoveBtn" Content="Remove Camera" Style="{DynamicResource ToolButton}" Height="30" HorizontalAlignment="Left" Margin="0,0,0,4" Click="InlineCameraRemove_Click" Visibility="Collapsed"/>
-                                    </StackPanel>
-
-                                    <StackPanel x:Name="inlineRecorderFpsPanel">
-                                        <TextBlock Text="FRAME RATE (FPS)" Style="{DynamicResource FieldLabel}"/>
-                                        <TextBox x:Name="inlineRecorderFpsBox" Text="30" Width="90" HorizontalAlignment="Left" Margin="0,0,0,10"/>
-                                    </StackPanel>
-
-                                    <StackPanel x:Name="inlineRecorderOutputPanel">
-                                        <TextBlock Text="OUTPUT FILE" Style="{DynamicResource FieldLabel}"/>
-                                        <TextBox x:Name="inlineRecorderPathBox" TextWrapping="NoWrap" Margin="0,0,0,10"/>
-                                    </StackPanel>
-
-                                    <StackPanel x:Name="inlineRecorderBlockPanel" Visibility="Collapsed">
-                                        <TextBlock x:Name="inlineBlockTitleText" Text="" Style="{DynamicResource FieldLabel}"/>
-                                        <TextBlock Text="COLOR" Style="{DynamicResource FieldLabel}" Margin="0,4,0,4"/>
-                                        <Border x:Name="inlineBlockColorSwatch" Width="60" Height="22" BorderBrush="{DynamicResource Line}" BorderThickness="1" HorizontalAlignment="Left" Background="Black" Margin="0,0,0,8" Cursor="Hand" MouseLeftButtonUp="InlineBlockColorSwatch_Click"/>
-                                        <TextBlock Text="Edit color/opacity in the Block tab on the right (after clicking the block on the canvas)." Foreground="{DynamicResource TextDim}" FontSize="10.5" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                                        <Button x:Name="inlineBlockDeleteBtn" Content="Delete Block" Style="{DynamicResource ToolButton}" Height="30" HorizontalAlignment="Left" Click="InlineBlockDelete_Click"/>
-                                    </StackPanel>
-
-                                    <TextBlock Text="Use the sidebar before Start: Add Hide Block adds a mask, Camera Recorder adds a camera layer." Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,12"/>
-
-                                    <StackPanel Orientation="Horizontal">
-                                        <Button x:Name="inlineRecorderStartBtn" Content="Start" Style="{DynamicResource PrimaryButton}" Click="InlineRecorderStart_Click" Height="34" MinWidth="96" Margin="0,0,8,0"/>
-                                        <Button x:Name="inlineRecorderStopBtn" Content="Stop + Add" Style="{DynamicResource ToolButton}" Click="InlineRecorderStop_Click" Height="34" MinWidth="112" IsEnabled="False"/>
-                                    </StackPanel>
-                                </StackPanel>
-
-                                <Border Grid.Column="1" Background="Black" BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="6" ClipToBounds="True">
-                                    <Grid>
-                                        <Image x:Name="inlineRecorderPreviewImage" Stretch="Uniform"/>
-                                        <Canvas x:Name="inlineRecorderOverlayCanvas" Background="Transparent"/>
-                                    </Grid>
-                                </Border>
+                            <Grid Grid.Row="2">
+                                <TextBlock x:Name="inlineRecorderDiagText"
+                                           Text=""
+                                           FontFamily="Consolas"
+                                           FontSize="10"
+                                           Foreground="{DynamicResource TextDim}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,10,0,0"/>
+                                <TextBox x:Name="inlineRecorderLogText"
+                                         Visibility="Collapsed"
+                                         IsReadOnly="True"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         FontFamily="Consolas"
+                                         FontSize="10"
+                                         Foreground="{DynamicResource TextDim}"
+                                         Background="{DynamicResource Bg0}"
+                                         BorderBrush="{DynamicResource Line}"
+                                         BorderThickness="1"
+                                         Margin="0,36,0,0"
+                                         MinHeight="72"
+                                         VerticalScrollBarVisibility="Auto"/>
                             </Grid>
-
-                            <TextBlock Grid.Row="2" x:Name="inlineRecorderDiagText"
-                                       Text=""
-                                       FontFamily="Consolas"
-                                       FontSize="10"
-                                       Foreground="{DynamicResource TextDim}"
-                                       TextWrapping="Wrap"
-                                       Margin="0,10,0,0"/>
-                            <TextBox Grid.Row="2" x:Name="inlineRecorderLogText"
-                                     Visibility="Collapsed"
-                                     IsReadOnly="True"
-                                     AcceptsReturn="True"
-                                     TextWrapping="Wrap"
-                                     FontFamily="Consolas"
-                                     FontSize="10"
-                                     Foreground="{DynamicResource TextDim}"
-                                     Background="{DynamicResource Bg0}"
-                                     BorderBrush="{DynamicResource Line}"
-                                     BorderThickness="1"
-                                     Margin="0,36,0,0"
-                                     MinHeight="72"
-                                     VerticalScrollBarVisibility="Auto"/>
                         </Grid>
                     </Border>
                 </Grid>
@@ -743,29 +687,37 @@
                     <!-- Tabs -->
                     <Border DockPanel.Dock="Top" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" Padding="10,10,10,8">
                         <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <RadioButton x:Name="tabBlockBtn" Grid.Column="0" Style="{DynamicResource InspectorTab}" GroupName="InspectorTabs" Click="TabBlock_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="◼" FontSize="11"/>
-                                    <TextBlock Text="Block" Margin="6,0,0,0"/>
-                                    <Ellipse x:Name="tabBlockDot" Width="5" Height="5" Fill="{DynamicResource Accent}" Margin="5,0,0,0" Visibility="Collapsed" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </RadioButton>
-                            <RadioButton x:Name="tabClipBtn" Grid.Column="1" Style="{DynamicResource InspectorTab}" GroupName="InspectorTabs" Click="TabClip_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="▤" FontSize="11"/>
-                                    <TextBlock Text="Clip" Margin="6,0,0,0"/>
-                                    <Ellipse x:Name="tabClipDot" Width="5" Height="5" Fill="{DynamicResource Accent}" Margin="5,0,0,0" Visibility="Collapsed" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </RadioButton>
-                            <RadioButton x:Name="tabExportBtn" Grid.Column="2" Style="{DynamicResource InspectorTab}" GroupName="InspectorTabs" IsChecked="True" Click="TabExport_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="💾" FontSize="11"/>
-                                    <TextBlock Text="Export" Margin="6,0,0,0"/>
+                            <Grid x:Name="normalTabsBar" Visibility="Collapsed">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <RadioButton x:Name="tabBlockBtn" Grid.Column="0" Visibility="Collapsed" Style="{DynamicResource InspectorTab}" GroupName="InspectorTabs" Click="TabBlock_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="◼" FontSize="11"/>
+                                        <TextBlock Text="Block" Margin="6,0,0,0"/>
+                                        <Ellipse x:Name="tabBlockDot" Width="5" Height="5" Fill="{DynamicResource Accent}" Margin="5,0,0,0" Visibility="Collapsed" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton x:Name="tabClipBtn" Grid.Column="1" Visibility="Collapsed" Style="{DynamicResource InspectorTab}" GroupName="InspectorTabs" Click="TabClip_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="▤" FontSize="11"/>
+                                        <TextBlock Text="Clip" Margin="6,0,0,0"/>
+                                        <Ellipse x:Name="tabClipDot" Width="5" Height="5" Fill="{DynamicResource Accent}" Margin="5,0,0,0" Visibility="Collapsed" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </RadioButton>
+                                <RadioButton x:Name="tabExportBtn" Grid.Column="2" Visibility="Collapsed" Style="{DynamicResource InspectorTab}" GroupName="InspectorTabs" Click="TabExport_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="💾" FontSize="11"/>
+                                        <TextBlock Text="Export" Margin="6,0,0,0"/>
+                                    </StackPanel>
+                                </RadioButton>
+                            </Grid>
+                            <RadioButton x:Name="tabRecorderBtn" Visibility="Collapsed" Style="{DynamicResource InspectorTab}" GroupName="InspectorTabs" Click="TabRecorder_Click" HorizontalAlignment="Stretch">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <TextBlock Text="●" FontSize="11" Foreground="#FF6B6B"/>
+                                    <TextBlock Text="Recorder" Margin="6,0,0,0"/>
                                 </StackPanel>
                             </RadioButton>
                         </Grid>
@@ -1162,7 +1114,7 @@
                             </Border>
 
                             <!-- =========== PROJECT / EXPORT PANEL =========== -->
-                            <Border x:Name="emptyInspector">
+                            <Border x:Name="emptyInspector" Visibility="Collapsed">
                                 <StackPanel>
                                     <!-- Hero -->
                                     <StackPanel HorizontalAlignment="Center" Margin="16,18,16,4">
@@ -1324,6 +1276,56 @@
                                     <StackPanel Margin="16,4,16,4">
                                         <Button Content="💾 Export project" Style="{DynamicResource SuccessButton}" Click="SaveBtn_Click" Height="36" HorizontalContentAlignment="Center"/>
                                         <Button Content="↗ Extract project audio only" Style="{DynamicResource ToolButtonSmall}" Click="ExtractAudioProject_Click" Margin="0,6,0,0"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- =========== SCREEN RECORDER PANEL =========== -->
+                            <Border x:Name="recorderInspectorPanel" Visibility="Collapsed">
+                                <StackPanel Margin="14,12,14,14">
+                                    <ItemsControl x:Name="inlineRecorderTabButtons" Margin="0,0,0,10" Visibility="Collapsed">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+
+                                    <StackPanel x:Name="inlineRecorderSourcePanel">
+                                        <TextBlock Text="RECORDING SOURCE" Style="{DynamicResource FieldLabel}"/>
+                                        <ComboBox x:Name="inlineRecorderSourceBox" SelectionChanged="InlineRecorderSource_Changed" Margin="0,0,0,10"/>
+                                    </StackPanel>
+
+                                    <StackPanel x:Name="inlineRecorderCameraPanel" Visibility="Collapsed">
+                                        <TextBlock x:Name="inlineCameraBgLabel" Text="BACKGROUND (AI)" Style="{DynamicResource FieldLabel}"/>
+                                        <ComboBox x:Name="inlineCameraBgBox" SelectionChanged="InlineCameraBg_Changed" Margin="0,0,0,10"/>
+                                        <TextBlock x:Name="inlineCameraDeviceLabel" Text="" Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                        <Button x:Name="inlineCameraRemoveBtn" Content="Remove Camera" Style="{DynamicResource ToolButton}" Height="30" HorizontalAlignment="Left" Margin="0,0,0,4" Click="InlineCameraRemove_Click" Visibility="Collapsed"/>
+                                    </StackPanel>
+
+                                    <StackPanel x:Name="inlineRecorderFpsPanel">
+                                        <TextBlock Text="FRAME RATE (FPS)" Style="{DynamicResource FieldLabel}"/>
+                                        <TextBox x:Name="inlineRecorderFpsBox" Text="30" Width="90" HorizontalAlignment="Left" Margin="0,0,0,10"/>
+                                    </StackPanel>
+
+                                    <StackPanel x:Name="inlineRecorderOutputPanel">
+                                        <TextBlock Text="OUTPUT FILE" Style="{DynamicResource FieldLabel}"/>
+                                        <TextBox x:Name="inlineRecorderPathBox" TextWrapping="NoWrap" Margin="0,0,0,10"/>
+                                    </StackPanel>
+
+                                    <StackPanel x:Name="inlineRecorderBlockPanel" Visibility="Collapsed">
+                                        <TextBlock x:Name="inlineBlockTitleText" Text="" Style="{DynamicResource FieldLabel}"/>
+                                        <TextBlock Text="COLOR" Style="{DynamicResource FieldLabel}" Margin="0,4,0,4"/>
+                                        <Border x:Name="inlineBlockColorSwatch" Width="60" Height="22" BorderBrush="{DynamicResource Line}" BorderThickness="1" HorizontalAlignment="Left" Background="Black" Margin="0,0,0,8" Cursor="Hand" MouseLeftButtonUp="InlineBlockColorSwatch_Click"/>
+                                        <TextBlock Text="Edit color/opacity in the Block tab on the right (after clicking the block on the canvas)." Foreground="{DynamicResource TextDim}" FontSize="10.5" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                        <Button x:Name="inlineBlockDeleteBtn" Content="Delete Block" Style="{DynamicResource ToolButton}" Height="30" HorizontalAlignment="Left" Click="InlineBlockDelete_Click"/>
+                                    </StackPanel>
+
+                                    <TextBlock Text="Use the sidebar before Start: Add Hide Block adds a mask, Camera Recorder adds a camera layer." Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,12"/>
+
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="inlineRecorderStartBtn" Content="Start" Style="{DynamicResource PrimaryButton}" Click="InlineRecorderStart_Click" Height="34" MinWidth="96" Margin="0,0,8,0"/>
+                                        <Button x:Name="inlineRecorderStopBtn" Content="Stop + Add" Style="{DynamicResource ToolButton}" Click="InlineRecorderStop_Click" Height="34" MinWidth="112" IsEnabled="False"/>
                                     </StackPanel>
                                 </StackPanel>
                             </Border>

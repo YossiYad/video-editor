@@ -1012,7 +1012,7 @@ public partial class MainWindow : Window
         if (b != null) _selectedClip = null;
         foreach (var kv in _blockControls) kv.Value.SetSelected(kv.Key == b);
         timeline.SelectBlock(b);
-        ShowInspectorTab(b != null ? "block" : (_selectedClip != null ? "clip" : "export"));
+        ShowInspectorTab(b != null ? "block" : (_selectedClip != null ? "clip" : (IsInlineRecorderVisible() ? "recorder" : "none")));
         // Selection changed → previously-selected block (if out of range) must now hide;
         // the newly-selected one must now show even if out of range.
         UpdateBlockVisibility();
@@ -1066,7 +1066,7 @@ public partial class MainWindow : Window
         _selectedClip = c;
         if (c != null) _selectedBlock = null;
         timeline.SelectClip(c);
-        ShowInspectorTab(c != null ? "clip" : (_selectedBlock != null ? "block" : "export"));
+        ShowInspectorTab(c != null ? "clip" : (_selectedBlock != null ? "block" : (IsInlineRecorderVisible() ? "recorder" : "none")));
         RepositionCanvasHandles();
         if (c == null) return;
         _suppress = true;
@@ -1147,19 +1147,30 @@ public partial class MainWindow : Window
         if (_playingClip == _selectedClip) ApplyClipTransform(_selectedClip);
     }
 
-    // Show one of the three inspector panels (block / clip / export).
+    // Show the relevant inspector panel. "none" leaves the tab row and all panels empty.
+    // "recorder" hides the normal tabs and shows only the recorder tab.
     private void ShowInspectorTab(string key)
     {
         bool isBlock = key == "block";
         bool isClip  = key == "clip";
         bool isExp   = key == "export";
+        bool isRec   = key == "recorder";
         blockPanel.Visibility    = isBlock ? Visibility.Visible : Visibility.Collapsed;
         clipPanel.Visibility     = isClip  ? Visibility.Visible : Visibility.Collapsed;
         emptyInspector.Visibility = isExp  ? Visibility.Visible : Visibility.Collapsed;
+        recorderInspectorPanel.Visibility = isRec ? Visibility.Visible : Visibility.Collapsed;
         _suppress = true;
         tabBlockBtn.IsChecked = isBlock;
         tabClipBtn.IsChecked  = isClip;
         tabExportBtn.IsChecked = isExp;
+        tabRecorderBtn.IsChecked = isRec;
+        // Show a tab button only when its panel is the one being displayed; the user wants
+        // the tab row to be empty when no panel is selected.
+        tabBlockBtn.Visibility    = isBlock ? Visibility.Visible : Visibility.Collapsed;
+        tabClipBtn.Visibility     = isClip  ? Visibility.Visible : Visibility.Collapsed;
+        tabExportBtn.Visibility   = isExp   ? Visibility.Visible : Visibility.Collapsed;
+        normalTabsBar.Visibility  = (isBlock || isClip || isExp) ? Visibility.Visible : Visibility.Collapsed;
+        tabRecorderBtn.Visibility = isRec ? Visibility.Visible : Visibility.Collapsed;
         if (tabBlockDot != null) tabBlockDot.Visibility = _selectedBlock != null ? Visibility.Visible : Visibility.Collapsed;
         if (tabClipDot != null)  tabClipDot.Visibility  = _selectedClip != null ? Visibility.Visible : Visibility.Collapsed;
         _suppress = false;
@@ -1179,6 +1190,53 @@ public partial class MainWindow : Window
     {
         if (_suppress) return;
         ShowInspectorTab("export");
+    }
+    private void TabRecorder_Click(object sender, RoutedEventArgs e)
+    {
+        if (_suppress) return;
+        ShowInspectorTab("recorder");
+        HideRecordingHint();
+    }
+
+    // Recording is in progress — hide the inspector tab so the preview gets full width.
+    // The tab button itself is also hidden so the row is empty; the only way to bring the
+    // controls back is to click the centre preview.
+    private void CollapseRecorderTab()
+    {
+        _suppress = true;
+        tabRecorderBtn.IsChecked = false;
+        tabRecorderBtn.Visibility = Visibility.Collapsed;
+        recorderInspectorPanel.Visibility = Visibility.Collapsed;
+        normalTabsBar.Visibility = Visibility.Collapsed;
+        _suppress = false;
+    }
+
+    // Click on the central recording preview — only meaningful while recording is active
+    // and the tab is hidden. Brings the controls tab back.
+    private void RecorderPreview_Clicked(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        bool recording = _inlineRecorderProc != null && !_inlineRecorderProc.HasExited;
+        if (!recording) return;
+        if (recorderInspectorPanel.Visibility == Visibility.Visible) return;
+        ShowInspectorTab("recorder");
+        HideRecordingHint();
+        e.Handled = true;
+    }
+
+    // Top status hint shown while recording with the tab closed. The previous status text
+    // is saved so HideRecordingHint can restore it.
+    private string? _savedStatusBeforeHint;
+    private void ShowRecordingHint()
+    {
+        if (_savedStatusBeforeHint == null) _savedStatusBeforeHint = status.Text;
+        status.Text = VideoEditor.Services.Localization.T(
+            "Click the middle screen to open the recorder");
+    }
+    private void HideRecordingHint()
+    {
+        if (_savedStatusBeforeHint == null) return;
+        status.Text = _savedStatusBeforeHint;
+        _savedStatusBeforeHint = null;
     }
 
     // Segmented mode buttons drive the hidden ComboBox so existing logic still runs.
@@ -2045,6 +2103,9 @@ public partial class MainWindow : Window
         ClearInlineRecorderVisibleLog();
         screenRecorderPanel.Visibility = Visibility.Visible;
         inlineRecorderTitle.Text = "Screen Recorder";
+        inlineRecorderStatus.Text = "Choose a source, record, then edit the result on the timeline.";
+        ShowInspectorTab("recorder");
+        HideRecordingHint();
         RebuildInlineRecorderTabs();
         UpdateEmptyStartPanel();
         if (string.IsNullOrWhiteSpace(inlineRecorderPathBox.Text))
@@ -2084,6 +2145,9 @@ public partial class MainWindow : Window
         ResetInlineCameraAiCounters();
         screenRecorderPanel.Visibility = Visibility.Visible;
         inlineRecorderTitle.Text = "Camera Recorder";
+        inlineRecorderStatus.Text = "";
+        ShowInspectorTab("recorder");
+        HideRecordingHint();
         ApplyInlineCameraOnlyPanelLayout();
         UpdateEmptyStartPanel();
 
@@ -2172,6 +2236,10 @@ public partial class MainWindow : Window
         inlineRecorderBlockPanel.Visibility = Visibility.Collapsed;
         inlineRecorderSourceBox.IsEnabled = true;
         screenRecorderPanel.Visibility = Visibility.Collapsed;
+        HideRecordingHint();
+        // Returning to a non-recorder state: pick the inspector tab that matches the current
+        // selection, otherwise leave the right panel empty.
+        ShowInspectorTab(_selectedBlock != null ? "block" : (_selectedClip != null ? "clip" : "none"));
         UpdateEmptyStartPanel();
     }
 
@@ -2619,7 +2687,10 @@ public partial class MainWindow : Window
             closeInlineRecorderBtn.IsEnabled = false;
             inlineRecorderDot.Fill = new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x6B));
             inlineRecorderStatus.Text = _inlineRecorderCameraOnly ? "Camera recording..." : "Recording...";
-            status.Text = _inlineRecorderCameraOnly ? "Camera recording in progress." : "Screen recording in progress.";
+            // Recording is live: collapse the inspector tab to give the preview full width,
+            // and surface a top-status hint telling the user how to bring the controls back.
+            CollapseRecorderTab();
+            ShowRecordingHint();
         }
         catch (Exception ex)
         {
@@ -2628,6 +2699,7 @@ public partial class MainWindow : Window
             inlineRecorderStartBtn.IsEnabled = true;
             inlineRecorderStopBtn.IsEnabled = false;
             closeInlineRecorderBtn.IsEnabled = true;
+            HideRecordingHint();
             if (_inlineRecorderCameraOnly) StartInlineCameraOnlyPreview();
             else if (_inlineRecorderWebcamBlock != null) StartInlineRecorderWebcamPreview();
         }
@@ -3555,7 +3627,9 @@ public partial class MainWindow : Window
         status.Text = (_inlineRecorderCameraOnly ? "Camera recording" : "Screen recording") + " added to timeline: " + Path.GetFileName(outputPath);
         AddFiles(new[] { outputPath });
         inlineRecorderPathBox.Text = _inlineRecorderCameraOnly ? DefaultCameraRecordingPath() : DefaultScreenRecordingPath();
-        if (_inlineRecorderCameraOnly) StartInlineCameraOnlyPreview();
+        // Stop+Add succeeded — leave recorder mode entirely so the main preview returns
+        // and the right inspector goes back to whatever fits the current selection.
+        CloseInlineRecorder_Click(this, new RoutedEventArgs());
     }
 
     private void StopInlineScreenRecording()
