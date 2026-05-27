@@ -4034,12 +4034,34 @@ public partial class MainWindow : Window
 
     private async void TtsAddToTimeline_Click(object sender, RoutedEventArgs e)
     {
+        var text = ttsTextBox.Text;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            ttsStatusText.Text = "Type some text first.";
+            return;
+        }
+        StopTtsPreview();
         ttsSaveBtn.IsEnabled = false;
         ttsAddToTimelineBtn.IsEnabled = false;
+        ttsStatusText.Text = "Synthesizing...";
         try
         {
-            var path = await SynthesizeAndSaveAsync();
-            if (path != null) await AddTtsClipToTimelineAsync(path);
+            var bytes = await SynthesizeAsync(text);
+            if (bytes == null)
+            {
+                ttsStatusText.Text = "TTS produced no audio.";
+                return;
+            }
+            var ttsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tts_audio");
+            Directory.CreateDirectory(ttsDir);
+            var path = Path.Combine(ttsDir, $"tts_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}.wav");
+            await File.WriteAllBytesAsync(path, bytes);
+            await AddTtsClipToTimelineAsync(path);
+            ttsStatusText.Text = "";
+        }
+        catch (Exception ex)
+        {
+            ttsStatusText.Text = "Add to timeline failed: " + ex.Message;
         }
         finally
         {
