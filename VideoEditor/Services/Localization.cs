@@ -278,7 +278,10 @@ internal static class Localization
         ["Gemini took too long to respond. Try a shorter clip or run AI Captions again - Whisper's output is cached for this run."] = "Gemini לקח יותר מדי זמן לענות. נסה קליפ קצר יותר או הרץ שוב - Whisper לא צריך לרוץ מחדש.",
         ["Stop"] = "עצור",
         ["Generate"] = "צור",
-        ["Click the middle screen to open the recorder"] = "לחץ על המסך האמצעי כדי לפתוח את חלונית ההקלטה",
+
+        ["Recorder"] = "מקליט",
+        ["Camera Recorder"] = "מצלמה",
+        ["Click the preview to open the recorder"] = "לחץ על התצוגה כדי לפתוח את המקליט",
     };
 
     public static bool IsHebrew =>

@@ -8,7 +8,8 @@
         Background="{DynamicResource Bg0}"
         WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI, Heebo"
-        AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver">
+        AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver"
+        PreviewMouseDown="Window_PreviewMouseDown">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="56"/>
@@ -678,14 +679,15 @@
                             </Grid>
                         </Grid>
                     </Border>
+
                 </Grid>
             </Grid>
 
             <!-- ============ INSPECTOR ============ -->
-            <Border Grid.Column="2" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource LineStrong}" BorderThickness="1,0,0,0">
+            <Border x:Name="inspectorBorder" Grid.Column="2" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource LineStrong}" BorderThickness="1,0,0,0">
                 <DockPanel>
                     <!-- Tabs -->
-                    <Border DockPanel.Dock="Top" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" Padding="10,10,10,8">
+                    <Border x:Name="inspectorTabsBar" DockPanel.Dock="Top" Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Line}" BorderThickness="0,0,0,1" Padding="10,10,10,8" Visibility="Collapsed">
                         <Grid>
                             <Grid x:Name="normalTabsBar" Visibility="Collapsed">
                                 <Grid.ColumnDefinitions>
@@ -714,10 +716,17 @@
                                     </StackPanel>
                                 </RadioButton>
                             </Grid>
-                            <RadioButton x:Name="tabRecorderBtn" Visibility="Collapsed" Style="{DynamicResource InspectorTab}" GroupName="InspectorTabs" Click="TabRecorder_Click" HorizontalAlignment="Stretch">
+                            <ItemsControl x:Name="recorderTabHost" Visibility="Collapsed">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+                            <RadioButton x:Name="tabTtsBtn" Visibility="Collapsed" Style="{DynamicResource InspectorTab}" GroupName="InspectorTabs" Click="TabTts_Click" HorizontalAlignment="Stretch">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                    <TextBlock Text="●" FontSize="11" Foreground="#FF6B6B"/>
-                                    <TextBlock Text="Recorder" Margin="6,0,0,0"/>
+                                    <TextBlock Text="🎙" FontSize="11"/>
+                                    <TextBlock Text="Text to Speech" Margin="6,0,0,0"/>
                                 </StackPanel>
                             </RadioButton>
                         </Grid>
@@ -1113,6 +1122,20 @@
                                 </StackPanel>
                             </Border>
 
+                            <!-- =========== MULTI-SELECT PANEL =========== -->
+                            <Border x:Name="multiSelectInspector" Visibility="Collapsed">
+                                <StackPanel HorizontalAlignment="Center" Margin="16,28,16,18">
+                                    <Border Width="56" Height="56" CornerRadius="14" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource LineStrong}" BorderThickness="1">
+                                        <Border.Effect>
+                                            <DropShadowEffect Color="Black" BlurRadius="18" ShadowDepth="6" Opacity="0.5"/>
+                                        </Border.Effect>
+                                        <TextBlock Text="◫◫" FontSize="20" Foreground="{DynamicResource AccentHover}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <TextBlock x:Name="multiSelectCountText" Text="0 items selected" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource Text}" Margin="0,12,0,0" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Delete removes all. Drag any one to move them together." Foreground="{DynamicResource TextMute}" FontSize="11.5" Margin="0,4,0,0" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+
                             <!-- =========== PROJECT / EXPORT PANEL =========== -->
                             <Border x:Name="emptyInspector" Visibility="Collapsed">
                                 <StackPanel>
@@ -1283,14 +1306,6 @@
                             <!-- =========== SCREEN RECORDER PANEL =========== -->
                             <Border x:Name="recorderInspectorPanel" Visibility="Collapsed">
                                 <StackPanel Margin="14,12,14,14">
-                                    <ItemsControl x:Name="inlineRecorderTabButtons" Margin="0,0,0,10" Visibility="Collapsed">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                    </ItemsControl>
-
                                     <StackPanel x:Name="inlineRecorderSourcePanel">
                                         <TextBlock Text="RECORDING SOURCE" Style="{DynamicResource FieldLabel}"/>
                                         <ComboBox x:Name="inlineRecorderSourceBox" SelectionChanged="InlineRecorderSource_Changed" Margin="0,0,0,10"/>
@@ -1313,20 +1328,35 @@
                                         <TextBox x:Name="inlineRecorderPathBox" TextWrapping="NoWrap" Margin="0,0,0,10"/>
                                     </StackPanel>
 
-                                    <StackPanel x:Name="inlineRecorderBlockPanel" Visibility="Collapsed">
-                                        <TextBlock x:Name="inlineBlockTitleText" Text="" Style="{DynamicResource FieldLabel}"/>
-                                        <TextBlock Text="COLOR" Style="{DynamicResource FieldLabel}" Margin="0,4,0,4"/>
-                                        <Border x:Name="inlineBlockColorSwatch" Width="60" Height="22" BorderBrush="{DynamicResource Line}" BorderThickness="1" HorizontalAlignment="Left" Background="Black" Margin="0,0,0,8" Cursor="Hand" MouseLeftButtonUp="InlineBlockColorSwatch_Click"/>
-                                        <TextBlock Text="Edit color/opacity in the Block tab on the right (after clicking the block on the canvas)." Foreground="{DynamicResource TextDim}" FontSize="10.5" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                                        <Button x:Name="inlineBlockDeleteBtn" Content="Delete Block" Style="{DynamicResource ToolButton}" Height="30" HorizontalAlignment="Left" Click="InlineBlockDelete_Click"/>
-                                    </StackPanel>
-
                                     <TextBlock Text="Use the sidebar before Start: Add Hide Block adds a mask, Camera Recorder adds a camera layer." Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,12"/>
 
                                     <StackPanel Orientation="Horizontal">
                                         <Button x:Name="inlineRecorderStartBtn" Content="Start" Style="{DynamicResource PrimaryButton}" Click="InlineRecorderStart_Click" Height="34" MinWidth="96" Margin="0,0,8,0"/>
                                         <Button x:Name="inlineRecorderStopBtn" Content="Stop + Add" Style="{DynamicResource ToolButton}" Click="InlineRecorderStop_Click" Height="34" MinWidth="112" IsEnabled="False"/>
                                     </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- =========== TEXT TO SPEECH PANEL =========== -->
+                            <Border x:Name="ttsInspectorPanel" Visibility="Collapsed">
+                                <StackPanel Margin="14,12,14,14">
+                                    <TextBlock Text="TEXT" Style="{DynamicResource FieldLabel}"/>
+                                    <TextBox x:Name="ttsTextBox" AcceptsReturn="True" TextWrapping="Wrap" Height="140" VerticalScrollBarVisibility="Auto" Margin="0,0,0,10"/>
+
+                                    <TextBlock Text="VOICE" Style="{DynamicResource FieldLabel}"/>
+                                    <ComboBox x:Name="ttsVoiceBox" Margin="0,0,0,10"/>
+
+                                    <TextBlock Text="RATE" Style="{DynamicResource FieldLabel}"/>
+                                    <Slider x:Name="ttsRateSlider" Minimum="-10" Maximum="10" Value="0" Margin="0,0,0,12"/>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                        <Button x:Name="ttsPreviewBtn" Content="▶ Preview" Style="{DynamicResource ToolButton}" Click="TtsPreview_Click" Height="34" MinWidth="110"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                        <Button x:Name="ttsAddToTimelineBtn" Content="➕ Add to Timeline" Style="{DynamicResource PrimaryButton}" Click="TtsAddToTimeline_Click" Height="34" MinWidth="150" Margin="0,0,8,0"/>
+                                        <Button x:Name="ttsSaveBtn" Content="💾 Save to disk" Style="{DynamicResource ToolButton}" Click="TtsSaveWav_Click" Height="34" MinWidth="130"/>
+                                    </StackPanel>
+                                    <TextBlock x:Name="ttsStatusText" Text="" Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Border>
                         </StackPanel>

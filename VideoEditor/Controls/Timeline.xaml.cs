@@ -47,28 +47,36 @@ public partial class Timeline : UserControl
     public event Action<VideoClip>? AudioSelected;
     public event Action<VideoClip, string>? AudioContextAction;
 
-    internal void RaiseTextOverlaySelected(TextOverlay o) { _selectedTextOverlay = o; SelectTextOverlay(o); TextOverlaySelected?.Invoke(o); ClearClipSelectionVisuals(); ClearBlockSelectionVisuals(); UpdateAudioBarSelection(); }
+    internal void RaiseTextOverlaySelected(TextOverlay o) { SelectTextOverlay(o); TextOverlaySelected?.Invoke(o); }
     internal void RaiseTextOverlayContext(TextOverlay o, string action) => TextOverlayContextAction?.Invoke(o, action);
 
     private TextOverlay? _selectedTextOverlay;
     public TextOverlay? SelectedTextOverlay => _selectedTextOverlay;
     public void SelectTextOverlay(TextOverlay? o)
     {
-        var prev = _selectedTextOverlay;
+        ClearAllSelectionSets();
         _selectedTextOverlay = o;
-        if (prev != null && _textBars.TryGetValue(prev, out var pb)) pb.SetSelected(false);
-        if (o != null && _textBars.TryGetValue(o, out var nb)) nb.SetSelected(true);
+        if (o != null) _selectedTextOverlays.Add(o);
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
     }
     private void ClearTextOverlaySelectionVisuals() { foreach (var bb in _textBars.Values) bb.SetSelected(false); _selectedTextOverlay = null; }
 
     internal void RaiseClipScrub(VideoClip c, double sourceTime) => ClipScrubPreview?.Invoke(c, sourceTime);
     internal void RaiseClipEdgeDragEnded(VideoClip c) => ClipEdgeDragEnded?.Invoke(c);
-    internal void RaiseAudioSelected(VideoClip c) { _selectedAudio = c; AudioSelected?.Invoke(c); UpdateAudioBarSelection(); ClearClipSelectionVisuals(); ClearBlockSelectionVisuals(); }
+    internal void RaiseAudioSelected(VideoClip c) { SelectAudio(c); AudioSelected?.Invoke(c); }
     internal void RaiseAudioContext(VideoClip c, string action) => AudioContextAction?.Invoke(c, action);
 
     private VideoClip? _selectedAudio;
-    public void SelectAudio(VideoClip? c) { _selectedAudio = c; UpdateAudioBarSelection(); }
-    private void UpdateAudioBarSelection() { foreach (var kv in _audioBars) kv.Value.SetSelected(kv.Key == _selectedAudio); }
+    public void SelectAudio(VideoClip? c)
+    {
+        ClearAllSelectionSets();
+        _selectedAudio = c;
+        if (c != null) _selectedAudios.Add(c);
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
+    }
+    private void UpdateAudioBarSelection() { foreach (var kv in _audioBars) kv.Value.SetSelected(_selectedAudios.Contains(kv.Key)); }
 
     private Line? _trimMarker;
     private Border? _trimMarkerLabel;
@@ -318,6 +326,22 @@ public partial class Timeline : UserControl
     private VideoBlock? _selectedBlock;
     private VideoClip? _selectedClip;
 
+    // Multi-selection sets. The "_selectedXxx" singular fields above are the ANCHOR
+    // (the most recently clicked item), which drives the inspector when exactly one
+    // item is selected. The anchor is always a member of its set (or null when empty).
+    private readonly HashSet<VideoClip> _selectedClips = new();
+    private readonly HashSet<VideoBlock> _selectedBlocks = new();
+    private readonly HashSet<TextOverlay> _selectedTextOverlays = new();
+    private readonly HashSet<VideoClip> _selectedAudios = new();
+
+    public IReadOnlyCollection<VideoClip> SelectedClips => _selectedClips;
+    public IReadOnlyCollection<VideoBlock> SelectedBlocks => _selectedBlocks;
+    public IReadOnlyCollection<TextOverlay> SelectedTextOverlays => _selectedTextOverlays;
+    public IReadOnlyCollection<VideoClip> SelectedAudios => _selectedAudios;
+    public int TotalSelectionCount => _selectedClips.Count + _selectedBlocks.Count + _selectedTextOverlays.Count + _selectedAudios.Count;
+
+    public event Action? SelectionChanged;
+
     private readonly Dictionary<VideoClip, ClipBar> _clipBars = new();
     private readonly Dictionary<VideoClip, AudioBar> _audioBars = new();
     private readonly Dictionary<VideoBlock, BlockBar> _blockBars = new();
@@ -386,6 +410,21 @@ public partial class Timeline : UserControl
         rulerCanvas.MouseMove += Ruler_MouseMove;
         rulerCanvas.MouseLeftButtonUp += Ruler_MouseUp;
         rulerCanvas.Cursor = Cursors.Hand;
+
+        // Marquee (rubber-band) selectors per canvas. Each instance hooks MouseMove
+        // and MouseLeftButtonUp internally; the per-canvas MouseLeftButtonDown handlers
+        // start it. audioCanvas needs its own handler because it has none in XAML.
+        _clipMarquee  = new MarqueeSelector(this, clipCanvas,  MarqueeKind.Clip);
+        _audioMarquee = new MarqueeSelector(this, audioCanvas, MarqueeKind.Audio);
+        _trackMarquee = new MarqueeSelector(this, trackCanvas, MarqueeKind.BlockOrText);
+        audioCanvas.MouseLeftButtonDown += AudioCanvas_MouseLeftButtonDown;
+    }
+
+    private MarqueeSelector? _clipMarquee, _audioMarquee, _trackMarquee;
+
+    private void AudioCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource == audioCanvas) _audioMarquee?.OnMouseDown(e);
     }
 
     private bool _rulerDragging;
@@ -444,24 +483,275 @@ public partial class Timeline : UserControl
 
     public void SelectBlock(VideoBlock? b)
     {
-        var prev = _selectedBlock;
+        ClearAllSelectionSets();
         _selectedBlock = b;
-        if (b != null) { _selectedClip = null; _selectedAudio = null; UpdateAudioBarSelection(); }
-        if (prev != null && _blockBars.TryGetValue(prev, out var pb)) pb.SetSelected(false);
-        if (b != null && _blockBars.TryGetValue(b, out var nb)) nb.SetSelected(true);
-        if (_selectedClip == null) ClearClipSelectionVisuals();
+        if (b != null) _selectedBlocks.Add(b);
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
     }
     public void SelectClip(VideoClip? c)
     {
-        var prev = _selectedClip;
+        ClearAllSelectionSets();
         _selectedClip = c;
-        if (c != null) { _selectedBlock = null; _selectedAudio = null; UpdateAudioBarSelection(); }
-        if (prev != null && _clipBars.TryGetValue(prev, out var pb)) pb.SetSelected(false);
-        if (c != null && _clipBars.TryGetValue(c, out var nb)) nb.SetSelected(true);
-        if (_selectedBlock == null) ClearBlockSelectionVisuals();
+        if (c != null) _selectedClips.Add(c);
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
     }
     private void ClearClipSelectionVisuals() { foreach (var cb in _clipBars.Values) cb.SetSelected(false); }
     private void ClearBlockSelectionVisuals() { foreach (var bb in _blockBars.Values) bb.SetSelected(false); }
+
+    private void ClearAllSelectionSets()
+    {
+        _selectedClip = null;
+        _selectedBlock = null;
+        _selectedTextOverlay = null;
+        _selectedAudio = null;
+        _selectedClips.Clear();
+        _selectedBlocks.Clear();
+        _selectedTextOverlays.Clear();
+        _selectedAudios.Clear();
+    }
+
+    public void ClearAllSelection()
+    {
+        ClearAllSelectionSets();
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
+    }
+
+    private void RefreshAllVisuals()
+    {
+        foreach (var kv in _clipBars) kv.Value.SetSelected(_selectedClips.Contains(kv.Key));
+        foreach (var kv in _blockBars) kv.Value.SetSelected(_selectedBlocks.Contains(kv.Key));
+        foreach (var kv in _textBars) kv.Value.SetSelected(_selectedTextOverlays.Contains(kv.Key));
+        foreach (var kv in _audioBars) kv.Value.SetSelected(_selectedAudios.Contains(kv.Key));
+    }
+
+    // === Ctrl-aware click routers (called from each Bar's MouseLeftButtonDown).
+    // Without Ctrl: replaces the selection with just this item. With Ctrl: toggles
+    // membership in the matching set, unless a different type is currently selected
+    // (per-type rule) - in that case the click acts like a fresh single-select.
+
+    internal void HandleClipClick(VideoClip c, bool ctrl)
+    {
+        if (!ctrl) { SelectClip(c); return; }
+        bool otherTypeSelected = _selectedBlocks.Count + _selectedTextOverlays.Count + _selectedAudios.Count > 0;
+        if (otherTypeSelected) { SelectClip(c); return; }
+        if (_selectedClips.Contains(c))
+        {
+            _selectedClips.Remove(c);
+            if (_selectedClip == c) _selectedClip = _selectedClips.LastOrDefault();
+        }
+        else
+        {
+            _selectedClips.Add(c);
+            _selectedClip = c;
+        }
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
+    }
+
+    internal void HandleBlockClick(VideoBlock b, bool ctrl)
+    {
+        if (!ctrl) { SelectBlock(b); return; }
+        bool otherTypeSelected = _selectedClips.Count + _selectedTextOverlays.Count + _selectedAudios.Count > 0;
+        if (otherTypeSelected) { SelectBlock(b); return; }
+        if (_selectedBlocks.Contains(b))
+        {
+            _selectedBlocks.Remove(b);
+            if (_selectedBlock == b) _selectedBlock = _selectedBlocks.LastOrDefault();
+        }
+        else
+        {
+            _selectedBlocks.Add(b);
+            _selectedBlock = b;
+        }
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
+    }
+
+    internal void HandleTextOverlayClick(TextOverlay o, bool ctrl)
+    {
+        if (!ctrl) { SelectTextOverlay(o); return; }
+        bool otherTypeSelected = _selectedClips.Count + _selectedBlocks.Count + _selectedAudios.Count > 0;
+        if (otherTypeSelected) { SelectTextOverlay(o); return; }
+        if (_selectedTextOverlays.Contains(o))
+        {
+            _selectedTextOverlays.Remove(o);
+            if (_selectedTextOverlay == o) _selectedTextOverlay = _selectedTextOverlays.LastOrDefault();
+        }
+        else
+        {
+            _selectedTextOverlays.Add(o);
+            _selectedTextOverlay = o;
+        }
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
+    }
+
+    internal void HandleAudioClick(VideoClip c, bool ctrl)
+    {
+        if (!ctrl) { SelectAudio(c); return; }
+        bool otherTypeSelected = _selectedClips.Count + _selectedBlocks.Count + _selectedTextOverlays.Count > 0;
+        if (otherTypeSelected) { SelectAudio(c); return; }
+        if (_selectedAudios.Contains(c))
+        {
+            _selectedAudios.Remove(c);
+            if (_selectedAudio == c) _selectedAudio = _selectedAudios.LastOrDefault();
+        }
+        else
+        {
+            _selectedAudios.Add(c);
+            _selectedAudio = c;
+        }
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
+    }
+
+    // === Multi-drag: cache start positions of all selected items at DragStarted,
+    // apply the same clamped delta to all of them on each DragDelta.
+
+    private Dictionary<VideoClip, double>? _multiDragStartClipTL;
+    private Dictionary<VideoBlock, (double start, double end)>? _multiDragStartBlocks;
+    private Dictionary<TextOverlay, (double start, double end)>? _multiDragStartOverlays;
+    private Dictionary<VideoClip, double>? _multiDragStartAudioTL;
+
+    internal void BeginMultiDrag()
+    {
+        _multiDragStartClipTL = _selectedClips.Count > 1
+            ? _selectedClips.ToDictionary(c => c, c => c.TimelineStart) : null;
+        _multiDragStartBlocks = _selectedBlocks.Count > 1
+            ? _selectedBlocks.ToDictionary(b => b, b => (b.StartSeconds, b.EndSeconds)) : null;
+        _multiDragStartOverlays = _selectedTextOverlays.Count > 1
+            ? _selectedTextOverlays.ToDictionary(o => o, o => (o.StartSeconds, o.EndSeconds)) : null;
+        _multiDragStartAudioTL = _selectedAudios.Count > 1
+            ? _selectedAudios.ToDictionary(c => c, c => c.TimelineStart) : null;
+    }
+
+    internal bool EndMultiDrag()
+    {
+        bool wasMulti = _multiDragStartClipTL != null || _multiDragStartBlocks != null
+                       || _multiDragStartOverlays != null || _multiDragStartAudioTL != null;
+        _multiDragStartClipTL = null;
+        _multiDragStartBlocks = null;
+        _multiDragStartOverlays = null;
+        _multiDragStartAudioTL = null;
+        return wasMulti;
+    }
+
+    internal bool TryApplyMultiClipDrag(double dxSec)
+    {
+        if (_multiDragStartClipTL == null) return false;
+        double minStart = _multiDragStartClipTL.Values.Min();
+        double clampedDx = Math.Max(dxSec, -minStart);
+        foreach (var kv in _multiDragStartClipTL) kv.Key.TimelineStart = kv.Value + clampedDx;
+        return true;
+    }
+
+    internal bool TryApplyMultiBlockDrag(double dxSec)
+    {
+        if (_multiDragStartBlocks == null) return false;
+        double minStart = _multiDragStartBlocks.Values.Min(v => v.start);
+        double clampedDx = Math.Max(dxSec, -minStart);
+        foreach (var kv in _multiDragStartBlocks)
+        {
+            kv.Key.StartSeconds = kv.Value.start + clampedDx;
+            kv.Key.EndSeconds = kv.Value.end + clampedDx;
+        }
+        return true;
+    }
+
+    internal bool TryApplyMultiTextOverlayDrag(double dxSec)
+    {
+        if (_multiDragStartOverlays == null) return false;
+        double minStart = _multiDragStartOverlays.Values.Min(v => v.start);
+        double clampedDx = Math.Max(dxSec, -minStart);
+        foreach (var kv in _multiDragStartOverlays)
+        {
+            kv.Key.StartSeconds = kv.Value.start + clampedDx;
+            kv.Key.EndSeconds = kv.Value.end + clampedDx;
+            NotifyTextOverlayChanged(kv.Key);
+        }
+        return true;
+    }
+
+    internal bool TryApplyMultiAudioDrag(double dxSec)
+    {
+        if (_multiDragStartAudioTL == null) return false;
+        double minStart = _multiDragStartAudioTL.Values.Min();
+        double clampedDx = Math.Max(dxSec, -minStart);
+        foreach (var kv in _multiDragStartAudioTL) kv.Key.TimelineStart = kv.Value + clampedDx;
+        return true;
+    }
+
+    // Called by MarqueeSelector when the user clicks an empty canvas without dragging.
+    internal void OnEmptyCanvasClick(Canvas canvas, Point pos)
+    {
+        SetCurrent(pos.X / PixelsPerSecond);
+        Seek?.Invoke(CurrentSeconds);
+        ClearAllSelection();
+    }
+
+    // Called by MarqueeSelector when the user finishes a rubber-band drag.
+    internal void ApplyMarqueeSelection(MarqueeKind kind, Rect marquee, bool ctrl)
+    {
+        static bool Hits(Rect m, FrameworkElement el)
+        {
+            double l = Canvas.GetLeft(el); if (double.IsNaN(l)) l = 0;
+            double t = Canvas.GetTop(el); if (double.IsNaN(t)) t = 0;
+            double w = el.Width > 0 ? el.Width : (el.ActualWidth > 0 ? el.ActualWidth : 1);
+            double h = el.Height > 0 ? el.Height : (el.ActualHeight > 0 ? el.ActualHeight : 1);
+            return m.IntersectsWith(new Rect(l, t, w, h));
+        }
+
+        switch (kind)
+        {
+            case MarqueeKind.Clip:
+            {
+                var hits = _clipBars.Where(kv => Hits(marquee, kv.Value.Root)).Select(kv => kv.Key).ToList();
+                bool otherType = _selectedBlocks.Count + _selectedTextOverlays.Count + _selectedAudios.Count > 0;
+                if (!ctrl || otherType) ClearAllSelectionSets();
+                foreach (var c in hits) _selectedClips.Add(c);
+                if (hits.Count > 0) _selectedClip = hits.Last();
+                else if (_selectedClip != null && !_selectedClips.Contains(_selectedClip)) _selectedClip = _selectedClips.LastOrDefault();
+                break;
+            }
+            case MarqueeKind.Audio:
+            {
+                var hits = _audioBars.Where(kv => Hits(marquee, kv.Value.Root)).Select(kv => kv.Key).ToList();
+                bool otherType = _selectedClips.Count + _selectedBlocks.Count + _selectedTextOverlays.Count > 0;
+                if (!ctrl || otherType) ClearAllSelectionSets();
+                foreach (var c in hits) _selectedAudios.Add(c);
+                if (hits.Count > 0) _selectedAudio = hits.Last();
+                else if (_selectedAudio != null && !_selectedAudios.Contains(_selectedAudio)) _selectedAudio = _selectedAudios.LastOrDefault();
+                break;
+            }
+            case MarqueeKind.BlockOrText:
+            {
+                var blockHits = _blockBars.Where(kv => Hits(marquee, kv.Value.Root)).Select(kv => kv.Key).ToList();
+                var textHits = _textBars.Where(kv => Hits(marquee, kv.Value.Root)).Select(kv => kv.Key).ToList();
+                // Per-type rule: pick the type with more hits; tie → blocks.
+                bool pickBlocks = blockHits.Count >= textHits.Count;
+                bool otherType = pickBlocks
+                    ? (_selectedClips.Count + _selectedTextOverlays.Count + _selectedAudios.Count > 0)
+                    : (_selectedClips.Count + _selectedBlocks.Count + _selectedAudios.Count > 0);
+                if (!ctrl || otherType) ClearAllSelectionSets();
+                if (pickBlocks)
+                {
+                    foreach (var b in blockHits) _selectedBlocks.Add(b);
+                    if (blockHits.Count > 0) _selectedBlock = blockHits.Last();
+                }
+                else
+                {
+                    foreach (var o in textHits) _selectedTextOverlays.Add(o);
+                    if (textHits.Count > 0) _selectedTextOverlay = textHits.Last();
+                }
+                break;
+            }
+        }
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
+    }
 
     public double GetClipStart(VideoClip clip) => clip.TimelineStart;
 
@@ -860,23 +1150,12 @@ public partial class Timeline : UserControl
 
     private void trackCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.OriginalSource == trackCanvas)
-        {
-            var pos = e.GetPosition(trackCanvas);
-            SetCurrent(pos.X / PixelsPerSecond);
-            Seek?.Invoke(CurrentSeconds);
-        }
+        if (e.OriginalSource == trackCanvas) _trackMarquee?.OnMouseDown(e);
     }
 
     private void ClipCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.OriginalSource == clipCanvas)
-        {
-            var pos = e.GetPosition(clipCanvas);
-            SetCurrent(pos.X / PixelsPerSecond);
-            Seek?.Invoke(CurrentSeconds);
-            SelectClip(null);
-        }
+        if (e.OriginalSource == clipCanvas) _clipMarquee?.OnMouseDown(e);
     }
 
     private void ClipCanvas_DragOver(object sender, DragEventArgs e)
@@ -1056,14 +1335,15 @@ internal class ClipBar
                 var w = Root.Width > 0 ? Root.Width : 1;
                 var fraction = Math.Max(0.05, Math.Min(0.95, p.X / w));
                 _owner.LastRequestedSplitSourceSec = Clip.InPoint + fraction * (Clip.OutPoint - Clip.InPoint);
-                _owner.RaiseClipSelected(Clip);
+                _owner.HandleClipClick(Clip, false);
                 _owner.RaiseClipContext(Clip, "splitHere");
                 e.Handled = true;
             }
         };
         Root.MouseLeftButtonDown += (s, e) =>
         {
-            _owner.RaiseClipSelected(Clip);
+            bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+            _owner.HandleClipClick(Clip, ctrl);
             if (e.ClickCount == 2) _owner.RaiseClipDoubleClicked(Clip);
             e.Handled = true;
         };
@@ -1074,7 +1354,7 @@ internal class ClipBar
             var w = Root.Width > 0 ? Root.Width : 1;
             var fraction = Math.Max(0.05, Math.Min(0.95, p.X / w));
             _owner.LastRequestedSplitSourceSec = Clip.InPoint + fraction * (Clip.OutPoint - Clip.InPoint);
-            _owner.RaiseClipSelected(Clip);
+            if (!_owner.SelectedClips.Contains(Clip)) _owner.HandleClipClick(Clip, false);
             ShowContextMenu();
             e.Handled = true;
         };
@@ -1083,7 +1363,9 @@ internal class ClipBar
         // On release: magnetic snap to nearby edges + overlap resolution if any. ===
         _dragThumb.DragStarted += (_, _) =>
         {
-            _owner.RaiseClipSelected(Clip);
+            // Don't reset selection if this clip is already part of a multi-select.
+            if (!_owner.SelectedClips.Contains(Clip)) _owner.HandleClipClick(Clip, false);
+            _owner.BeginMultiDrag();
             _owner.BeginDrag();
             _dragStartTimelineStart = Clip.TimelineStart;
             _bg.Opacity = 0.7;
@@ -1092,6 +1374,7 @@ internal class ClipBar
         _dragThumb.DragDelta += (_, e) =>
         {
             var totalDxSec = e.HorizontalChange / _owner.PixelsPerSecond;
+            if (_owner.TryApplyMultiClipDrag(totalDxSec)) return;
             Clip.TimelineStart = Math.Max(0, _dragStartTimelineStart + totalDxSec);
             // No insert indicator during free drag - the clip itself shows you where it's going.
         };
@@ -1100,8 +1383,9 @@ internal class ClipBar
             _bg.Opacity = 1.0;
             Panel.SetZIndex(Root, 0);
             _owner.HideInsertIndicator();
-            // Apply magnetic snap + overlap resolution at the current free position
-            _owner.ReorderClipToPosition(Clip, Clip.TimelineStart);
+            bool wasMulti = _owner.EndMultiDrag();
+            // Snap + overlap-resolve only for single-clip drags; multi-drag keeps free positions.
+            if (!wasMulti) _owner.ReorderClipToPosition(Clip, Clip.TimelineStart);
             _owner.EndDrag();
         };
 
@@ -1110,7 +1394,8 @@ internal class ClipBar
         // Use it directly - do NOT accumulate.
         _leftHandle.DragStarted += (_, _) =>
         {
-            _owner.RaiseClipSelected(Clip);
+            // Trim handles stay single-item; force single-select on this clip.
+            _owner.HandleClipClick(Clip, false);
             _dragStartInPoint = Clip.InPoint;
             _dragStartOutPoint = Clip.OutPoint;
             _dragStartTimelineStart = Clip.TimelineStart;
@@ -1151,7 +1436,7 @@ internal class ClipBar
         // === Right edge drag - DEFERRED ===
         _rightHandle.DragStarted += (_, _) =>
         {
-            _owner.RaiseClipSelected(Clip);
+            _owner.HandleClipClick(Clip, false);
             _dragStartInPoint = Clip.InPoint;
             _dragStartOutPoint = Clip.OutPoint;
             _dragStartTimelineStart = Clip.TimelineStart;
@@ -1389,14 +1674,16 @@ internal class BlockBar
 
         Root.MouseLeftButtonDown += (s, e) =>
         {
-            _owner.RaiseBlockSelected(Block);
+            bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+            _owner.HandleBlockClick(Block, ctrl);
             e.Handled = true;
         };
 
         _dragThumb.DragStarted += (_, _) =>
         {
             if (Block.CoversWholeVideo) Block.CoversWholeVideo = false;
-            _owner.RaiseBlockSelected(Block);
+            if (!_owner.SelectedBlocks.Contains(Block)) _owner.HandleBlockClick(Block, false);
+            _owner.BeginMultiDrag();
             _owner.BeginDrag();
             _dragStartStart = Block.StartSeconds;
             _dragStartEnd = Block.EndSeconds;
@@ -1406,17 +1693,18 @@ internal class BlockBar
             // Free positioning - block can be dragged anywhere on the timeline, even past current end.
             // The timeline auto-expands via RecomputeTotal (which considers block.EndSeconds).
             var totalDxSec = e.HorizontalChange / _owner.PixelsPerSecond;
+            if (_owner.TryApplyMultiBlockDrag(totalDxSec)) return;
             var len = _dragStartEnd - _dragStartStart;
             var newStart = Math.Max(0, _dragStartStart + totalDxSec);
             Block.StartSeconds = newStart;
             Block.EndSeconds = newStart + len;
         };
-        _dragThumb.DragCompleted += (_, _) => _owner.EndDrag();
+        _dragThumb.DragCompleted += (_, _) => { _owner.EndMultiDrag(); _owner.EndDrag(); };
 
         _leftHandle.DragStarted += (_, _) =>
         {
             if (Block.CoversWholeVideo) Block.CoversWholeVideo = false;
-            _owner.RaiseBlockSelected(Block);
+            _owner.HandleBlockClick(Block, false);
             _owner.BeginDrag();
             _dragStartStart = Block.StartSeconds;
             _dragStartEnd = Block.EndSeconds;
@@ -1431,7 +1719,7 @@ internal class BlockBar
         _rightHandle.DragStarted += (_, _) =>
         {
             if (Block.CoversWholeVideo) Block.CoversWholeVideo = false;
-            _owner.RaiseBlockSelected(Block);
+            _owner.HandleBlockClick(Block, false);
             _owner.BeginDrag();
             _dragStartStart = Block.StartSeconds;
             _dragStartEnd = Block.EndSeconds;
@@ -1536,7 +1824,12 @@ internal class TextOverlayBar
 
         Canvas.SetTop(Root, _row * 30 + 6);
 
-        Root.MouseLeftButtonDown += (_, e) => { _owner.RaiseTextOverlaySelected(Overlay); e.Handled = true; };
+        Root.MouseLeftButtonDown += (_, e) =>
+        {
+            bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+            _owner.HandleTextOverlayClick(Overlay, ctrl);
+            e.Handled = true;
+        };
 
         Root.MouseRightButtonUp += (_, e) =>
         {
@@ -1553,7 +1846,8 @@ internal class TextOverlayBar
 
         _dragThumb.DragStarted += (_, _) =>
         {
-            _owner.RaiseTextOverlaySelected(Overlay);
+            if (!_owner.SelectedTextOverlays.Contains(Overlay)) _owner.HandleTextOverlayClick(Overlay, false);
+            _owner.BeginMultiDrag();
             _owner.BeginDrag();
             _dragStartStart = Overlay.StartSeconds;
             _dragStartEnd = Overlay.EndSeconds;
@@ -1561,17 +1855,18 @@ internal class TextOverlayBar
         _dragThumb.DragDelta += (_, e) =>
         {
             var totalDxSec = e.HorizontalChange / _owner.PixelsPerSecond;
+            if (_owner.TryApplyMultiTextOverlayDrag(totalDxSec)) return;
             var len = _dragStartEnd - _dragStartStart;
             var newStart = Math.Max(0, _dragStartStart + totalDxSec);
             Overlay.StartSeconds = newStart;
             Overlay.EndSeconds = newStart + len;
             _owner.NotifyTextOverlayChanged(Overlay);
         };
-        _dragThumb.DragCompleted += (_, _) => _owner.EndDrag();
+        _dragThumb.DragCompleted += (_, _) => { _owner.EndMultiDrag(); _owner.EndDrag(); };
 
         _leftHandle.DragStarted += (_, _) =>
         {
-            _owner.RaiseTextOverlaySelected(Overlay);
+            _owner.HandleTextOverlayClick(Overlay, false);
             _owner.BeginDrag();
             _dragStartStart = Overlay.StartSeconds;
             _dragStartEnd = Overlay.EndSeconds;
@@ -1586,7 +1881,7 @@ internal class TextOverlayBar
 
         _rightHandle.DragStarted += (_, _) =>
         {
-            _owner.RaiseTextOverlaySelected(Overlay);
+            _owner.HandleTextOverlayClick(Overlay, false);
             _owner.BeginDrag();
             _dragStartStart = Overlay.StartSeconds;
             _dragStartEnd = Overlay.EndSeconds;
@@ -1710,12 +2005,13 @@ internal class AudioBar
         Root.Cursor = Cursors.Hand;
         Root.MouseLeftButtonDown += (s, e) =>
         {
-            _owner.RaiseAudioSelected(Clip);
+            bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+            _owner.HandleAudioClick(Clip, ctrl);
             e.Handled = true;
         };
         Root.MouseRightButtonUp += (s, e) =>
         {
-            _owner.RaiseAudioSelected(Clip);
+            if (!_owner.SelectedAudios.Contains(Clip)) _owner.HandleAudioClick(Clip, false);
             ShowAudioContextMenu();
             e.Handled = true;
         };
@@ -1726,15 +2022,20 @@ internal class AudioBar
         {
             double dragStartTL = 0;
             Point dragStartMouse = default;
+            bool multiAudioDrag = false;
             Root.Cursor = Cursors.SizeAll;
             Root.MouseLeftButtonDown += (s, e) =>
             {
                 // Don't start a drag when the user is Shift-clicking to split (handled by the preview handler).
                 if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0) return;
+                // Ctrl is the multi-select modifier; don't start a drag in that case.
+                if ((Keyboard.Modifiers & ModifierKeys.Control) != 0) return;
                 if (e.ClickCount == 1)
                 {
                     dragStartTL = Clip.TimelineStart;
                     dragStartMouse = e.GetPosition(_owner);
+                    multiAudioDrag = _owner.SelectedAudios.Contains(Clip) && _owner.SelectedAudios.Count > 1;
+                    if (multiAudioDrag) _owner.BeginMultiDrag();
                     Root.CaptureMouse();
                 }
             };
@@ -1744,12 +2045,18 @@ internal class AudioBar
                 {
                     var p = e.GetPosition(_owner);
                     var dxPx = p.X - dragStartMouse.X;
-                    Clip.TimelineStart = Math.Max(0, dragStartTL + dxPx / _owner.PixelsPerSecond);
+                    var totalDxSec = dxPx / _owner.PixelsPerSecond;
+                    if (multiAudioDrag && _owner.TryApplyMultiAudioDrag(totalDxSec)) return;
+                    Clip.TimelineStart = Math.Max(0, dragStartTL + totalDxSec);
                 }
             };
             Root.MouseLeftButtonUp += (s, e) =>
             {
-                if (Root.IsMouseCaptured) Root.ReleaseMouseCapture();
+                if (Root.IsMouseCaptured)
+                {
+                    Root.ReleaseMouseCapture();
+                    if (multiAudioDrag) { _owner.EndMultiDrag(); multiAudioDrag = false; }
+                }
             };
 
             // Shift+Click → split at clicked position (same as ClipBar)
@@ -1761,7 +2068,7 @@ internal class AudioBar
                     var w = Root.Width > 0 ? Root.Width : 1;
                     var fraction = Math.Max(0.05, Math.Min(0.95, p.X / w));
                     _owner.LastRequestedSplitSourceSec = Clip.InPoint + fraction * (Clip.OutPoint - Clip.InPoint);
-                    _owner.RaiseAudioSelected(Clip);
+                    _owner.HandleAudioClick(Clip, false);
                     _owner.RaiseClipContext(Clip, "splitHere");
                     e.Handled = true;
                 }
@@ -1779,7 +2086,7 @@ internal class AudioBar
             double tIn = 0, tOut = 0, tTL = 0;
             leftHandle.DragStarted += (_, _) =>
             {
-                _owner.RaiseAudioSelected(Clip);
+                _owner.HandleAudioClick(Clip, false);
                 tIn = Clip.InPoint; tOut = Clip.OutPoint; tTL = Clip.TimelineStart;
             };
             leftHandle.DragDelta += (_, e) =>
@@ -1795,7 +2102,7 @@ internal class AudioBar
             };
             rightHandle.DragStarted += (_, _) =>
             {
-                _owner.RaiseAudioSelected(Clip);
+                _owner.HandleAudioClick(Clip, false);
                 tIn = Clip.InPoint; tOut = Clip.OutPoint;
             };
             rightHandle.DragDelta += (_, e) =>
@@ -1920,5 +2227,97 @@ internal class AudioBar
             _waveImg.Source = bmp;
         }
         catch { }
+    }
+}
+
+// ============================ MarqueeSelector ============================
+// Rubber-band (drag-rectangle) selector for one canvas. Hooks MouseMove/MouseLeftButtonUp
+// on its canvas internally; the existing per-canvas MouseLeftButtonDown handlers on
+// Timeline start it. On release, intersects the rectangle against the bars in the
+// canvas and updates the matching selection set on the owning Timeline. A click with
+// no drag falls back to the legacy "seek playhead + clear selection" behaviour.
+
+internal enum MarqueeKind { Clip, Audio, BlockOrText }
+
+internal class MarqueeSelector
+{
+    private const double DragThresholdPx = 3.0;
+
+    private readonly Timeline _owner;
+    private readonly Canvas _canvas;
+    private readonly MarqueeKind _kind;
+
+    private Point _startPt;
+    private bool _active;
+    private bool _dragged;
+    private bool _ctrlAtStart;
+    private Rectangle? _rect;
+
+    public MarqueeSelector(Timeline owner, Canvas canvas, MarqueeKind kind)
+    {
+        _owner = owner;
+        _canvas = canvas;
+        _kind = kind;
+        canvas.MouseMove += OnMouseMove;
+        canvas.MouseLeftButtonUp += OnMouseUp;
+    }
+
+    public void OnMouseDown(MouseButtonEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0) return;
+        _startPt = e.GetPosition(_canvas);
+        _ctrlAtStart = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        _active = true;
+        _dragged = false;
+        _canvas.CaptureMouse();
+    }
+
+    private void OnMouseMove(object? sender, MouseEventArgs e)
+    {
+        if (!_active) return;
+        var p = e.GetPosition(_canvas);
+        if (!_dragged)
+        {
+            if (Math.Abs(p.X - _startPt.X) < DragThresholdPx && Math.Abs(p.Y - _startPt.Y) < DragThresholdPx) return;
+            _dragged = true;
+            _rect = new Rectangle
+            {
+                Stroke = new SolidColorBrush(Color.FromRgb(0xFF, 0xD4, 0x3B)),
+                StrokeThickness = 1,
+                Fill = new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xD4, 0x3B)),
+                IsHitTestVisible = false
+            };
+            _canvas.Children.Add(_rect);
+        }
+        if (_rect == null) return;
+        double x = Math.Min(_startPt.X, p.X);
+        double y = Math.Min(_startPt.Y, p.Y);
+        Canvas.SetLeft(_rect, x);
+        Canvas.SetTop(_rect, y);
+        _rect.Width = Math.Abs(p.X - _startPt.X);
+        _rect.Height = Math.Abs(p.Y - _startPt.Y);
+    }
+
+    private void OnMouseUp(object? sender, MouseButtonEventArgs e)
+    {
+        if (!_active) return;
+        _active = false;
+        _canvas.ReleaseMouseCapture();
+
+        if (!_dragged)
+        {
+            _owner.OnEmptyCanvasClick(_canvas, _startPt);
+            return;
+        }
+
+        var p = e.GetPosition(_canvas);
+        var marqueeRect = new Rect(
+            Math.Min(_startPt.X, p.X),
+            Math.Min(_startPt.Y, p.Y),
+            Math.Abs(p.X - _startPt.X),
+            Math.Abs(p.Y - _startPt.Y));
+        if (_rect != null) _canvas.Children.Remove(_rect);
+        _rect = null;
+        _owner.ApplyMarqueeSelection(_kind, marqueeRect, _ctrlAtStart);
     }
 }
