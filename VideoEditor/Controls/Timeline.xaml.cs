@@ -47,28 +47,36 @@ public partial class Timeline : UserControl
     public event Action<VideoClip>? AudioSelected;
     public event Action<VideoClip, string>? AudioContextAction;
 
-    internal void RaiseTextOverlaySelected(TextOverlay o) { _selectedTextOverlay = o; SelectTextOverlay(o); TextOverlaySelected?.Invoke(o); ClearClipSelectionVisuals(); ClearBlockSelectionVisuals(); UpdateAudioBarSelection(); }
+    internal void RaiseTextOverlaySelected(TextOverlay o) { SelectTextOverlay(o); TextOverlaySelected?.Invoke(o); }
     internal void RaiseTextOverlayContext(TextOverlay o, string action) => TextOverlayContextAction?.Invoke(o, action);
 
     private TextOverlay? _selectedTextOverlay;
     public TextOverlay? SelectedTextOverlay => _selectedTextOverlay;
     public void SelectTextOverlay(TextOverlay? o)
     {
-        var prev = _selectedTextOverlay;
+        ClearAllSelectionSets();
         _selectedTextOverlay = o;
-        if (prev != null && _textBars.TryGetValue(prev, out var pb)) pb.SetSelected(false);
-        if (o != null && _textBars.TryGetValue(o, out var nb)) nb.SetSelected(true);
+        if (o != null) _selectedTextOverlays.Add(o);
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
     }
     private void ClearTextOverlaySelectionVisuals() { foreach (var bb in _textBars.Values) bb.SetSelected(false); _selectedTextOverlay = null; }
 
     internal void RaiseClipScrub(VideoClip c, double sourceTime) => ClipScrubPreview?.Invoke(c, sourceTime);
     internal void RaiseClipEdgeDragEnded(VideoClip c) => ClipEdgeDragEnded?.Invoke(c);
-    internal void RaiseAudioSelected(VideoClip c) { _selectedAudio = c; AudioSelected?.Invoke(c); UpdateAudioBarSelection(); ClearClipSelectionVisuals(); ClearBlockSelectionVisuals(); }
+    internal void RaiseAudioSelected(VideoClip c) { SelectAudio(c); AudioSelected?.Invoke(c); }
     internal void RaiseAudioContext(VideoClip c, string action) => AudioContextAction?.Invoke(c, action);
 
     private VideoClip? _selectedAudio;
-    public void SelectAudio(VideoClip? c) { _selectedAudio = c; UpdateAudioBarSelection(); }
-    private void UpdateAudioBarSelection() { foreach (var kv in _audioBars) kv.Value.SetSelected(kv.Key == _selectedAudio); }
+    public void SelectAudio(VideoClip? c)
+    {
+        ClearAllSelectionSets();
+        _selectedAudio = c;
+        if (c != null) _selectedAudios.Add(c);
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
+    }
+    private void UpdateAudioBarSelection() { foreach (var kv in _audioBars) kv.Value.SetSelected(_selectedAudios.Contains(kv.Key)); }
 
     private Line? _trimMarker;
     private Border? _trimMarkerLabel;
