@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 [![Open Source](https://img.shields.io/badge/Open%20Source-%E2%9D%A4-red?style=for-the-badge)](https://github.com/YossiYad/video-editor)
 [![Platform](https://img.shields.io/badge/Platform-Windows-0078d6?style=for-the-badge&logo=windows)](https://github.com/YossiYad/video-editor/releases/latest)
-[![Changelog](https://img.shields.io/badge/%F0%9F%93%9D%20Changelog-v1.7.1-8B5CFF?style=for-the-badge)](CHANGELOG.md)
+[![Changelog](https://img.shields.io/badge/%F0%9F%93%9D%20Changelog-v1.8.0-8B5CFF?style=for-the-badge)](CHANGELOG.md)
 
 A free, open-source desktop video editor for Windows. Built on C# / WPF with FFmpeg under the hood. Designed to be powerful for creators but approachable for first-time editors.
 
@@ -18,6 +18,7 @@ A free, open-source desktop video editor for Windows. Built on C# / WPF with FFm
 
 ### Editing
 - **Multi-clip timeline** - drag-drop video files, reorder, trim by dragging edges, split with **S**, free dragging or ripple-abut mode.
+- **Multi-select** - Ctrl / Shift-click to grab several clips, blocks, audio bars, or text overlays at once, or rubber-band a marquee across any track. Drag one, the whole selection follows. Backspace deletes them all together.
 - **Non-destructive properties** per clip: in / out, speed (0.25× – 4×), volume, rotate (90 / 180 / 270°), flip H / V, loop. Source file is never touched until export.
 - **Canvas Transform** - for each clip individually: zoom and position the video on the project canvas. Drag the preview to move, scroll-wheel to zoom, drag the corner handles to resize. Great for placing a 16:9 video inside a 9:16 Reels canvas without black bars.
 - **Project formats** - YouTube 16:9, Reels / TikTok / Shorts 9:16, Instagram Square 1:1, Portrait 4:5, Cinematic 21:9, or custom. Fit mode: Contain / Cover / Blurred-background.
@@ -34,7 +35,7 @@ A free, open-source desktop video editor for Windows. Built on C# / WPF with FFm
 ### Capture
 - **Screen Recorder** - record any region of your screen. Optionally add a camera layer on top as a movable PIP, with the same AI background available. The left column splits into per-item tabs (Recording / Camera / Block N) so you can edit each thing you added without losing the other settings.
 - **Webcam Recorder** - record from any DirectShow-compatible camera, with an optional **AI background** (free, local, GPU-accelerated via DirectML when available): blur, remove (transparent), replace with a colour, or replace with an image. No green screen needed. The same AI also runs on the floating camera layer in the Screen Recorder.
-- **Text-to-Speech** - Windows SAPI voices, saved as WAV for narration.
+- **Text-to-Speech** - inline TTS tab in the right inspector. Hear the result before saving (Preview button plays straight to the speakers), then either **Add to Timeline** to drop it as an audio-only clip at the playhead, or **Save to disk** as a WAV. Uses every voice Windows has installed - including Hebrew (Microsoft Hadas / Asaf) once you install the Hebrew language pack with Text-to-speech under Windows Settings -> Time & Language -> Language.
 - **URL Import** - paste any YouTube / TikTok / Vimeo / Twitter / Instagram / Facebook / Twitch / Reddit URL. yt-dlp downloads automatically.
 
 ### Per-clip tools

@@ -10,6 +10,61 @@ The latest signed Windows build is always available at
 
 ---
 
+## [v1.8.0] - 2026-05-27
+
+### Added
+- **Multi-select on the timeline** - hold Ctrl / Shift to add clips,
+  blocks, audio bars, and text-overlay bars to a selection set, or
+  rubber-band a marquee across any of those tracks to grab everything
+  inside the box. Drag any one selected item and the whole group
+  follows. Backspace deletes the entire selection. A new
+  "N items selected" inspector tab shows up in the right column so the
+  multi-selection state is visible.
+- **Inline Text-to-Speech tab** - the old TTS modal dialog is gone.
+  TTS now lives as a tab in the right inspector with text, voice, and
+  rate fields, just like the recorder tab.
+- **Hebrew TTS (and any other installed language)** - the engine
+  switched from `System.Speech` (SAPI5 only) to WinRT
+  `Windows.Media.SpeechSynthesis`, which sees every voice installed in
+  Windows including the OneCore voices like Microsoft Hadas (he-IL),
+  Microsoft Asaf, and the modern English voices. Voices appear with
+  their language tag (e.g. "Microsoft Hadas (he-IL)") so a Hebrew voice
+  is easy to find.
+- **TTS Preview button** - synth straight to the speakers via NAudio
+  before saving. Click again to stop mid-playback. Switching the
+  inspector away (e.g. clicking a clip on the timeline) also stops the
+  preview.
+- **TTS - Add to Timeline button** - generates the audio and inserts
+  it as an audio-only clip on the A1 lane at the current playhead,
+  without opening a save dialog. The WAV is auto-stored inside the
+  app folder (`tts_audio/`). "Save to disk" still opens a normal save
+  dialog for users who want the file outside the app.
+- **Screen Recorder sub-tabs promoted to top-level** - while the
+  recorder is open, Recording / Camera / per-Block items show as
+  top-level tabs in the inspector (replacing the old monolithic
+  Recorder tab). Each sub-tab now opens just the fields relevant to
+  that thing instead of stuffing everything into one panel.
+- **Click-anywhere-on-the-preview reopens the recorder controls** -
+  whenever the recorder is in use (before, during, or after the actual
+  recording), clicking the centre preview brings the inspector tabs
+  back if they were closed.
+- **Camera picker preview frame** - the last preview frame from the
+  Camera Recorder picker dialog is now kept and shown on the camera
+  block in the canvas as soon as the dialog closes, so there is no
+  blank gap before the live feed starts.
+
+### Changed
+- **Clip tab is now conditional** - the Clip tab in the inspector
+  only shows when a clip is actually selected on the timeline, instead
+  of always taking up a column. Selecting a clip also snaps the
+  preview to its first frame.
+- **Minimum Windows version is now Windows 10 19041 (May 2020)** -
+  the target framework moved to `net8.0-windows10.0.19041.0` so the
+  app can access WinRT speech synthesis. Earlier Windows 10 builds
+  are no longer supported.
+
+---
+
 ## [v1.7.1] - 2026-05-26
 
 ### Added
