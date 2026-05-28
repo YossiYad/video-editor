@@ -35,6 +35,26 @@ The latest signed Windows build is always available at
 
 ---
 
+## [v1.8.4] - 2026-05-28
+
+### Added
+- **AUDIO section in the Clip tab** with the four audio actions
+  (Add Audio, Change Volume, Extract Audio, Mute / Remove). Sits
+  alongside the other per-clip controls so audio editing happens in
+  the same panel as everything else for a selected clip.
+
+### Changed
+- **Sidebar AUDIO group slimmed down to just AI Captions.** The four
+  audio editing buttons (Add Audio, Change Volume, Extract Audio,
+  Mute / Remove Audio) moved into the new AUDIO section in the Clip
+  tab. AI Captions stays in the sidebar because it acts on the whole
+  project, not a single clip.
+- The duplicate "Add Audio" button under EXPORT-TIME EFFECTS in the
+  Clip tab moved into the new AUDIO group; Resize now spans the full
+  width of its row.
+
+---
+
 ## [v1.8.3] - 2026-05-28
 
 ### Fixed

@@ -55,6 +55,37 @@ public partial class MainWindow : Window
         public override string ToString() =>
             string.IsNullOrEmpty(Language) ? DisplayName : $"{DisplayName} ({Language})";
     }
+
+    public sealed class MergeQueueItem : System.ComponentModel.INotifyPropertyChanged
+    {
+        public string FullPath { get; }
+        public string DisplayName { get; }
+        public string FolderHint { get; }
+        private int _position;
+        public int Position
+        {
+            get => _position;
+            set { if (_position == value) return; _position = value; OnChanged(nameof(Position)); OnChanged(nameof(PositionLabel)); }
+        }
+        public string PositionLabel => $"{Position:00}.";
+        public MergeQueueItem(string fullPath, int position)
+        {
+            FullPath = fullPath;
+            DisplayName = Path.GetFileName(fullPath);
+            var dir = Path.GetDirectoryName(fullPath) ?? "";
+            FolderHint = dir.Length > 48 ? "…" + dir[^48..] : dir;
+            _position = position;
+        }
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+        private void OnChanged(string name) =>
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
+    }
+    private readonly System.Collections.ObjectModel.ObservableCollection<MergeQueueItem> _mergeQueue = new();
+    private static readonly string[] _mergeVideoExtensions = new[]
+    {
+        ".mp4", ".mov", ".mkv", ".avi", ".webm", ".wmv", ".flv", ".m4v", ".ts", ".mpg", ".mpeg"
+    };
+
     private DispatcherTimer? _inlineRecorderPreviewTimer;
     private List<MonitorInfo.Display> _inlineRecorderMonitors = new();
     private VideoBlock? _inlineRecorderWebcamBlock;
@@ -110,6 +141,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        mergeQueueList.ItemsSource = _mergeQueue;
+        InitUndoRedo();
         _inlineCameraBgService.Log += msg =>
         {
             try { AppendInlineRecorderLog("AI: " + msg); } catch { }
@@ -940,7 +973,22 @@ public partial class MainWindow : Window
     private void PlayBtn_Click(object sender, RoutedEventArgs e)
     {
         if (timeline.Clips.Count == 0) return;
-        if (_playingClip == null) LoadClipForPreview(timeline.Clips[0], 0);
+
+        // If the playhead is parked at the end of the timeline (i.e. playback finished
+        // and the user is pressing Play again), rewind to the first clip and play from
+        // the start. Otherwise pressing Play would do nothing because the player is
+        // already past the last clip's OutPoint.
+        if (timeline.CurrentSeconds >= timeline.TotalSeconds - 0.1 && timeline.TotalSeconds > 0)
+        {
+            var first = timeline.Clips.OrderBy(c => c.TimelineStart).First();
+            timeline.SetCurrent(first.TimelineStart);
+            LoadClipForPreview(first, 0);
+        }
+        else if (_playingClip == null)
+        {
+            LoadClipForPreview(timeline.Clips[0], 0);
+        }
+
         videoView.Play(); _isPlaying = true;
         UpdateBlockVisibility();
     }
@@ -1248,6 +1296,7 @@ public partial class MainWindow : Window
         bool isCamera      = key == "camera";
         bool isMulti       = key == "multi";
         bool isTts         = key == "tts";
+        bool isMerge       = key == "merge";
         bool isAiCaptions  = key == "aiCaptions";
         bool isDownload    = key == "download";
         bool inRecorder    = IsInlineRecorderVisible();
@@ -1258,6 +1307,7 @@ public partial class MainWindow : Window
         emptyInspector.Visibility         = isExp   ? Visibility.Visible : Visibility.Collapsed;
         recorderInspectorPanel.Visibility = (isRecording || isCamera) ? Visibility.Visible : Visibility.Collapsed;
         ttsInspectorPanel.Visibility      = isTts ? Visibility.Visible : Visibility.Collapsed;
+        mergePanel.Visibility             = isMerge ? Visibility.Visible : Visibility.Collapsed;
         aiCaptionsPanel.Visibility        = isAiCaptions ? Visibility.Visible : Visibility.Collapsed;
         downloadPanel.Visibility          = isDownload   ? Visibility.Visible : Visibility.Collapsed;
         if (!isTts) StopTtsPreview();
@@ -1280,12 +1330,14 @@ public partial class MainWindow : Window
         tabClipBtn.IsChecked        = !inRecorder && isClip;
         tabExportBtn.IsChecked      = !inRecorder && isExp;
         tabTtsBtn.IsChecked         = isTts;
+        tabMergeBtn.IsChecked       = isMerge;
         tabAiCaptionsBtn.IsChecked  = isAiCaptions;
         tabDownloadBtn.IsChecked    = isDownload;
         tabBlockBtn.Visibility       = (!inRecorder && isBlock) ? Visibility.Visible : Visibility.Collapsed;
         tabClipBtn.Visibility        = (!inRecorder && isClip)  ? Visibility.Visible : Visibility.Collapsed;
         tabExportBtn.Visibility      = (!inRecorder && isExp)   ? Visibility.Visible : Visibility.Collapsed;
         tabTtsBtn.Visibility         = isTts ? Visibility.Visible : Visibility.Collapsed;
+        tabMergeBtn.Visibility       = isMerge ? Visibility.Visible : Visibility.Collapsed;
         tabAiCaptionsBtn.Visibility  = isAiCaptions ? Visibility.Visible : Visibility.Collapsed;
         tabDownloadBtn.Visibility    = isDownload ? Visibility.Visible : Visibility.Collapsed;
         normalTabsBar.Visibility = (!inRecorder && (isBlock || isClip || isExp))
@@ -1308,6 +1360,7 @@ public partial class MainWindow : Window
         bool anyVisible = normalTabsBar.Visibility == Visibility.Visible
                           || recorderTabHost.Visibility == Visibility.Visible
                           || tabTtsBtn.Visibility == Visibility.Visible
+                          || tabMergeBtn.Visibility == Visibility.Visible
                           || tabAiCaptionsBtn.Visibility == Visibility.Visible
                           || tabDownloadBtn.Visibility == Visibility.Visible;
         inspectorTabsBar.Visibility = anyVisible ? Visibility.Visible : Visibility.Collapsed;
@@ -1627,6 +1680,24 @@ public partial class MainWindow : Window
         if (e.Key == Key.O && Keyboard.Modifiers == ModifierKeys.Control)
         {
             OpenBtn_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Z && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            UndoRedo_Redo();
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Z && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            UndoRedo_Undo();
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Y && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            UndoRedo_Redo();
             e.Handled = true;
             return;
         }
@@ -4125,11 +4196,227 @@ public partial class MainWindow : Window
             ttsStatusText.Text = "Add to timeline failed: " + ex.Message;
         }
     }
-    private async void Merge_Click(object s, RoutedEventArgs e)
+    private void Merge_Click(object s, RoutedEventArgs e)
     {
-        if (timeline.Clips.Count < 2) { MessageBox.Show("Need at least 2 clips."); return; }
-        SaveBtn_Click(s, e);
-        await System.Threading.Tasks.Task.CompletedTask;
+        ShowInspectorTab("merge");
+        UpdateMergeQueueUI();
+    }
+
+    private void TabMerge_Click(object sender, RoutedEventArgs e)
+    {
+        if (_suppress) return;
+        ShowInspectorTab("merge");
+    }
+
+    private static bool IsAcceptedMergeFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+        return _mergeVideoExtensions.Contains(ext);
+    }
+
+    private static IEnumerable<string> CollectMergeFilesFromDrop(System.Windows.IDataObject data)
+    {
+        if (!data.GetDataPresent(DataFormats.FileDrop)) return Array.Empty<string>();
+        var raw = data.GetData(DataFormats.FileDrop) as string[];
+        if (raw == null) return Array.Empty<string>();
+        var result = new List<string>();
+        foreach (var p in raw)
+        {
+            if (Directory.Exists(p))
+            {
+                foreach (var f in Directory.EnumerateFiles(p, "*", SearchOption.TopDirectoryOnly))
+                    if (IsAcceptedMergeFile(f)) result.Add(f);
+            }
+            else if (File.Exists(p) && IsAcceptedMergeFile(p))
+            {
+                result.Add(p);
+            }
+        }
+        return result;
+    }
+
+    private void MergeDropZone_DragOver(object sender, System.Windows.DragEventArgs e)
+    {
+        bool hasVideo = false;
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            var raw = e.Data.GetData(DataFormats.FileDrop) as string[];
+            if (raw != null)
+            {
+                foreach (var p in raw)
+                {
+                    if (Directory.Exists(p) || IsAcceptedMergeFile(p)) { hasVideo = true; break; }
+                }
+            }
+        }
+        e.Effects = hasVideo ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
+        if (hasVideo)
+            mergeDropZone.BorderBrush = (System.Windows.Media.Brush)FindResource("Accent");
+        e.Handled = true;
+    }
+
+    private void MergeDropZone_DragLeave(object sender, System.Windows.DragEventArgs e)
+    {
+        mergeDropZone.BorderBrush = (System.Windows.Media.Brush)FindResource("Line");
+    }
+
+    private void MergeDropZone_Drop(object sender, System.Windows.DragEventArgs e)
+    {
+        mergeDropZone.BorderBrush = (System.Windows.Media.Brush)FindResource("Line");
+        var files = CollectMergeFilesFromDrop(e.Data).ToList();
+        if (files.Count == 0)
+        {
+            status.Text = "No video files in the drop. Supported: " + string.Join(", ", _mergeVideoExtensions);
+            return;
+        }
+        AddToMergeQueue(files);
+        e.Handled = true;
+    }
+
+    private void MergeDropZone_AddFiles_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        var dlg = new OpenFileDialog
+        {
+            Multiselect = true,
+            Filter = "Video files|*.mp4;*.mov;*.mkv;*.avi;*.webm;*.wmv;*.flv;*.m4v;*.ts;*.mpg;*.mpeg|All files|*.*"
+        };
+        if (dlg.ShowDialog() != true) return;
+        AddToMergeQueue(dlg.FileNames);
+    }
+
+    private void AddToMergeQueue(IEnumerable<string> paths)
+    {
+        int added = 0;
+        foreach (var p in paths)
+        {
+            if (!IsAcceptedMergeFile(p)) continue;
+            // Allow the same file twice (user might intentionally repeat); only skip if it
+            // already appears as the very last item to avoid accidental double-drops.
+            if (_mergeQueue.Count > 0 && string.Equals(_mergeQueue[^1].FullPath, p, StringComparison.OrdinalIgnoreCase))
+                continue;
+            _mergeQueue.Add(new MergeQueueItem(p, _mergeQueue.Count + 1));
+            added++;
+        }
+        if (added > 0) status.Text = $"Added {added} video(s) to the merge queue.";
+        UpdateMergeQueueUI();
+    }
+
+    private void RenumberMergeQueue()
+    {
+        for (int i = 0; i < _mergeQueue.Count; i++)
+            _mergeQueue[i].Position = i + 1;
+    }
+
+    private void UpdateMergeQueueUI()
+    {
+        bool any = _mergeQueue.Count > 0;
+        mergeEmptyHint.Visibility = any ? Visibility.Collapsed : Visibility.Visible;
+        mergeQueueList.Visibility = any ? Visibility.Visible : Visibility.Collapsed;
+        mergeClearBtn.IsEnabled = any;
+        mergeNowBtn.IsEnabled = _mergeQueue.Count >= 2;
+        mergeCountText.Text = _mergeQueue.Count switch
+        {
+            0 => "No videos yet",
+            1 => "1 video (drop one more to merge)",
+            _ => $"{_mergeQueue.Count} videos ready"
+        };
+        mergeHintText.Text = _mergeQueue.Count >= 2
+            ? "Output will be created next to the first video, or pick a path."
+            : "Add at least 2 videos to merge";
+    }
+
+    private MergeQueueItem? MergeItemFromSender(object sender) =>
+        (sender as FrameworkElement)?.Tag as MergeQueueItem;
+
+    private void MergeRemove_Click(object sender, RoutedEventArgs e)
+    {
+        var item = MergeItemFromSender(sender); if (item == null) return;
+        _mergeQueue.Remove(item);
+        RenumberMergeQueue();
+        UpdateMergeQueueUI();
+    }
+
+    private void MergeMoveUp_Click(object sender, RoutedEventArgs e)
+    {
+        var item = MergeItemFromSender(sender); if (item == null) return;
+        int idx = _mergeQueue.IndexOf(item);
+        if (idx <= 0) return;
+        _mergeQueue.Move(idx, idx - 1);
+        RenumberMergeQueue();
+    }
+
+    private void MergeMoveDown_Click(object sender, RoutedEventArgs e)
+    {
+        var item = MergeItemFromSender(sender); if (item == null) return;
+        int idx = _mergeQueue.IndexOf(item);
+        if (idx < 0 || idx >= _mergeQueue.Count - 1) return;
+        _mergeQueue.Move(idx, idx + 1);
+        RenumberMergeQueue();
+    }
+
+    private void MergeClear_Click(object sender, RoutedEventArgs e)
+    {
+        if (_mergeQueue.Count == 0) return;
+        _mergeQueue.Clear();
+        UpdateMergeQueueUI();
+        status.Text = "Merge queue cleared.";
+    }
+
+    private async void MergeNow_Click(object sender, RoutedEventArgs e)
+    {
+        if (_mergeQueue.Count < 2)
+        {
+            MessageBox.Show("Add at least 2 videos to the queue.", "Merge", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        var first = _mergeQueue[0].FullPath;
+        var defaultFolder = Path.GetDirectoryName(first) ?? Environment.GetFolderPath(Environment.SpecialFolder.MyVideos);
+        var defaultName = $"merged_{DateTime.Now:yyyyMMdd_HHmmss}{Path.GetExtension(first)}";
+        var sfd = new SaveFileDialog
+        {
+            InitialDirectory = defaultFolder,
+            FileName = defaultName,
+            Filter = "Video files|*.mp4;*.mov;*.mkv;*.avi;*.webm|All files|*.*"
+        };
+        if (sfd.ShowDialog() != true) return;
+        var output = sfd.FileName;
+
+        mergeNowBtn.IsEnabled = false;
+        mergeClearBtn.IsEnabled = false;
+        try
+        {
+            status.Text = $"Merging {_mergeQueue.Count} videos...";
+            progress.Value = 0;
+            var prog = new Progress<double>(v => Dispatcher.Invoke(() => progress.Value = v));
+            await _ff.MergeAsync(_mergeQueue.Select(m => m.FullPath), output, prog);
+            progress.Value = 1;
+            status.Text = $"Merged → {Path.GetFileName(output)}";
+            var openResult = MessageBox.Show(
+                "Merge complete.\n\nOpen the output folder?",
+                "Merge Videos", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            if (openResult == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{output}\"") { UseShellExecute = true });
+                }
+                catch { }
+            }
+        }
+        catch (Exception ex)
+        {
+            status.Text = "Merge failed: " + ex.Message;
+            MessageBox.Show(
+                "Merge failed:\n\n" + ex.Message +
+                "\n\nIf the videos have different codecs/resolutions, ffmpeg's fast 'concat copy' can fail. " +
+                "Re-encoding support is not in this version - convert them to the same format first and try again.",
+                "Merge Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            UpdateMergeQueueUI();
+        }
     }
     private void Record_Click(object s, RoutedEventArgs e)
     {
@@ -5019,5 +5306,264 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
                    && name.StartsWith("ve_", StringComparison.OrdinalIgnoreCase);
         }
         catch { return false; }
+    }
+
+    // =========================================================================
+    // UNDO / REDO  (Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y)
+    //
+    // Snapshot-based: every change to the timeline.Clips collection or to any
+    // clip's properties triggers a debounced (500ms) snapshot of the whole
+    // clip list. Slider-drag flurries get coalesced into one snapshot at the
+    // end of the drag. On Ctrl+Z we walk one step back in the history and
+    // restore the clip list from the snapshot.
+    //
+    // What it covers: clip add / remove / move, trim in/out, speed, volume,
+    // rotate, flip, loop, canvas zoom/offset on every clip (including the
+    // audio-only "Add Audio" clips that live on the A1 lane).
+    //
+    // What it does NOT cover: hide blocks, text overlays, image overlays
+    // (their state is left alone on undo), and destructive file operations
+    // like crop/resize/stabilize/extract-audio that rewrite the source file
+    // on disk.
+    // =========================================================================
+
+    private sealed class ClipSnapshot
+    {
+        public string SourceFile = "";
+        public double OriginalDuration;
+        public double InPoint;
+        public double OutPoint;
+        public double Speed = 1.0;
+        public double Volume = 1.0;
+        public int RotateDegrees;
+        public bool FlipH;
+        public bool FlipV;
+        public int VideoWidth;
+        public int VideoHeight;
+        public int LoopCount = 1;
+        public double TimelineStart;
+        public bool IsAudioOnly;
+        public double CanvasScale = 1.0;
+        public double CanvasOffsetX;
+        public double CanvasOffsetY;
+        public Color AccentColor;
+
+        public static ClipSnapshot FromClip(VideoClip c) => new()
+        {
+            SourceFile = c.SourceFile,
+            OriginalDuration = c.OriginalDuration,
+            InPoint = c.InPoint,
+            OutPoint = c.OutPoint,
+            Speed = c.Speed,
+            Volume = c.Volume,
+            RotateDegrees = c.RotateDegrees,
+            FlipH = c.FlipH,
+            FlipV = c.FlipV,
+            VideoWidth = c.VideoWidth,
+            VideoHeight = c.VideoHeight,
+            LoopCount = c.LoopCount,
+            TimelineStart = c.TimelineStart,
+            IsAudioOnly = c.IsAudioOnly,
+            CanvasScale = c.CanvasScale,
+            CanvasOffsetX = c.CanvasOffsetX,
+            CanvasOffsetY = c.CanvasOffsetY,
+            AccentColor = c.AccentColor,
+        };
+
+        public VideoClip ToClip() => new()
+        {
+            SourceFile = SourceFile,
+            OriginalDuration = OriginalDuration,
+            InPoint = InPoint,
+            OutPoint = OutPoint,
+            Speed = Speed,
+            Volume = Volume,
+            RotateDegrees = RotateDegrees,
+            FlipH = FlipH,
+            FlipV = FlipV,
+            VideoWidth = VideoWidth,
+            VideoHeight = VideoHeight,
+            LoopCount = LoopCount,
+            TimelineStart = TimelineStart,
+            IsAudioOnly = IsAudioOnly,
+            CanvasScale = CanvasScale,
+            CanvasOffsetX = CanvasOffsetX,
+            CanvasOffsetY = CanvasOffsetY,
+            AccentColor = AccentColor,
+        };
+    }
+
+    private sealed class UndoSnapshot
+    {
+        public List<ClipSnapshot> Clips = new();
+
+        public bool StructurallyEquals(UndoSnapshot other)
+        {
+            if (Clips.Count != other.Clips.Count) return false;
+            for (int i = 0; i < Clips.Count; i++)
+            {
+                var a = Clips[i]; var b = other.Clips[i];
+                if (a.SourceFile != b.SourceFile) return false;
+                if (a.IsAudioOnly != b.IsAudioOnly) return false;
+                if (a.RotateDegrees != b.RotateDegrees) return false;
+                if (a.FlipH != b.FlipH) return false;
+                if (a.FlipV != b.FlipV) return false;
+                if (a.LoopCount != b.LoopCount) return false;
+                if (Math.Abs(a.TimelineStart - b.TimelineStart) > 0.001) return false;
+                if (Math.Abs(a.InPoint - b.InPoint) > 0.001) return false;
+                if (Math.Abs(a.OutPoint - b.OutPoint) > 0.001) return false;
+                if (Math.Abs(a.Speed - b.Speed) > 0.001) return false;
+                if (Math.Abs(a.Volume - b.Volume) > 0.001) return false;
+                if (Math.Abs(a.CanvasScale - b.CanvasScale) > 0.001) return false;
+                if (Math.Abs(a.CanvasOffsetX - b.CanvasOffsetX) > 0.001) return false;
+                if (Math.Abs(a.CanvasOffsetY - b.CanvasOffsetY) > 0.001) return false;
+            }
+            return true;
+        }
+    }
+
+    private readonly List<UndoSnapshot> _undoHistory = new();
+    private int _undoIndex = -1;
+    private const int MaxUndoSteps = 50;
+    private DispatcherTimer? _undoSnapshotTimer;
+    private bool _undoRestoreInProgress;
+    private bool _undoInitialized;
+
+    private void InitUndoRedo()
+    {
+        if (_undoInitialized) return;
+        _undoInitialized = true;
+
+        // Snapshot the initial (empty) state so the very first user action can be undone
+        // back to "empty timeline".
+        _undoHistory.Add(CaptureUndoSnapshot());
+        _undoIndex = 0;
+
+        timeline.Clips.CollectionChanged += OnUndoClipsCollectionChanged;
+        foreach (var c in timeline.Clips) c.PropertyChanged += OnUndoClipPropertyChanged;
+    }
+
+    private void OnUndoClipsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        // Keep PropertyChanged subscriptions in sync with the live collection regardless
+        // of whether we're restoring — otherwise newly-added clips after a restore would
+        // silently miss property change tracking.
+        if (e.NewItems != null)
+            foreach (VideoClip c in e.NewItems) c.PropertyChanged += OnUndoClipPropertyChanged;
+        if (e.OldItems != null)
+            foreach (VideoClip c in e.OldItems) c.PropertyChanged -= OnUndoClipPropertyChanged;
+
+        if (_undoRestoreInProgress) return;
+        ScheduleUndoSnapshot();
+    }
+
+    private void OnUndoClipPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_undoRestoreInProgress) return;
+        // EffectiveDuration is recomputed off other properties; ignore so we don't double-count.
+        if (e.PropertyName == nameof(VideoClip.EffectiveDuration)) return;
+        if (e.PropertyName == "DisplayName") return;
+        ScheduleUndoSnapshot();
+    }
+
+    private void ScheduleUndoSnapshot()
+    {
+        _undoSnapshotTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _undoSnapshotTimer.Tick -= UndoSnapshotTimer_Tick;
+        _undoSnapshotTimer.Tick += UndoSnapshotTimer_Tick;
+        _undoSnapshotTimer.Stop();
+        _undoSnapshotTimer.Start();
+    }
+
+    private void UndoSnapshotTimer_Tick(object? sender, EventArgs e)
+    {
+        _undoSnapshotTimer?.Stop();
+        PushUndoSnapshot();
+    }
+
+    private void PushUndoSnapshot()
+    {
+        var snap = CaptureUndoSnapshot();
+        // Skip when the snapshot is identical to the current head — avoids piling up
+        // duplicates from no-op PropertyChanged events.
+        if (_undoIndex >= 0 && _undoIndex < _undoHistory.Count && snap.StructurallyEquals(_undoHistory[_undoIndex]))
+            return;
+        // Drop any redo states past the current head — taking a new action invalidates them.
+        if (_undoIndex < _undoHistory.Count - 1)
+            _undoHistory.RemoveRange(_undoIndex + 1, _undoHistory.Count - _undoIndex - 1);
+        _undoHistory.Add(snap);
+        _undoIndex = _undoHistory.Count - 1;
+        // Cap the history so it can't grow unbounded.
+        while (_undoHistory.Count > MaxUndoSteps)
+        {
+            _undoHistory.RemoveAt(0);
+            _undoIndex--;
+        }
+    }
+
+    private UndoSnapshot CaptureUndoSnapshot() => new()
+    {
+        Clips = timeline.Clips.Select(ClipSnapshot.FromClip).ToList()
+    };
+
+    private void FlushPendingUndoSnapshot()
+    {
+        if (_undoSnapshotTimer != null && _undoSnapshotTimer.IsEnabled)
+        {
+            _undoSnapshotTimer.Stop();
+            PushUndoSnapshot();
+        }
+    }
+
+    private void UndoRedo_Undo()
+    {
+        if (!_undoInitialized) return;
+        FlushPendingUndoSnapshot();
+        if (_undoIndex <= 0) { status.Text = "Nothing to undo."; return; }
+        _undoIndex--;
+        RestoreUndoSnapshot(_undoHistory[_undoIndex]);
+        status.Text = $"Undo. ({_undoIndex + 1}/{_undoHistory.Count})";
+    }
+
+    private void UndoRedo_Redo()
+    {
+        if (!_undoInitialized) return;
+        if (_undoIndex >= _undoHistory.Count - 1) { status.Text = "Nothing to redo."; return; }
+        _undoIndex++;
+        RestoreUndoSnapshot(_undoHistory[_undoIndex]);
+        status.Text = $"Redo. ({_undoIndex + 1}/{_undoHistory.Count})";
+    }
+
+    private void RestoreUndoSnapshot(UndoSnapshot snap)
+    {
+        _undoRestoreInProgress = true;
+        try
+        {
+            // If something is currently playing it may be tied to a clip instance we're about
+            // to replace — stop first so the player doesn't end up holding a dangling reference.
+            if (_playingClip != null) { try { videoView.Stop(); } catch { } }
+            _playingClip = null;
+            _selectedClip = null;
+            _selectedAudio = null;
+
+            // Replace the clip list with fresh instances built from the snapshot.
+            timeline.Clips.Clear();
+            foreach (var cs in snap.Clips)
+                timeline.Clips.Add(cs.ToClip());
+
+            timeline.ClearAllSelection();
+            timeline.FullRefresh();
+
+            // Re-sync the inspector tab — we just blew away the selection so nothing should
+            // be showing a stale Clip / Block panel.
+            ShowInspectorTab(IsInlineRecorderVisible() ? "recorder" : "none");
+            UpdatePreviewAspect();
+            UpdateTopbarDims();
+            UpdateExportFpsControls();
+        }
+        finally
+        {
+            _undoRestoreInProgress = false;
+        }
     }
 }
