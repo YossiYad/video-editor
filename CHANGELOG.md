@@ -10,6 +10,20 @@ The latest signed Windows build is always available at
 
 ---
 
+## [v1.8.2] - 2026-05-28
+
+### Changed
+- **Sidebar "TRANSFORM & TRIM" group removed.** All eight per-clip
+  editing actions (Trim, Crop, Rotate, Flip, Resize, Loop, Change
+  Speed, Stabilize) already exist as native controls inside the right
+  Clip tab (IN/OUT inputs, Speed slider, 90° rotate buttons, Flip H/V,
+  Crop, Resize, Loop, Stabilize), so duplicating them in the sidebar
+  was just visual noise. The sidebar now keeps only "Merge Videos" in
+  that area, since merging is a project-level action and has no
+  counterpart in the per-clip tab.
+
+---
+
 ## [v1.8.1] - 2026-05-28
 
 ### Changed
