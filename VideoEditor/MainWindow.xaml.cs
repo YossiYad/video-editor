@@ -142,6 +142,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         mergeQueueList.ItemsSource = _mergeQueue;
+        InitUndoRedo();
         _inlineCameraBgService.Log += msg =>
         {
             try { AppendInlineRecorderLog("AI: " + msg); } catch { }
@@ -1644,6 +1645,24 @@ public partial class MainWindow : Window
         if (e.Key == Key.O && Keyboard.Modifiers == ModifierKeys.Control)
         {
             OpenBtn_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Z && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            UndoRedo_Redo();
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Z && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            UndoRedo_Undo();
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Y && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            UndoRedo_Redo();
             e.Handled = true;
             return;
         }
@@ -4946,5 +4965,264 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
                    && name.StartsWith("ve_", StringComparison.OrdinalIgnoreCase);
         }
         catch { return false; }
+    }
+
+    // =========================================================================
+    // UNDO / REDO  (Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y)
+    //
+    // Snapshot-based: every change to the timeline.Clips collection or to any
+    // clip's properties triggers a debounced (500ms) snapshot of the whole
+    // clip list. Slider-drag flurries get coalesced into one snapshot at the
+    // end of the drag. On Ctrl+Z we walk one step back in the history and
+    // restore the clip list from the snapshot.
+    //
+    // What it covers: clip add / remove / move, trim in/out, speed, volume,
+    // rotate, flip, loop, canvas zoom/offset on every clip (including the
+    // audio-only "Add Audio" clips that live on the A1 lane).
+    //
+    // What it does NOT cover: hide blocks, text overlays, image overlays
+    // (their state is left alone on undo), and destructive file operations
+    // like crop/resize/stabilize/extract-audio that rewrite the source file
+    // on disk.
+    // =========================================================================
+
+    private sealed class ClipSnapshot
+    {
+        public string SourceFile = "";
+        public double OriginalDuration;
+        public double InPoint;
+        public double OutPoint;
+        public double Speed = 1.0;
+        public double Volume = 1.0;
+        public int RotateDegrees;
+        public bool FlipH;
+        public bool FlipV;
+        public int VideoWidth;
+        public int VideoHeight;
+        public int LoopCount = 1;
+        public double TimelineStart;
+        public bool IsAudioOnly;
+        public double CanvasScale = 1.0;
+        public double CanvasOffsetX;
+        public double CanvasOffsetY;
+        public Color AccentColor;
+
+        public static ClipSnapshot FromClip(VideoClip c) => new()
+        {
+            SourceFile = c.SourceFile,
+            OriginalDuration = c.OriginalDuration,
+            InPoint = c.InPoint,
+            OutPoint = c.OutPoint,
+            Speed = c.Speed,
+            Volume = c.Volume,
+            RotateDegrees = c.RotateDegrees,
+            FlipH = c.FlipH,
+            FlipV = c.FlipV,
+            VideoWidth = c.VideoWidth,
+            VideoHeight = c.VideoHeight,
+            LoopCount = c.LoopCount,
+            TimelineStart = c.TimelineStart,
+            IsAudioOnly = c.IsAudioOnly,
+            CanvasScale = c.CanvasScale,
+            CanvasOffsetX = c.CanvasOffsetX,
+            CanvasOffsetY = c.CanvasOffsetY,
+            AccentColor = c.AccentColor,
+        };
+
+        public VideoClip ToClip() => new()
+        {
+            SourceFile = SourceFile,
+            OriginalDuration = OriginalDuration,
+            InPoint = InPoint,
+            OutPoint = OutPoint,
+            Speed = Speed,
+            Volume = Volume,
+            RotateDegrees = RotateDegrees,
+            FlipH = FlipH,
+            FlipV = FlipV,
+            VideoWidth = VideoWidth,
+            VideoHeight = VideoHeight,
+            LoopCount = LoopCount,
+            TimelineStart = TimelineStart,
+            IsAudioOnly = IsAudioOnly,
+            CanvasScale = CanvasScale,
+            CanvasOffsetX = CanvasOffsetX,
+            CanvasOffsetY = CanvasOffsetY,
+            AccentColor = AccentColor,
+        };
+    }
+
+    private sealed class UndoSnapshot
+    {
+        public List<ClipSnapshot> Clips = new();
+
+        public bool StructurallyEquals(UndoSnapshot other)
+        {
+            if (Clips.Count != other.Clips.Count) return false;
+            for (int i = 0; i < Clips.Count; i++)
+            {
+                var a = Clips[i]; var b = other.Clips[i];
+                if (a.SourceFile != b.SourceFile) return false;
+                if (a.IsAudioOnly != b.IsAudioOnly) return false;
+                if (a.RotateDegrees != b.RotateDegrees) return false;
+                if (a.FlipH != b.FlipH) return false;
+                if (a.FlipV != b.FlipV) return false;
+                if (a.LoopCount != b.LoopCount) return false;
+                if (Math.Abs(a.TimelineStart - b.TimelineStart) > 0.001) return false;
+                if (Math.Abs(a.InPoint - b.InPoint) > 0.001) return false;
+                if (Math.Abs(a.OutPoint - b.OutPoint) > 0.001) return false;
+                if (Math.Abs(a.Speed - b.Speed) > 0.001) return false;
+                if (Math.Abs(a.Volume - b.Volume) > 0.001) return false;
+                if (Math.Abs(a.CanvasScale - b.CanvasScale) > 0.001) return false;
+                if (Math.Abs(a.CanvasOffsetX - b.CanvasOffsetX) > 0.001) return false;
+                if (Math.Abs(a.CanvasOffsetY - b.CanvasOffsetY) > 0.001) return false;
+            }
+            return true;
+        }
+    }
+
+    private readonly List<UndoSnapshot> _undoHistory = new();
+    private int _undoIndex = -1;
+    private const int MaxUndoSteps = 50;
+    private DispatcherTimer? _undoSnapshotTimer;
+    private bool _undoRestoreInProgress;
+    private bool _undoInitialized;
+
+    private void InitUndoRedo()
+    {
+        if (_undoInitialized) return;
+        _undoInitialized = true;
+
+        // Snapshot the initial (empty) state so the very first user action can be undone
+        // back to "empty timeline".
+        _undoHistory.Add(CaptureUndoSnapshot());
+        _undoIndex = 0;
+
+        timeline.Clips.CollectionChanged += OnUndoClipsCollectionChanged;
+        foreach (var c in timeline.Clips) c.PropertyChanged += OnUndoClipPropertyChanged;
+    }
+
+    private void OnUndoClipsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        // Keep PropertyChanged subscriptions in sync with the live collection regardless
+        // of whether we're restoring — otherwise newly-added clips after a restore would
+        // silently miss property change tracking.
+        if (e.NewItems != null)
+            foreach (VideoClip c in e.NewItems) c.PropertyChanged += OnUndoClipPropertyChanged;
+        if (e.OldItems != null)
+            foreach (VideoClip c in e.OldItems) c.PropertyChanged -= OnUndoClipPropertyChanged;
+
+        if (_undoRestoreInProgress) return;
+        ScheduleUndoSnapshot();
+    }
+
+    private void OnUndoClipPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_undoRestoreInProgress) return;
+        // EffectiveDuration is recomputed off other properties; ignore so we don't double-count.
+        if (e.PropertyName == nameof(VideoClip.EffectiveDuration)) return;
+        if (e.PropertyName == "DisplayName") return;
+        ScheduleUndoSnapshot();
+    }
+
+    private void ScheduleUndoSnapshot()
+    {
+        _undoSnapshotTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _undoSnapshotTimer.Tick -= UndoSnapshotTimer_Tick;
+        _undoSnapshotTimer.Tick += UndoSnapshotTimer_Tick;
+        _undoSnapshotTimer.Stop();
+        _undoSnapshotTimer.Start();
+    }
+
+    private void UndoSnapshotTimer_Tick(object? sender, EventArgs e)
+    {
+        _undoSnapshotTimer?.Stop();
+        PushUndoSnapshot();
+    }
+
+    private void PushUndoSnapshot()
+    {
+        var snap = CaptureUndoSnapshot();
+        // Skip when the snapshot is identical to the current head — avoids piling up
+        // duplicates from no-op PropertyChanged events.
+        if (_undoIndex >= 0 && _undoIndex < _undoHistory.Count && snap.StructurallyEquals(_undoHistory[_undoIndex]))
+            return;
+        // Drop any redo states past the current head — taking a new action invalidates them.
+        if (_undoIndex < _undoHistory.Count - 1)
+            _undoHistory.RemoveRange(_undoIndex + 1, _undoHistory.Count - _undoIndex - 1);
+        _undoHistory.Add(snap);
+        _undoIndex = _undoHistory.Count - 1;
+        // Cap the history so it can't grow unbounded.
+        while (_undoHistory.Count > MaxUndoSteps)
+        {
+            _undoHistory.RemoveAt(0);
+            _undoIndex--;
+        }
+    }
+
+    private UndoSnapshot CaptureUndoSnapshot() => new()
+    {
+        Clips = timeline.Clips.Select(ClipSnapshot.FromClip).ToList()
+    };
+
+    private void FlushPendingUndoSnapshot()
+    {
+        if (_undoSnapshotTimer != null && _undoSnapshotTimer.IsEnabled)
+        {
+            _undoSnapshotTimer.Stop();
+            PushUndoSnapshot();
+        }
+    }
+
+    private void UndoRedo_Undo()
+    {
+        if (!_undoInitialized) return;
+        FlushPendingUndoSnapshot();
+        if (_undoIndex <= 0) { status.Text = "Nothing to undo."; return; }
+        _undoIndex--;
+        RestoreUndoSnapshot(_undoHistory[_undoIndex]);
+        status.Text = $"Undo. ({_undoIndex + 1}/{_undoHistory.Count})";
+    }
+
+    private void UndoRedo_Redo()
+    {
+        if (!_undoInitialized) return;
+        if (_undoIndex >= _undoHistory.Count - 1) { status.Text = "Nothing to redo."; return; }
+        _undoIndex++;
+        RestoreUndoSnapshot(_undoHistory[_undoIndex]);
+        status.Text = $"Redo. ({_undoIndex + 1}/{_undoHistory.Count})";
+    }
+
+    private void RestoreUndoSnapshot(UndoSnapshot snap)
+    {
+        _undoRestoreInProgress = true;
+        try
+        {
+            // If something is currently playing it may be tied to a clip instance we're about
+            // to replace — stop first so the player doesn't end up holding a dangling reference.
+            if (_playingClip != null) { try { videoView.Stop(); } catch { } }
+            _playingClip = null;
+            _selectedClip = null;
+            _selectedAudio = null;
+
+            // Replace the clip list with fresh instances built from the snapshot.
+            timeline.Clips.Clear();
+            foreach (var cs in snap.Clips)
+                timeline.Clips.Add(cs.ToClip());
+
+            timeline.ClearAllSelection();
+            timeline.FullRefresh();
+
+            // Re-sync the inspector tab — we just blew away the selection so nothing should
+            // be showing a stale Clip / Block panel.
+            ShowInspectorTab(IsInlineRecorderVisible() ? "recorder" : "none");
+            UpdatePreviewAspect();
+            UpdateTopbarDims();
+            UpdateExportFpsControls();
+        }
+        finally
+        {
+            _undoRestoreInProgress = false;
+        }
     }
 }
