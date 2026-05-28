@@ -10,6 +10,23 @@ The latest signed Windows build is always available at
 
 ---
 
+## [v1.8.5] - 2026-05-29
+
+### Added
+- **Undo / Redo** - Ctrl+Z steps back through timeline clip edits,
+  Ctrl+Shift+Z (or Ctrl+Y) steps forward. Covers clip add / remove /
+  move / split / duplicate, trim in/out, speed, volume, rotate, flip,
+  loop, and canvas zoom/offset. Snapshot-based with a debounce so a
+  slider drag collapses into a single undo step; history capped at 50.
+
+### Fixed
+- **Pressing Play at the end of the timeline restarts from the
+  beginning** instead of sitting on the last frame. Applies to the
+  Play button and the Space shortcut. Pausing mid-timeline and
+  resuming still continues from where it paused.
+
+---
+
 ## [v1.8.4] - 2026-05-28
 
 ### Added

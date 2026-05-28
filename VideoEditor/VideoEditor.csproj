@@ -10,10 +10,10 @@
     <RootNamespace>VideoEditor</RootNamespace>
     <ApplicationIcon>..\assets\icon.ico</ApplicationIcon>
     <Platforms>AnyCPU;x64</Platforms>
-    <Version>1.8.4</Version>
-    <AssemblyVersion>1.8.4.0</AssemblyVersion>
-    <FileVersion>1.8.4.0</FileVersion>
-    <InformationalVersion>1.8.4</InformationalVersion>
+    <Version>1.8.5</Version>
+    <AssemblyVersion>1.8.5.0</AssemblyVersion>
+    <FileVersion>1.8.5.0</FileVersion>
+    <InformationalVersion>1.8.5</InformationalVersion>
     <!-- Bundle the native WPF DLLs (D3DCompiler / PresentationNative / wpfgfx /
          PenImc / vcruntime) into the single-file EXE so it can run from a folder
          that only contains VideoEditor.exe. They're extracted to a temp folder on
