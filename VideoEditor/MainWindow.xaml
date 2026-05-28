@@ -297,81 +297,12 @@
                                 </StackPanel>
                             </Button>
 
-                            <!-- Transform & Trim -->
-                            <TextBlock Text="TRANSFORM &amp; TRIM" Style="{DynamicResource GroupLabel}"/>
                             <Button x:Name="btnMerge" Style="{DynamicResource SidebarToolButton}" Click="Merge_Click">
                                 <StackPanel Orientation="Horizontal">
                                     <Border Width="22" Height="22" CornerRadius="4" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1">
                                         <TextBlock Text="🔗" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
                                     <TextBlock Text="Merge Videos" Margin="9,0,0,0" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="btnTrim" Style="{DynamicResource SidebarToolButton}" Click="Trim_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <Border Width="22" Height="22" CornerRadius="4" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1">
-                                        <TextBlock Text="✂" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
-                                    <TextBlock Text="Trim Video" Margin="9,0,0,0" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="btnCrop" Style="{DynamicResource SidebarToolButton}" Click="Crop_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <Border Width="22" Height="22" CornerRadius="4" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1">
-                                        <TextBlock Text="◳" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
-                                    <TextBlock Text="Crop Video" Margin="9,0,0,0" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="btnRotate" Style="{DynamicResource SidebarToolButton}" Click="Rotate_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <Border Width="22" Height="22" CornerRadius="4" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1">
-                                        <TextBlock Text="↻" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
-                                    <TextBlock Text="Rotate Video" Margin="9,0,0,0" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="btnFlip" Style="{DynamicResource SidebarToolButton}" Click="Flip_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <Border Width="22" Height="22" CornerRadius="4" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1">
-                                        <TextBlock Text="⇄" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
-                                    <TextBlock Text="Flip Video" Margin="9,0,0,0" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="btnResize" Style="{DynamicResource SidebarToolButton}" Click="Resize_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <Border Width="22" Height="22" CornerRadius="4" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1">
-                                        <TextBlock Text="⛶" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
-                                    <TextBlock Text="Resize Video" Margin="9,0,0,0" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="btnLoop" Style="{DynamicResource SidebarToolButton}" Click="Loop_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <Border Width="22" Height="22" CornerRadius="4" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1">
-                                        <TextBlock Text="🔁" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
-                                    <TextBlock Text="Loop Video" Margin="9,0,0,0" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="btnSpeed" Style="{DynamicResource SidebarToolButton}" Click="Speed_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <Border Width="22" Height="22" CornerRadius="4" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1">
-                                        <TextBlock Text="⏩" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
-                                    <TextBlock Text="Change Speed" Margin="9,0,0,0" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="btnStabilize" Style="{DynamicResource SidebarToolButton}" Click="Stabilize_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <Border Width="22" Height="22" CornerRadius="4" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1">
-                                        <TextBlock Text="🤚" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
-                                    <TextBlock Text="Stabilize" Margin="9,0,0,0" VerticalAlignment="Center"/>
-                                    <Border Background="{DynamicResource Bg1}" BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="3" Padding="5,1" Margin="6,0,0,0">
-                                        <TextBlock Text="2-pass" FontSize="9.5" FontFamily="Consolas" Foreground="{DynamicResource TextDim}"/>
-                                    </Border>
                                 </StackPanel>
                             </Button>
 
