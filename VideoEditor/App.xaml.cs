@@ -157,8 +157,8 @@ public partial class App : Application
 
         // Both files must be present - if a previous run crashed mid-download we'd otherwise
         // skip re-fetching even though one of them is missing/corrupt.
-        var ffmpegExe = Path.Combine(ffmpegDir, "ffmpeg.exe");
-        var ffprobeExe = Path.Combine(ffmpegDir, "ffprobe.exe");
+        var ffmpegExe = Path.Combine(ffmpegDir, VideoEditor.Services.Platform.ExeName("ffmpeg"));
+        var ffprobeExe = Path.Combine(ffmpegDir, VideoEditor.Services.Platform.ExeName("ffprobe"));
         bool needFfmpeg = !File.Exists(ffmpegExe);
         bool needFfprobe = !File.Exists(ffprobeExe);
         if (needFfmpeg || needFfprobe)

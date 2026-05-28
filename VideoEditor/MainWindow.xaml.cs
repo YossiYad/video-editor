@@ -4376,13 +4376,7 @@ public partial class MainWindow : Window
                 "Merge complete.\n\nOpen the output folder?",
                 "Merge Videos", MessageBoxButton.YesNo, MessageBoxImage.Information);
             if (openResult == MessageBoxResult.Yes)
-            {
-                try
-                {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{output}\"") { UseShellExecute = true });
-                }
-                catch { }
-            }
+                VideoEditor.Services.Platform.RevealInFileManager(output);
         }
         catch (Exception ex)
         {
@@ -4956,17 +4950,8 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
     // breaking when the file name contains characters that interact with the shell parser.
     private static void RevealInExplorer(string filePath)
     {
-        try
-        {
-            var psi = new System.Diagnostics.ProcessStartInfo("explorer.exe")
-            {
-                UseShellExecute = true
-            };
-            psi.ArgumentList.Add("/select,");
-            psi.ArgumentList.Add(filePath);
-            System.Diagnostics.Process.Start(psi);
-        }
-        catch { }
+        // Cross-platform reveal: Explorer (Windows), Finder (macOS), file manager (Linux).
+        VideoEditor.Services.Platform.RevealInFileManager(filePath);
     }
 
     private static bool IsAppTempFile(string path)

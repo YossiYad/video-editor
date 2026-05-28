@@ -14,8 +14,8 @@ namespace VideoEditor.Services;
 public class DownloadService
 {
     private static readonly string YtDlpFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg");
-    public static string YtDlpExePath => Path.Combine(YtDlpFolder, "yt-dlp.exe");
-    private const string YtDlpDownloadUrl = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
+    public static string YtDlpExePath => Path.Combine(YtDlpFolder, Platform.ExeName("yt-dlp"));
+    private static string YtDlpDownloadUrl => Platform.YtDlpDownloadUrl;
 
     public static string DownloadLogPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -67,22 +67,43 @@ public class DownloadService
     {
         if (File.Exists(YtDlpExePath)) return;
         Directory.CreateDirectory(YtDlpFolder);
-        Log?.Invoke("Downloading yt-dlp.exe (~12 MB) - first run only...");
+        Log?.Invoke("Downloading yt-dlp (~12 MB) - first run only...");
         using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
         using var response = await client.GetAsync(YtDlpDownloadUrl, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
         long? total = response.Content.Headers.ContentLength;
-        await using var src = await response.Content.ReadAsStreamAsync();
-        await using var dst = File.Create(YtDlpExePath);
-        var buf = new byte[81920];
-        long got = 0;
-        int read;
-        while ((read = await src.ReadAsync(buf)) > 0)
+        await using (var src = await response.Content.ReadAsStreamAsync())
+        await using (var dst = File.Create(YtDlpExePath))
         {
-            await dst.WriteAsync(buf.AsMemory(0, read));
-            got += read;
-            if (total.HasValue) progress?.Report((double)got / total.Value);
+            var buf = new byte[81920];
+            long got = 0;
+            int read;
+            while ((read = await src.ReadAsync(buf)) > 0)
+            {
+                await dst.WriteAsync(buf.AsMemory(0, read));
+                got += read;
+                if (total.HasValue) progress?.Report((double)got / total.Value);
+            }
         }
+        MakeExecutable(YtDlpExePath);
+    }
+
+    /// <summary>On macOS/Linux a freshly-downloaded binary has no execute bit, so it
+    /// can't be launched until we chmod +x it. No-op on Windows.</summary>
+    private static void MakeExecutable(string path)
+    {
+        if (Platform.IsWindows) return;
+        try
+        {
+            var psi = new ProcessStartInfo("chmod", $"+x \"{path}\"")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var p = Process.Start(psi);
+            p?.WaitForExit(5000);
+        }
+        catch { /* best-effort; launch will surface a clear error if it stayed non-exec */ }
     }
 
     public async Task<string> DownloadDirectAsync(string url, string outputPath, IProgress<double>? progress = null, CancellationToken ct = default)
