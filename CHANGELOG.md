@@ -10,6 +10,22 @@ The latest signed Windows build is always available at
 
 ---
 
+## [v1.8.4] - 2026-05-28
+
+### Added
+- **AUDIO section in the Clip tab** with the four audio actions
+  (Add Audio, Change Volume, Extract Audio, Mute / Remove). They
+  remain in the left sidebar too - the Clip tab just exposes them
+  alongside the other per-clip controls so you don't have to bounce
+  between panels to mute or pull audio off a clip.
+
+### Changed
+- The duplicate "Add Audio" button under EXPORT-TIME EFFECTS in the
+  Clip tab moved into the new AUDIO group; Resize now spans the full
+  width of its row.
+
+---
+
 ## [v1.8.3] - 2026-05-28
 
 ### Fixed

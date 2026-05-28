@@ -842,8 +842,28 @@
                                             <Button Grid.Row="0" Grid.Column="1" Content="🚫 Remove Logo" Style="{DynamicResource ToolButtonSmall}" Click="RemoveLogo_Click"/>
                                             <Button Grid.Row="1" Grid.Column="0" Content="🔤 Add Text" Style="{DynamicResource ToolButtonSmall}" Click="AddText_Click"/>
                                             <Button Grid.Row="1" Grid.Column="1" Content="🖼 Add Image" Style="{DynamicResource ToolButtonSmall}" Click="AddImage_Click"/>
-                                            <Button Grid.Row="2" Grid.Column="0" Content="🎵 Add Audio" Style="{DynamicResource ToolButtonSmall}" Click="AddAudio_Click"/>
-                                            <Button Grid.Row="2" Grid.Column="1" Content="⛶ Resize" Style="{DynamicResource ToolButtonSmall}" Click="Resize_Click"/>
+                                            <Button Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Content="⛶ Resize" Style="{DynamicResource ToolButtonSmall}" Click="Resize_Click"/>
+                                        </Grid>
+                                    </StackPanel>
+
+                                    <Border Height="1" Background="{DynamicResource Line}" Margin="16,0"/>
+
+                                    <!-- Audio -->
+                                    <StackPanel Margin="16,12,16,12">
+                                        <TextBlock Text="AUDIO" Style="{DynamicResource FieldLabel}"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <Button Grid.Row="0" Grid.Column="0" Content="🎵 Add Audio" Style="{DynamicResource ToolButtonSmall}" Click="AddAudio_Click"/>
+                                            <Button Grid.Row="0" Grid.Column="1" Content="🔊 Change Volume" Style="{DynamicResource ToolButtonSmall}" Click="Volume_Click"/>
+                                            <Button Grid.Row="1" Grid.Column="0" Content="↗ Extract Audio" Style="{DynamicResource ToolButtonSmall}" Click="ExtractAudio_Click"/>
+                                            <Button Grid.Row="1" Grid.Column="1" Content="🔇 Mute / Remove" Style="{DynamicResource ToolButtonSmall}" Click="MuteAudio_Click"/>
                                         </Grid>
                                     </StackPanel>
 
