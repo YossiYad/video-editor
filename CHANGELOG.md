@@ -10,6 +10,31 @@ The latest signed Windows build is always available at
 
 ---
 
+## [v1.9.0] - 2026-05-29
+
+### Changed
+- **AI Captions is now an inspector tab, not a modal dialog.** Clicking
+  the sidebar's "AI Captions" button opens an "AI Captions" tab on the
+  right with the same source / language / Whisper-model / caption-
+  language dropdowns, the Gemini daily-usage badge, and a progress
+  bar. The job runs in-place; the timeline stays visible the whole
+  time so the user can watch the overlays drop in. A small accent
+  dot on the tab flag signals that a run is in flight, so the user
+  can navigate to other tabs and come back.
+- **Import from URL is now an inspector tab, not a modal dialog.**
+  Same fields as before (URL, destination folder, live "detection
+  chip" that flags streaming-site vs direct-file vs unknown), now
+  inline so the download progress is visible alongside the rest of
+  the editor. The Download button doubles as a Cancel button while
+  a download is running, and the tab dot signals running state.
+
+### Removed
+- `Views/AiCaptionsWindow.cs` and `Views/DownloadUrlWindow.cs` -
+  both classes were only invoked from the two sidebar handlers
+  converted above. Deleted as dead code.
+
+---
+
 ## [v1.8.4] - 2026-05-28
 
 ### Added

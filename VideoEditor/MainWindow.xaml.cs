@@ -1289,15 +1289,17 @@ public partial class MainWindow : Window
         // "recorder" is kept as an alias for "recording" — older code paths still call it.
         if (key == "recorder") key = "recording";
 
-        bool isBlock     = key == "block";
-        bool isClip      = key == "clip";
-        bool isExp       = key == "export";
-        bool isRecording = key == "recording";
-        bool isCamera    = key == "camera";
-        bool isMulti     = key == "multi";
-        bool isTts       = key == "tts";
-        bool isMerge     = key == "merge";
-        bool inRecorder  = IsInlineRecorderVisible();
+        bool isBlock       = key == "block";
+        bool isClip        = key == "clip";
+        bool isExp         = key == "export";
+        bool isRecording   = key == "recording";
+        bool isCamera      = key == "camera";
+        bool isMulti       = key == "multi";
+        bool isTts         = key == "tts";
+        bool isMerge       = key == "merge";
+        bool isAiCaptions  = key == "aiCaptions";
+        bool isDownload    = key == "download";
+        bool inRecorder    = IsInlineRecorderVisible();
 
         // Content panels
         blockPanel.Visibility             = isBlock ? Visibility.Visible : Visibility.Collapsed;
@@ -1306,6 +1308,8 @@ public partial class MainWindow : Window
         recorderInspectorPanel.Visibility = (isRecording || isCamera) ? Visibility.Visible : Visibility.Collapsed;
         ttsInspectorPanel.Visibility      = isTts ? Visibility.Visible : Visibility.Collapsed;
         mergePanel.Visibility             = isMerge ? Visibility.Visible : Visibility.Collapsed;
+        aiCaptionsPanel.Visibility        = isAiCaptions ? Visibility.Visible : Visibility.Collapsed;
+        downloadPanel.Visibility          = isDownload   ? Visibility.Visible : Visibility.Collapsed;
         if (!isTts) StopTtsPreview();
         if (multiSelectInspector != null)
         {
@@ -1322,16 +1326,20 @@ public partial class MainWindow : Window
 
         _suppress = true;
         // Static tabs are only used outside recorder mode.
-        tabBlockBtn.IsChecked  = !inRecorder && isBlock;
-        tabClipBtn.IsChecked   = !inRecorder && isClip;
-        tabExportBtn.IsChecked = !inRecorder && isExp;
-        tabTtsBtn.IsChecked    = isTts;
-        tabMergeBtn.IsChecked  = isMerge;
-        tabBlockBtn.Visibility  = (!inRecorder && isBlock) ? Visibility.Visible : Visibility.Collapsed;
-        tabClipBtn.Visibility   = (!inRecorder && isClip)  ? Visibility.Visible : Visibility.Collapsed;
-        tabExportBtn.Visibility = (!inRecorder && isExp)   ? Visibility.Visible : Visibility.Collapsed;
-        tabTtsBtn.Visibility    = isTts ? Visibility.Visible : Visibility.Collapsed;
-        tabMergeBtn.Visibility  = isMerge ? Visibility.Visible : Visibility.Collapsed;
+        tabBlockBtn.IsChecked       = !inRecorder && isBlock;
+        tabClipBtn.IsChecked        = !inRecorder && isClip;
+        tabExportBtn.IsChecked      = !inRecorder && isExp;
+        tabTtsBtn.IsChecked         = isTts;
+        tabMergeBtn.IsChecked       = isMerge;
+        tabAiCaptionsBtn.IsChecked  = isAiCaptions;
+        tabDownloadBtn.IsChecked    = isDownload;
+        tabBlockBtn.Visibility       = (!inRecorder && isBlock) ? Visibility.Visible : Visibility.Collapsed;
+        tabClipBtn.Visibility        = (!inRecorder && isClip)  ? Visibility.Visible : Visibility.Collapsed;
+        tabExportBtn.Visibility      = (!inRecorder && isExp)   ? Visibility.Visible : Visibility.Collapsed;
+        tabTtsBtn.Visibility         = isTts ? Visibility.Visible : Visibility.Collapsed;
+        tabMergeBtn.Visibility       = isMerge ? Visibility.Visible : Visibility.Collapsed;
+        tabAiCaptionsBtn.Visibility  = isAiCaptions ? Visibility.Visible : Visibility.Collapsed;
+        tabDownloadBtn.Visibility    = isDownload ? Visibility.Visible : Visibility.Collapsed;
         normalTabsBar.Visibility = (!inRecorder && (isBlock || isClip || isExp))
             ? Visibility.Visible : Visibility.Collapsed;
         // The dynamic recorder tabs (Recording / Camera / Block N) are built by
@@ -1352,7 +1360,9 @@ public partial class MainWindow : Window
         bool anyVisible = normalTabsBar.Visibility == Visibility.Visible
                           || recorderTabHost.Visibility == Visibility.Visible
                           || tabTtsBtn.Visibility == Visibility.Visible
-                          || tabMergeBtn.Visibility == Visibility.Visible;
+                          || tabMergeBtn.Visibility == Visibility.Visible
+                          || tabAiCaptionsBtn.Visibility == Visibility.Visible
+                          || tabDownloadBtn.Visibility == Visibility.Visible;
         inspectorTabsBar.Visibility = anyVisible ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -1388,6 +1398,16 @@ public partial class MainWindow : Window
     {
         if (_suppress) return;
         ShowInspectorTab("tts");
+    }
+    private void TabAiCaptions_Click(object sender, RoutedEventArgs e)
+    {
+        if (_suppress) return;
+        ShowInspectorTab("aiCaptions");
+    }
+    private void TabDownload_Click(object sender, RoutedEventArgs e)
+    {
+        if (_suppress) return;
+        ShowInspectorTab("download");
     }
 
     // Recording is in progress — hide the inspector tabs and panel so the preview gets full
@@ -4421,36 +4441,133 @@ public partial class MainWindow : Window
 
 private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { Owner = this }.ShowDialog();
 
-    private async void DownloadUrl_Click(object s, RoutedEventArgs e)
+    private void DownloadUrl_Click(object s, RoutedEventArgs e)
     {
-        var defaultFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "VideoEditorDownloads");
-        var dlg = new DownloadUrlWindow(defaultFolder) { Owner = this };
-        if (dlg.ShowDialog() != true) return;
-        var url = dlg.Url;
-        var folder = dlg.OutputFolder;
-        bool useStreaming = dlg.UseStreamingDownloader;
-        try
+        OpenDownloadTab();
+    }
+
+    private bool _downloadTabInitialized;
+    private System.Threading.CancellationTokenSource? _downloadCts;
+
+    private void OpenDownloadTab()
+    {
+        if (!_downloadTabInitialized)
         {
-            Directory.CreateDirectory(folder);
+            var defaultFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "VideoEditorDownloads");
+            downloadFolderBox.Text = defaultFolder;
+            UpdateDownloadDetection();
+            _downloadTabInitialized = true;
         }
-        catch (Exception ex)
+        ShowInspectorTab("download");
+    }
+
+    private void DownloadUrlBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        UpdateDownloadDetection();
+    }
+
+    private void UpdateDownloadDetection()
+    {
+        if (downloadDetectionText == null) return;
+        var url = downloadUrlBox.Text?.Trim() ?? "";
+        if (string.IsNullOrEmpty(url))
         {
-            MessageBox.Show("Cannot create destination folder: " + ex.Message);
+            downloadDetectionText.Text = "Awaiting URL…";
+            downloadDetectionDot.Fill = (System.Windows.Media.Brush)FindResource("TextDim");
+            return;
+        }
+        if (DownloadService.LooksLikeStreamingSite(url))
+        {
+            downloadDetectionText.Text = "🎬 Streaming site detected · will use yt-dlp";
+            downloadDetectionDot.Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x8B, 0x5C, 0xFF));
+        }
+        else if (DownloadService.LooksLikeDirectFile(url))
+        {
+            downloadDetectionText.Text = "📦 Direct video file · will use HTTP";
+            downloadDetectionDot.Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x4C, 0xAF, 0x50));
+        }
+        else
+        {
+            downloadDetectionText.Text = "🤔 Unknown format · will try yt-dlp as fallback";
+            downloadDetectionDot.Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0xD4, 0x3B));
+        }
+    }
+
+    private void DownloadBrowse_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Pick any file in the destination folder",
+            CheckFileExists = false,
+            CheckPathExists = true,
+            FileName = "Select folder",
+            Filter = "Folder|*.folder"
+        };
+        if (dlg.ShowDialog() == true)
+        {
+            var folder = Path.GetDirectoryName(dlg.FileName);
+            if (!string.IsNullOrEmpty(folder)) downloadFolderBox.Text = folder;
+        }
+    }
+
+    private async void DownloadStart_Click(object sender, RoutedEventArgs e)
+    {
+        // Toggle off: a running download → cancel.
+        if (_downloadCts != null)
+        {
+            try { _downloadCts.Cancel(); } catch { }
+            downloadStatusText.Text = "Cancelling…";
             return;
         }
 
-        var dl = new DownloadService();
-        dl.Log += msg => Dispatcher.Invoke(() => status.Text = msg.Length > 80 ? msg[..80] + "…" : msg);
-        var prog = new Progress<double>(v => Dispatcher.Invoke(() => progress.Value = v));
+        var url = (downloadUrlBox.Text ?? "").Trim();
+        var folder = (downloadFolderBox.Text ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            downloadStatusText.Text = "Enter a URL first.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            downloadStatusText.Text = "Pick a destination folder first.";
+            return;
+        }
+        try { Directory.CreateDirectory(folder); }
+        catch (Exception ex)
+        {
+            downloadStatusText.Text = "Cannot create folder: " + ex.Message;
+            return;
+        }
 
-        status.Text = "Starting download...";
+        bool useStreaming = !DownloadService.LooksLikeDirectFile(url);
+        _downloadCts = new System.Threading.CancellationTokenSource();
+        downloadStartBtn.Content = "⏹ Cancel";
+        tabDownloadDot.Visibility = Visibility.Visible;
+        downloadPhaseText.Text = "Downloading…";
+        downloadProgress.Value = 0;
+        downloadStatusText.Text = "Starting download…";
+
+        var dl = new DownloadService();
+        dl.Log += msg => Dispatcher.Invoke(() =>
+        {
+            var t = msg.Length > 96 ? msg[..96] + "…" : msg;
+            downloadStatusText.Text = t;
+            status.Text = t;
+        });
+        var prog = new Progress<double>(v => Dispatcher.Invoke(() =>
+        {
+            downloadProgress.Value = v;
+            progress.Value = v;
+        }));
+
         progress.Value = 0;
+        status.Text = "Starting download…";
         try
         {
             string finalPath;
             if (useStreaming)
             {
-                finalPath = await dl.DownloadViaYtDlpAsync(url, folder, App.FFmpegPath, prog);
+                finalPath = await dl.DownloadViaYtDlpAsync(url, folder, App.FFmpegPath, prog, _downloadCts.Token);
             }
             else
             {
@@ -4458,22 +4575,39 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
                 var fileName = Path.GetFileName(uri.LocalPath);
                 if (string.IsNullOrWhiteSpace(fileName) || !fileName.Contains('.')) fileName = "downloaded.mp4";
                 var outputPath = Path.Combine(folder, fileName);
-                finalPath = await dl.DownloadDirectAsync(url, outputPath, prog);
+                finalPath = await dl.DownloadDirectAsync(url, outputPath, prog, _downloadCts.Token);
             }
-            status.Text = $"Downloaded ג†’ adding to timeline: {Path.GetFileName(finalPath)}";
+            downloadPhaseText.Text = "Adding to timeline…";
+            status.Text = $"Downloaded → adding to timeline: {Path.GetFileName(finalPath)}";
             await AddClipAsync(finalPath);
+            downloadProgress.Value = 1;
             progress.Value = 1;
+            downloadPhaseText.Text = "Done";
+            downloadStatusText.Text = $"Added: {Path.GetFileName(finalPath)}";
             status.Text = $"Added downloaded clip: {Path.GetFileName(finalPath)}";
+        }
+        catch (OperationCanceledException)
+        {
+            downloadPhaseText.Text = "Cancelled";
+            downloadStatusText.Text = "Download cancelled.";
+            status.Text = "Download cancelled.";
         }
         catch (Exception ex)
         {
-            status.Text = "Download failed: " + ex.Message;
+            downloadPhaseText.Text = "Failed";
             var logPath = DownloadService.DownloadLogPath;
-            var msg = "Failed to download:\n\n" + ex.Message;
+            var msg = ex.Message;
             if (System.IO.File.Exists(logPath))
-                msg += $"\n\nFull log saved at:\n{logPath}";
-            MessageBox.Show(msg, "Download Error",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+                msg += $"\nLog: {logPath}";
+            downloadStatusText.Text = msg;
+            status.Text = "Download failed: " + ex.Message;
+        }
+        finally
+        {
+            _downloadCts?.Dispose();
+            _downloadCts = null;
+            downloadStartBtn.Content = "⬇ Download & Add to Timeline";
+            tabDownloadDot.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -4591,15 +4725,6 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
 
     private void AiCaptions_Click(object s, RoutedEventArgs e)
     {
-        var anyVideo = false;
-        foreach (var c in timeline.Clips) if (!c.IsAudioOnly) { anyVideo = true; break; }
-        if (!anyVideo)
-        {
-            MessageBox.Show(VideoEditor.Services.Localization.T("Add a video clip first."),
-                "AI Captions", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
         if (string.IsNullOrWhiteSpace(AppSettings.LlmApiKey))
         {
             MessageBox.Show(
@@ -4608,12 +4733,136 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
             new SettingsWindow("ai") { Owner = this }.ShowDialog();
             if (string.IsNullOrWhiteSpace(AppSettings.LlmApiKey)) return;
         }
+        OpenAiCaptionsTab();
+    }
+
+    // ---- AI Captions inspector tab ----
+
+    private static readonly string[] _captionsLanguageItems = { "Auto-detect", "Hebrew", "English" };
+    private static readonly string[] _captionsLanguageKeys  = { "auto",        "he",     "en"      };
+    private static readonly string[] _captionsModelItems =
+    {
+        "Tiny - fastest (75 MB)",
+        "Base - balanced (140 MB)",
+        "Small - better Hebrew (470 MB)",
+        "Medium - very accurate (1.5 GB)",
+        "Large v3 Turbo - best Hebrew (800 MB, recommended)"
+    };
+    private static readonly string[] _captionsModelKeys =
+    {
+        "tiny", "base", "small", "medium", "large-v3-turbo"
+    };
+    private static readonly string[] _captionsSourceItems = { "Selected clip", "All video clips" };
+    private static readonly string[] _captionsSourceKeys  = { "clip",          "all" };
+    private static readonly string[] _captionsOutputLangItems =
+    {
+        "Same as audio (no translation)",
+        "Hebrew", "English", "Arabic", "Spanish", "French", "Russian", "Portuguese", "German"
+    };
+    private static readonly string[] _captionsOutputLangKeys =
+    {
+        "auto", "he", "en", "ar", "es", "fr", "ru", "pt", "de"
+    };
+    private static readonly string[] _captionsOutputLangNames =
+    {
+        "auto", "Hebrew", "English", "Arabic", "Spanish", "French", "Russian", "Portuguese", "German"
+    };
+
+    private bool _aiCaptionsTabInitialized;
+    private System.Threading.CancellationTokenSource? _aiCaptionsCts;
+
+    private void OpenAiCaptionsTab()
+    {
+        if (!_aiCaptionsTabInitialized)
+        {
+            PopulateAiCaptionsBoxes();
+            _aiCaptionsTabInitialized = true;
+        }
+        RefreshAiCaptionsBadge();
+        // Snap source picker to current selection so the user can click Generate immediately.
+        var sel = CurrentClip();
+        if (sel == null || sel.IsAudioOnly) captionsSourceBox.SelectedIndex = 1; // "All"
+        ShowInspectorTab("aiCaptions");
+    }
+
+    private void PopulateAiCaptionsBoxes()
+    {
+        captionsSourceBox.Items.Clear();
+        foreach (var s in _captionsSourceItems) captionsSourceBox.Items.Add(s);
+        int srcIdx = Array.IndexOf(_captionsSourceKeys, AppSettings.LastTranscribeSource);
+        captionsSourceBox.SelectedIndex = srcIdx < 0 ? 0 : srcIdx;
+
+        captionsLangBox.Items.Clear();
+        foreach (var s in _captionsLanguageItems) captionsLangBox.Items.Add(s);
+        int langIdx = Array.IndexOf(_captionsLanguageKeys, AppSettings.LastTranscribeLanguage);
+        captionsLangBox.SelectedIndex = langIdx < 0 ? 0 : langIdx;
+
+        captionsModelBox.Items.Clear();
+        foreach (var s in _captionsModelItems) captionsModelBox.Items.Add(s);
+        int modelIdx = Array.IndexOf(_captionsModelKeys, AppSettings.LastTranscribeModel);
+        captionsModelBox.SelectedIndex = modelIdx < 0 ? 1 : modelIdx;
+
+        captionsOutputLangBox.Items.Clear();
+        foreach (var s in _captionsOutputLangItems) captionsOutputLangBox.Items.Add(s);
+        int capIdx = Array.IndexOf(_captionsOutputLangKeys, AppSettings.LastCaptionLanguage);
+        captionsOutputLangBox.SelectedIndex = capIdx < 0 ? 0 : capIdx;
+    }
+
+    private void RefreshAiCaptionsBadge()
+    {
+        var used = VideoEditor.Services.LlmCaptionService.GetUsageToday();
+        captionsGeminiBadge.Text = $"Gemini · {used} requests today (free tier ~1500/day)";
+        captionsGeminiBadge.Foreground = used >= 1400
+            ? System.Windows.Media.Brushes.OrangeRed
+            : (System.Windows.Media.Brush)FindResource("TextDim");
+    }
+
+    private async void AiCaptionsGenerate_Click(object sender, RoutedEventArgs e)
+    {
+        if (_aiCaptionsCts != null)
+        {
+            try { _aiCaptionsCts.Cancel(); } catch { }
+            captionsStatusText.Text = "Stopping…";
+            return;
+        }
+
+        var videoClips = new List<VideoClip>();
+        foreach (var c in timeline.Clips) if (!c.IsAudioOnly) videoClips.Add(c);
+        if (videoClips.Count == 0)
+        {
+            captionsStatusText.Text = "Add a video clip first.";
+            return;
+        }
+
+        var sourceKey  = _captionsSourceKeys [Math.Max(0, captionsSourceBox.SelectedIndex)];
+        var languageKey = _captionsLanguageKeys[Math.Max(0, captionsLangBox.SelectedIndex)];
+        var modelKey   = _captionsModelKeys  [Math.Max(0, captionsModelBox.SelectedIndex)];
+        int capIdx = Math.Max(0, captionsOutputLangBox.SelectedIndex);
+        var captionLangKey  = _captionsOutputLangKeys [capIdx];
+        var captionLangName = _captionsOutputLangNames[capIdx];
+
+        AppSettings.LastTranscribeSource   = sourceKey;
+        AppSettings.LastTranscribeLanguage = languageKey;
+        AppSettings.LastTranscribeModel    = modelKey;
+        AppSettings.LastCaptionLanguage    = captionLangKey;
+        AppSettings.Save();
 
         var selected = CurrentClip();
-        int width = 1920, height = 1080;
-        foreach (var clip in timeline.Clips)
+        var clipsToProcess = new List<VideoClip>();
+        if (sourceKey == "clip" && selected != null && !selected.IsAudioOnly)
+            clipsToProcess.Add(selected);
+        else
+            clipsToProcess.AddRange(videoClips);
+
+        if (clipsToProcess.Count == 0)
         {
-            if (clip.IsAudioOnly) continue;
+            captionsStatusText.Text = "No video clips to transcribe.";
+            return;
+        }
+
+        int width = 1920, height = 1080;
+        foreach (var clip in clipsToProcess)
+        {
             if (clip.VideoWidth > 0 && clip.VideoHeight > 0)
             {
                 width = clip.VideoWidth;
@@ -4622,14 +4871,91 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
             }
         }
 
-        var dlg = new AiCaptionsWindow(selected, timeline.Clips, width, height) { Owner = this };
-        var ok = dlg.ShowDialog() == true;
-        if (!ok || dlg.Result.Count == 0) return;
+        _aiCaptionsCts = new System.Threading.CancellationTokenSource();
+        captionsGenerateBtn.Content = "⏹ Stop";
+        tabAiCaptionsDot.Visibility = Visibility.Visible;
+        captionsProgress.Value = 0;
 
-        foreach (var ov in dlg.Result) timeline.TextOverlays.Add(ov);
+        var allSegments = new List<SubtitleSegment>();
+        try
+        {
+            var whisper = new WhisperService();
+            whisper.Log += line => Dispatcher.Invoke(() => captionsStatusText.Text = line);
 
-        status.Text = VideoEditor.Services.Localization.T("AI Captions added · {0} overlays - drag bars on the timeline to tweak.")
-            .Replace("{0}", dlg.Result.Count.ToString());
+            captionsPhaseText.Text = "Step 1/3 - Transcribing audio";
+            int idx = 0;
+            foreach (var clip in clipsToProcess)
+            {
+                _aiCaptionsCts.Token.ThrowIfCancellationRequested();
+                int slot = idx;
+                double slotShare = 1.0 / clipsToProcess.Count;
+                var clipProgress = new Progress<double>(p =>
+                    Dispatcher.Invoke(() => captionsProgress.Value = (slot * slotShare + p * slotShare) * 0.60));
+                var segs = await whisper.TranscribeAsync(
+                    clip.SourceFile, clip.InPoint, clip.OutPoint - clip.InPoint,
+                    languageKey, modelKey, clipProgress, _aiCaptionsCts.Token);
+
+                double speed = Math.Max(0.01, clip.Speed);
+                double offset = clip.TimelineStart;
+                foreach (var s in segs)
+                {
+                    allSegments.Add(new SubtitleSegment
+                    {
+                        StartSeconds = offset + s.StartSeconds / speed,
+                        EndSeconds   = offset + s.EndSeconds   / speed,
+                        Text = s.Text
+                    });
+                }
+                idx++;
+            }
+
+            if (allSegments.Count == 0)
+                throw new Exception("Whisper produced no segments - is there spoken audio?");
+
+            captionsPhaseText.Text = "Step 2/3 - Generating captions with Gemini";
+            captionsStatusText.Text = $"Sending {allSegments.Count} segments to Gemini…";
+            var llm = new LlmCaptionService();
+            llm.Log += line => Dispatcher.Invoke(() => captionsStatusText.Text = line);
+
+            var llmProgress = new Progress<double>(p =>
+                Dispatcher.Invoke(() => captionsProgress.Value = 0.60 + p * 0.35));
+
+            var overlays = await llm.GenerateOverlaysAsync(
+                allSegments, width, height, captionLangName, llmProgress, _aiCaptionsCts.Token);
+
+            captionsPhaseText.Text = "Step 3/3 - Applying overlays";
+            captionsProgress.Value = 1.0;
+
+            foreach (var ov in overlays) timeline.TextOverlays.Add(ov);
+            captionsStatusText.Text = $"Done · {overlays.Count} overlays added.";
+            status.Text = $"AI Captions added · {overlays.Count} overlays - drag bars on the timeline to tweak.";
+            RefreshAiCaptionsBadge();
+        }
+        catch (OperationCanceledException)
+        {
+            if (_aiCaptionsCts?.IsCancellationRequested == true)
+            {
+                captionsPhaseText.Text = "Cancelled";
+                captionsStatusText.Text = "Stopped by user.";
+            }
+            else
+            {
+                captionsPhaseText.Text = "Timed out";
+                captionsStatusText.Text = "Gemini took too long to respond. Try a shorter clip or run AI Captions again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            captionsPhaseText.Text = "Failed";
+            captionsStatusText.Text = ex.Message;
+        }
+        finally
+        {
+            _aiCaptionsCts?.Dispose();
+            _aiCaptionsCts = null;
+            captionsGenerateBtn.Content = "✨ Generate";
+            tabAiCaptionsDot.Visibility = Visibility.Collapsed;
+        }
     }
 
     private async System.Threading.Tasks.Task OpenTextPickerAndAddAsync(VideoClip c, TextOverlay? edit)

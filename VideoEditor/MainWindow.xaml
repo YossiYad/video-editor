@@ -635,6 +635,20 @@
                                     <Ellipse x:Name="tabMergeDot" Width="5" Height="5" Fill="{DynamicResource Accent}" Margin="5,0,0,0" Visibility="Collapsed" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </RadioButton>
+                            <RadioButton x:Name="tabAiCaptionsBtn" Visibility="Collapsed" Style="{DynamicResource InspectorTab}" GroupName="InspectorTabs" Click="TabAiCaptions_Click" HorizontalAlignment="Stretch">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <TextBlock Text="✨" FontSize="11"/>
+                                    <TextBlock Text="AI Captions" Margin="6,0,0,0"/>
+                                    <Ellipse x:Name="tabAiCaptionsDot" Width="5" Height="5" Fill="{DynamicResource Accent}" Margin="5,0,0,0" Visibility="Collapsed" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton x:Name="tabDownloadBtn" Visibility="Collapsed" Style="{DynamicResource InspectorTab}" GroupName="InspectorTabs" Click="TabDownload_Click" HorizontalAlignment="Stretch">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <TextBlock Text="⬇" FontSize="11"/>
+                                    <TextBlock Text="Import from URL" Margin="6,0,0,0"/>
+                                    <Ellipse x:Name="tabDownloadDot" Width="5" Height="5" Fill="{DynamicResource Accent}" Margin="5,0,0,0" Visibility="Collapsed" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </RadioButton>
                         </Grid>
                     </Border>
 
@@ -1283,6 +1297,84 @@
                                         <Button x:Name="ttsSaveBtn" Content="💾 Save to disk" Style="{DynamicResource ToolButton}" Click="TtsSaveWav_Click" Height="34" MinWidth="130"/>
                                     </StackPanel>
                                     <TextBlock x:Name="ttsStatusText" Text="" Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- =========== AI CAPTIONS PANEL =========== -->
+                            <Border x:Name="aiCaptionsPanel" Visibility="Collapsed">
+                                <StackPanel Margin="14,12,14,14">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                        <Border Width="32" Height="32" CornerRadius="8" Background="#338B5CFF" BorderBrush="#558B5CFF" BorderThickness="1">
+                                            <TextBlock Text="✨" FontSize="14" Foreground="{DynamicResource AccentHover}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="AI Captions" Foreground="{DynamicResource Text}" FontWeight="Bold" FontSize="13.5"/>
+                                            <TextBlock Text="Whisper transcription + Gemini captions" Foreground="{DynamicResource TextDim}" FontSize="11" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <TextBlock Text="SOURCE" Style="{DynamicResource FieldLabel}"/>
+                                    <ComboBox x:Name="captionsSourceBox" Margin="0,0,0,10"/>
+
+                                    <TextBlock Text="LANGUAGE" Style="{DynamicResource FieldLabel}"/>
+                                    <ComboBox x:Name="captionsLangBox" Margin="0,0,0,10"/>
+
+                                    <TextBlock Text="WHISPER MODEL" Style="{DynamicResource FieldLabel}"/>
+                                    <ComboBox x:Name="captionsModelBox" Margin="0,0,0,10"/>
+
+                                    <TextBlock Text="CAPTION LANGUAGE" Style="{DynamicResource FieldLabel}"/>
+                                    <ComboBox x:Name="captionsOutputLangBox" Margin="0,0,0,10"/>
+
+                                    <TextBlock x:Name="captionsGeminiBadge" Text="" Foreground="{DynamicResource TextDim}" FontSize="11" Margin="0,4,0,8" TextWrapping="Wrap"/>
+
+                                    <TextBlock x:Name="captionsPhaseText" Text="" Foreground="{DynamicResource TextMute}" FontSize="12" FontWeight="SemiBold" Margin="0,8,0,4"/>
+                                    <ProgressBar x:Name="captionsProgress" Height="8" Minimum="0" Maximum="1" Value="0" Margin="0,0,0,8"/>
+                                    <TextBlock x:Name="captionsStatusText" Text="" Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12"/>
+
+                                    <Button x:Name="captionsGenerateBtn" Content="✨ Generate" Style="{DynamicResource PrimaryButton}" Height="34" Click="AiCaptionsGenerate_Click"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- =========== IMPORT FROM URL PANEL =========== -->
+                            <Border x:Name="downloadPanel" Visibility="Collapsed">
+                                <StackPanel Margin="14,12,14,14">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                        <Border Width="32" Height="32" CornerRadius="8" Background="#338B5CFF" BorderBrush="#558B5CFF" BorderThickness="1">
+                                            <TextBlock Text="⬇" FontSize="14" Foreground="{DynamicResource AccentHover}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="Import from URL" Foreground="{DynamicResource Text}" FontWeight="Bold" FontSize="13.5"/>
+                                            <TextBlock Text="YouTube · Vimeo · TikTok · direct .mp4" Foreground="{DynamicResource TextDim}" FontSize="11" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <TextBlock Text="URL" Style="{DynamicResource FieldLabel}"/>
+                                    <TextBox x:Name="downloadUrlBox" FontSize="12.5" Padding="8,6" TextChanged="DownloadUrlBox_TextChanged"/>
+
+                                    <Border x:Name="downloadDetectionChip" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="5" Padding="10,7" Margin="0,8,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Ellipse x:Name="downloadDetectionDot" Width="8" Height="8" Fill="{DynamicResource TextDim}" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="downloadDetectionText" Text="Awaiting URL…" Foreground="{DynamicResource TextMute}" FontSize="11.5" VerticalAlignment="Center" Margin="8,0,0,0" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <TextBlock Text="DOWNLOAD TO" Style="{DynamicResource FieldLabel}" Margin="0,12,0,0"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="downloadFolderBox" Grid.Column="0" FontSize="11.5" Padding="8,6"/>
+                                        <Button Grid.Column="1" x:Name="downloadBrowseBtn" Content="📁" Style="{DynamicResource ToolButton}" MinWidth="36" Margin="6,0,0,0" Click="DownloadBrowse_Click"/>
+                                    </Grid>
+
+                                    <TextBlock Text="yt-dlp ships with the app for streaming sites (YouTube, etc.). Direct file links use plain HTTP." Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,10,0,10"/>
+
+                                    <TextBlock x:Name="downloadPhaseText" Text="" Foreground="{DynamicResource TextMute}" FontSize="12" FontWeight="SemiBold" Margin="0,4,0,4"/>
+                                    <ProgressBar x:Name="downloadProgress" Height="8" Minimum="0" Maximum="1" Value="0" Margin="0,0,0,8"/>
+                                    <TextBlock x:Name="downloadStatusText" Text="" Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12"/>
+
+                                    <Button x:Name="downloadStartBtn" Content="⬇ Download &amp; Add to Timeline" Style="{DynamicResource PrimaryButton}" Height="34" Click="DownloadStart_Click"/>
                                 </StackPanel>
                             </Border>
 
