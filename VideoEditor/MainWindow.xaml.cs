@@ -940,7 +940,22 @@ public partial class MainWindow : Window
     private void PlayBtn_Click(object sender, RoutedEventArgs e)
     {
         if (timeline.Clips.Count == 0) return;
-        if (_playingClip == null) LoadClipForPreview(timeline.Clips[0], 0);
+
+        // If the playhead is parked at the end of the timeline (i.e. playback finished
+        // and the user is pressing Play again), rewind to the first clip and play from
+        // the start. Otherwise pressing Play would do nothing because the player is
+        // already past the last clip's OutPoint.
+        if (timeline.CurrentSeconds >= timeline.TotalSeconds - 0.1 && timeline.TotalSeconds > 0)
+        {
+            var first = timeline.Clips.OrderBy(c => c.TimelineStart).First();
+            timeline.SetCurrent(first.TimelineStart);
+            LoadClipForPreview(first, 0);
+        }
+        else if (_playingClip == null)
+        {
+            LoadClipForPreview(timeline.Clips[0], 0);
+        }
+
         videoView.Play(); _isPlaying = true;
         UpdateBlockVisibility();
     }
