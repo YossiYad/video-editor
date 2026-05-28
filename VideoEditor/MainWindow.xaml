@@ -628,6 +628,13 @@
                                     <TextBlock Text="Text to Speech" Margin="6,0,0,0"/>
                                 </StackPanel>
                             </RadioButton>
+                            <RadioButton x:Name="tabMergeBtn" Visibility="Collapsed" Style="{DynamicResource InspectorTab}" GroupName="InspectorTabs" Click="TabMerge_Click" HorizontalAlignment="Stretch">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <TextBlock Text="🔗" FontSize="11"/>
+                                    <TextBlock Text="Merge Videos" Margin="6,0,0,0"/>
+                                    <Ellipse x:Name="tabMergeDot" Width="5" Height="5" Fill="{DynamicResource Accent}" Margin="5,0,0,0" Visibility="Collapsed" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </RadioButton>
                         </Grid>
                     </Border>
 
@@ -1276,6 +1283,120 @@
                                         <Button x:Name="ttsSaveBtn" Content="💾 Save to disk" Style="{DynamicResource ToolButton}" Click="TtsSaveWav_Click" Height="34" MinWidth="130"/>
                                     </StackPanel>
                                     <TextBlock x:Name="ttsStatusText" Text="" Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- =========== MERGE VIDEOS PANEL =========== -->
+                            <Border x:Name="mergePanel" Visibility="Collapsed">
+                                <StackPanel>
+                                    <!-- Header -->
+                                    <StackPanel Orientation="Horizontal" Margin="16,12,16,14">
+                                        <Border Width="32" Height="32" CornerRadius="8" Background="#338B5CFF" BorderBrush="#558B5CFF" BorderThickness="1">
+                                            <TextBlock Text="🔗" FontSize="14" Foreground="{DynamicResource AccentHover}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="Merge Videos" Foreground="{DynamicResource Text}" FontWeight="Bold" FontSize="13.5"/>
+                                            <TextBlock x:Name="mergeCountText" Text="No videos yet" Foreground="{DynamicResource TextDim}" FontSize="11" Margin="0,2,0,0" FontFamily="Consolas"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <!-- Drop zone -->
+                                    <Border x:Name="mergeDropZone"
+                                            Margin="16,4,16,12"
+                                            Padding="20,18"
+                                            Background="{DynamicResource Bg2}"
+                                            BorderBrush="{DynamicResource Line}"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            AllowDrop="True"
+                                            Cursor="Hand"
+                                            Drop="MergeDropZone_Drop"
+                                            DragOver="MergeDropZone_DragOver"
+                                            DragLeave="MergeDropZone_DragLeave"
+                                            MouseLeftButtonUp="MergeDropZone_AddFiles_Click">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <TextBlock Text="📥" FontSize="22" HorizontalAlignment="Center" Foreground="{DynamicResource TextDim}"/>
+                                            <TextBlock Text="Drop videos here" Margin="0,8,0,2" HorizontalAlignment="Center" FontSize="12" Foreground="{DynamicResource Text}"/>
+                                            <TextBlock Text="or click to browse" HorizontalAlignment="Center" FontSize="10.5" Foreground="{DynamicResource TextDim}"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Queue list -->
+                                    <StackPanel Margin="16,0,16,8">
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="QUEUE (IN ORDER)" Style="{DynamicResource FieldLabel}" VerticalAlignment="Center"/>
+                                            <Button Grid.Column="1" x:Name="mergeClearBtn" Content="Clear all" Padding="8,2"
+                                                    Style="{DynamicResource GhostButton}" FontSize="10.5"
+                                                    Click="MergeClear_Click" IsEnabled="False"/>
+                                        </Grid>
+                                        <Border x:Name="mergeEmptyHint" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="6" Padding="14,12">
+                                            <TextBlock Text="The queue is empty. Drop videos above (or click the drop zone) to add them. They will be merged in the order shown here."
+                                                       FontSize="11" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap"/>
+                                        </Border>
+                                        <ListBox x:Name="mergeQueueList"
+                                                 Visibility="Collapsed"
+                                                 MaxHeight="320"
+                                                 Background="Transparent"
+                                                 BorderThickness="0"
+                                                 HorizontalContentAlignment="Stretch"
+                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                            <ListBox.ItemContainerStyle>
+                                                <Style TargetType="ListBoxItem">
+                                                    <Setter Property="Padding" Value="0"/>
+                                                    <Setter Property="Margin" Value="0,2"/>
+                                                    <Setter Property="Background" Value="{DynamicResource Bg2}"/>
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
+                                                    <Setter Property="BorderThickness" Value="1"/>
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="ListBoxItem">
+                                                                <Border Background="{TemplateBinding Background}"
+                                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                                                        CornerRadius="6"
+                                                                        Padding="8,6">
+                                                                    <ContentPresenter/>
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                            </ListBox.ItemContainerStyle>
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Text="{Binding PositionLabel}" FontFamily="Consolas" FontSize="10.5" Foreground="{DynamicResource TextMute}" Margin="0,0,8,0" VerticalAlignment="Center" MinWidth="22"/>
+                                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding DisplayName}" FontSize="11.5" Foreground="{DynamicResource Text}" TextTrimming="CharacterEllipsis"/>
+                                                            <TextBlock Text="{Binding FolderHint}" FontSize="10" Foreground="{DynamicResource TextDim}" TextTrimming="CharacterEllipsis" FontFamily="Consolas"/>
+                                                        </StackPanel>
+                                                        <Button Grid.Column="2" Content="▲" Tag="{Binding}" Click="MergeMoveUp_Click" Style="{DynamicResource GhostButton}" Padding="6,1" FontSize="10" Margin="4,0,0,0" VerticalAlignment="Center" ToolTip="Move up"/>
+                                                        <Button Grid.Column="3" Content="▼" Tag="{Binding}" Click="MergeMoveDown_Click" Style="{DynamicResource GhostButton}" Padding="6,1" FontSize="10" Margin="2,0,0,0" VerticalAlignment="Center" ToolTip="Move down"/>
+                                                        <Button Grid.Column="4" Content="×" Tag="{Binding}" Click="MergeRemove_Click" Style="{DynamicResource GhostButton}" Padding="6,1" FontSize="14" Margin="2,0,0,0" VerticalAlignment="Center" ToolTip="Remove from queue"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                    </StackPanel>
+
+                                    <Border Height="1" Background="{DynamicResource Line}" Margin="16,4"/>
+
+                                    <!-- Merge button -->
+                                    <StackPanel Margin="16,8,16,14">
+                                        <Button x:Name="mergeNowBtn" Content="🔗 Merge Now" Style="{DynamicResource PrimaryButton}" Height="34" Click="MergeNow_Click" IsEnabled="False"/>
+                                        <TextBlock x:Name="mergeHintText" Text="Add at least 2 videos to merge" Margin="0,6,0,0" FontSize="10.5" Foreground="{DynamicResource TextDim}" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
+                                    </StackPanel>
                                 </StackPanel>
                             </Border>
                         </StackPanel>

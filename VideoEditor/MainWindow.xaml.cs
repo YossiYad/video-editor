@@ -55,6 +55,37 @@ public partial class MainWindow : Window
         public override string ToString() =>
             string.IsNullOrEmpty(Language) ? DisplayName : $"{DisplayName} ({Language})";
     }
+
+    public sealed class MergeQueueItem : System.ComponentModel.INotifyPropertyChanged
+    {
+        public string FullPath { get; }
+        public string DisplayName { get; }
+        public string FolderHint { get; }
+        private int _position;
+        public int Position
+        {
+            get => _position;
+            set { if (_position == value) return; _position = value; OnChanged(nameof(Position)); OnChanged(nameof(PositionLabel)); }
+        }
+        public string PositionLabel => $"{Position:00}.";
+        public MergeQueueItem(string fullPath, int position)
+        {
+            FullPath = fullPath;
+            DisplayName = Path.GetFileName(fullPath);
+            var dir = Path.GetDirectoryName(fullPath) ?? "";
+            FolderHint = dir.Length > 48 ? "…" + dir[^48..] : dir;
+            _position = position;
+        }
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+        private void OnChanged(string name) =>
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
+    }
+    private readonly System.Collections.ObjectModel.ObservableCollection<MergeQueueItem> _mergeQueue = new();
+    private static readonly string[] _mergeVideoExtensions = new[]
+    {
+        ".mp4", ".mov", ".mkv", ".avi", ".webm", ".wmv", ".flv", ".m4v", ".ts", ".mpg", ".mpeg"
+    };
+
     private DispatcherTimer? _inlineRecorderPreviewTimer;
     private List<MonitorInfo.Display> _inlineRecorderMonitors = new();
     private VideoBlock? _inlineRecorderWebcamBlock;
@@ -110,6 +141,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        mergeQueueList.ItemsSource = _mergeQueue;
         _inlineCameraBgService.Log += msg =>
         {
             try { AppendInlineRecorderLog("AI: " + msg); } catch { }
@@ -1248,6 +1280,7 @@ public partial class MainWindow : Window
         bool isCamera    = key == "camera";
         bool isMulti     = key == "multi";
         bool isTts       = key == "tts";
+        bool isMerge     = key == "merge";
         bool inRecorder  = IsInlineRecorderVisible();
 
         // Content panels
@@ -1256,6 +1289,7 @@ public partial class MainWindow : Window
         emptyInspector.Visibility         = isExp   ? Visibility.Visible : Visibility.Collapsed;
         recorderInspectorPanel.Visibility = (isRecording || isCamera) ? Visibility.Visible : Visibility.Collapsed;
         ttsInspectorPanel.Visibility      = isTts ? Visibility.Visible : Visibility.Collapsed;
+        mergePanel.Visibility             = isMerge ? Visibility.Visible : Visibility.Collapsed;
         if (!isTts) StopTtsPreview();
         if (multiSelectInspector != null)
         {
@@ -1276,10 +1310,12 @@ public partial class MainWindow : Window
         tabClipBtn.IsChecked   = !inRecorder && isClip;
         tabExportBtn.IsChecked = !inRecorder && isExp;
         tabTtsBtn.IsChecked    = isTts;
+        tabMergeBtn.IsChecked  = isMerge;
         tabBlockBtn.Visibility  = (!inRecorder && isBlock) ? Visibility.Visible : Visibility.Collapsed;
         tabClipBtn.Visibility   = (!inRecorder && isClip)  ? Visibility.Visible : Visibility.Collapsed;
         tabExportBtn.Visibility = (!inRecorder && isExp)   ? Visibility.Visible : Visibility.Collapsed;
         tabTtsBtn.Visibility    = isTts ? Visibility.Visible : Visibility.Collapsed;
+        tabMergeBtn.Visibility  = isMerge ? Visibility.Visible : Visibility.Collapsed;
         normalTabsBar.Visibility = (!inRecorder && (isBlock || isClip || isExp))
             ? Visibility.Visible : Visibility.Collapsed;
         // The dynamic recorder tabs (Recording / Camera / Block N) are built by
@@ -1298,7 +1334,9 @@ public partial class MainWindow : Window
     private void UpdateInspectorTabsBarVisibility()
     {
         bool anyVisible = normalTabsBar.Visibility == Visibility.Visible
-                          || recorderTabHost.Visibility == Visibility.Visible;
+                          || recorderTabHost.Visibility == Visibility.Visible
+                          || tabTtsBtn.Visibility == Visibility.Visible
+                          || tabMergeBtn.Visibility == Visibility.Visible;
         inspectorTabsBar.Visibility = anyVisible ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -4104,11 +4142,227 @@ public partial class MainWindow : Window
             ttsStatusText.Text = "Add to timeline failed: " + ex.Message;
         }
     }
-    private async void Merge_Click(object s, RoutedEventArgs e)
+    private void Merge_Click(object s, RoutedEventArgs e)
     {
-        if (timeline.Clips.Count < 2) { MessageBox.Show("Need at least 2 clips."); return; }
-        SaveBtn_Click(s, e);
-        await System.Threading.Tasks.Task.CompletedTask;
+        ShowInspectorTab("merge");
+        UpdateMergeQueueUI();
+    }
+
+    private void TabMerge_Click(object sender, RoutedEventArgs e)
+    {
+        if (_suppress) return;
+        ShowInspectorTab("merge");
+    }
+
+    private static bool IsAcceptedMergeFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+        return _mergeVideoExtensions.Contains(ext);
+    }
+
+    private static IEnumerable<string> CollectMergeFilesFromDrop(System.Windows.IDataObject data)
+    {
+        if (!data.GetDataPresent(DataFormats.FileDrop)) return Array.Empty<string>();
+        var raw = data.GetData(DataFormats.FileDrop) as string[];
+        if (raw == null) return Array.Empty<string>();
+        var result = new List<string>();
+        foreach (var p in raw)
+        {
+            if (Directory.Exists(p))
+            {
+                foreach (var f in Directory.EnumerateFiles(p, "*", SearchOption.TopDirectoryOnly))
+                    if (IsAcceptedMergeFile(f)) result.Add(f);
+            }
+            else if (File.Exists(p) && IsAcceptedMergeFile(p))
+            {
+                result.Add(p);
+            }
+        }
+        return result;
+    }
+
+    private void MergeDropZone_DragOver(object sender, System.Windows.DragEventArgs e)
+    {
+        bool hasVideo = false;
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            var raw = e.Data.GetData(DataFormats.FileDrop) as string[];
+            if (raw != null)
+            {
+                foreach (var p in raw)
+                {
+                    if (Directory.Exists(p) || IsAcceptedMergeFile(p)) { hasVideo = true; break; }
+                }
+            }
+        }
+        e.Effects = hasVideo ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
+        if (hasVideo)
+            mergeDropZone.BorderBrush = (System.Windows.Media.Brush)FindResource("Accent");
+        e.Handled = true;
+    }
+
+    private void MergeDropZone_DragLeave(object sender, System.Windows.DragEventArgs e)
+    {
+        mergeDropZone.BorderBrush = (System.Windows.Media.Brush)FindResource("Line");
+    }
+
+    private void MergeDropZone_Drop(object sender, System.Windows.DragEventArgs e)
+    {
+        mergeDropZone.BorderBrush = (System.Windows.Media.Brush)FindResource("Line");
+        var files = CollectMergeFilesFromDrop(e.Data).ToList();
+        if (files.Count == 0)
+        {
+            status.Text = "No video files in the drop. Supported: " + string.Join(", ", _mergeVideoExtensions);
+            return;
+        }
+        AddToMergeQueue(files);
+        e.Handled = true;
+    }
+
+    private void MergeDropZone_AddFiles_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        var dlg = new OpenFileDialog
+        {
+            Multiselect = true,
+            Filter = "Video files|*.mp4;*.mov;*.mkv;*.avi;*.webm;*.wmv;*.flv;*.m4v;*.ts;*.mpg;*.mpeg|All files|*.*"
+        };
+        if (dlg.ShowDialog() != true) return;
+        AddToMergeQueue(dlg.FileNames);
+    }
+
+    private void AddToMergeQueue(IEnumerable<string> paths)
+    {
+        int added = 0;
+        foreach (var p in paths)
+        {
+            if (!IsAcceptedMergeFile(p)) continue;
+            // Allow the same file twice (user might intentionally repeat); only skip if it
+            // already appears as the very last item to avoid accidental double-drops.
+            if (_mergeQueue.Count > 0 && string.Equals(_mergeQueue[^1].FullPath, p, StringComparison.OrdinalIgnoreCase))
+                continue;
+            _mergeQueue.Add(new MergeQueueItem(p, _mergeQueue.Count + 1));
+            added++;
+        }
+        if (added > 0) status.Text = $"Added {added} video(s) to the merge queue.";
+        UpdateMergeQueueUI();
+    }
+
+    private void RenumberMergeQueue()
+    {
+        for (int i = 0; i < _mergeQueue.Count; i++)
+            _mergeQueue[i].Position = i + 1;
+    }
+
+    private void UpdateMergeQueueUI()
+    {
+        bool any = _mergeQueue.Count > 0;
+        mergeEmptyHint.Visibility = any ? Visibility.Collapsed : Visibility.Visible;
+        mergeQueueList.Visibility = any ? Visibility.Visible : Visibility.Collapsed;
+        mergeClearBtn.IsEnabled = any;
+        mergeNowBtn.IsEnabled = _mergeQueue.Count >= 2;
+        mergeCountText.Text = _mergeQueue.Count switch
+        {
+            0 => "No videos yet",
+            1 => "1 video (drop one more to merge)",
+            _ => $"{_mergeQueue.Count} videos ready"
+        };
+        mergeHintText.Text = _mergeQueue.Count >= 2
+            ? "Output will be created next to the first video, or pick a path."
+            : "Add at least 2 videos to merge";
+    }
+
+    private MergeQueueItem? MergeItemFromSender(object sender) =>
+        (sender as FrameworkElement)?.Tag as MergeQueueItem;
+
+    private void MergeRemove_Click(object sender, RoutedEventArgs e)
+    {
+        var item = MergeItemFromSender(sender); if (item == null) return;
+        _mergeQueue.Remove(item);
+        RenumberMergeQueue();
+        UpdateMergeQueueUI();
+    }
+
+    private void MergeMoveUp_Click(object sender, RoutedEventArgs e)
+    {
+        var item = MergeItemFromSender(sender); if (item == null) return;
+        int idx = _mergeQueue.IndexOf(item);
+        if (idx <= 0) return;
+        _mergeQueue.Move(idx, idx - 1);
+        RenumberMergeQueue();
+    }
+
+    private void MergeMoveDown_Click(object sender, RoutedEventArgs e)
+    {
+        var item = MergeItemFromSender(sender); if (item == null) return;
+        int idx = _mergeQueue.IndexOf(item);
+        if (idx < 0 || idx >= _mergeQueue.Count - 1) return;
+        _mergeQueue.Move(idx, idx + 1);
+        RenumberMergeQueue();
+    }
+
+    private void MergeClear_Click(object sender, RoutedEventArgs e)
+    {
+        if (_mergeQueue.Count == 0) return;
+        _mergeQueue.Clear();
+        UpdateMergeQueueUI();
+        status.Text = "Merge queue cleared.";
+    }
+
+    private async void MergeNow_Click(object sender, RoutedEventArgs e)
+    {
+        if (_mergeQueue.Count < 2)
+        {
+            MessageBox.Show("Add at least 2 videos to the queue.", "Merge", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        var first = _mergeQueue[0].FullPath;
+        var defaultFolder = Path.GetDirectoryName(first) ?? Environment.GetFolderPath(Environment.SpecialFolder.MyVideos);
+        var defaultName = $"merged_{DateTime.Now:yyyyMMdd_HHmmss}{Path.GetExtension(first)}";
+        var sfd = new SaveFileDialog
+        {
+            InitialDirectory = defaultFolder,
+            FileName = defaultName,
+            Filter = "Video files|*.mp4;*.mov;*.mkv;*.avi;*.webm|All files|*.*"
+        };
+        if (sfd.ShowDialog() != true) return;
+        var output = sfd.FileName;
+
+        mergeNowBtn.IsEnabled = false;
+        mergeClearBtn.IsEnabled = false;
+        try
+        {
+            status.Text = $"Merging {_mergeQueue.Count} videos...";
+            progress.Value = 0;
+            var prog = new Progress<double>(v => Dispatcher.Invoke(() => progress.Value = v));
+            await _ff.MergeAsync(_mergeQueue.Select(m => m.FullPath), output, prog);
+            progress.Value = 1;
+            status.Text = $"Merged → {Path.GetFileName(output)}";
+            var openResult = MessageBox.Show(
+                "Merge complete.\n\nOpen the output folder?",
+                "Merge Videos", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            if (openResult == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{output}\"") { UseShellExecute = true });
+                }
+                catch { }
+            }
+        }
+        catch (Exception ex)
+        {
+            status.Text = "Merge failed: " + ex.Message;
+            MessageBox.Show(
+                "Merge failed:\n\n" + ex.Message +
+                "\n\nIf the videos have different codecs/resolutions, ffmpeg's fast 'concat copy' can fail. " +
+                "Re-encoding support is not in this version - convert them to the same format first and try again.",
+                "Merge Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            UpdateMergeQueueUI();
+        }
     }
     private void Record_Click(object s, RoutedEventArgs e)
     {
