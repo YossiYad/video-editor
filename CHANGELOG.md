@@ -10,6 +10,21 @@ The latest signed Windows build is always available at
 
 ---
 
+## [v1.8.3] - 2026-05-28
+
+### Fixed
+- **Camera Recorder no longer flashes the desktop before showing the
+  webcam.** When opening Camera Recorder after a previous Screen
+  Recorder session, the inline preview area used to render one frame
+  of the stale screen capture from the prior session before the
+  webcam stream took over (~300ms of "I see my desktop" then the
+  camera). The preview source is now reset to the picker's last camera
+  frame (or null) *before* the panel becomes visible, and the
+  recorder's Close handler also clears the leftover frame so future
+  opens start clean.
+
+---
+
 ## [v1.8.2] - 2026-05-28
 
 ### Changed

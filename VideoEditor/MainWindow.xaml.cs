@@ -2354,6 +2354,16 @@ public partial class MainWindow : Window
         _inlineCameraBgReady = false;
         Interlocked.Exchange(ref _inlineCameraLastAiPreviewTicks, 0);
         ResetInlineCameraAiCounters();
+
+        // Stop the screen-recorder timer and replace the preview source BEFORE the panel
+        // becomes visible. Otherwise WPF renders one frame with whatever stale screen
+        // capture was left behind by a previous Screen Recorder session, then swaps to
+        // the camera - showing the user a brief flash of their desktop.
+        _inlineRecorderPreviewTimer?.Stop();
+        StopInlineRecorderWebcamPreview();
+        ClearInlineRecorderWebcamLayer();
+        inlineRecorderPreviewImage.Source = picker.LastPreviewFrame;
+
         screenRecorderPanel.Visibility = Visibility.Visible;
         inlineRecorderTitle.Text = "Camera Recorder";
         inlineRecorderStatus.Text = "";
@@ -2361,13 +2371,6 @@ public partial class MainWindow : Window
         HideRecordingHint();
         ApplyInlineCameraOnlyPanelLayout();
         UpdateEmptyStartPanel();
-
-        _inlineRecorderPreviewTimer?.Stop();
-        StopInlineRecorderWebcamPreview();
-        ClearInlineRecorderWebcamLayer();
-
-        if (picker.LastPreviewFrame != null)
-            inlineRecorderPreviewImage.Source = picker.LastPreviewFrame;
 
         inlineRecorderSourceBox.Items.Clear();
         inlineRecorderSourceBox.Items.Add(_inlineRecorderWebcamDeviceName);
@@ -2431,6 +2434,9 @@ public partial class MainWindow : Window
         StopInlineCameraDiagTimer();
         StopInlineRecorderWebcamPreview();
         ClearInlineRecorderWebcamLayer();
+        // Drop the last captured frame so the next time the panel opens (camera or
+        // screen) it doesn't briefly show a stale desktop/camera image from this session.
+        inlineRecorderPreviewImage.Source = null;
         _inlineCameraPreviewRetryCount = 0;
         _inlineCameraPreviewRetryPending = false;
         _inlineRecorderCameraOnly = false;
