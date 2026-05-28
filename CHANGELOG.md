@@ -8,6 +8,10 @@ The latest signed Windows build is always available at
 
 ## [Unreleased]
 
+---
+
+## [v1.8.1] - 2026-05-28
+
 ### Changed
 - **yt-dlp.exe is now bundled inside the release ZIP** instead of being
   downloaded from GitHub on first URL import. This fixes "Failed to
