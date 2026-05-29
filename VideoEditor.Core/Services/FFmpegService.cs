@@ -11,8 +11,22 @@ namespace VideoEditor.Services;
 
 public class FFmpegService
 {
-    public string FFmpegExe => Path.Combine(App.FFmpegPath, Platform.ExeName("ffmpeg"));
-    public string FFprobeExe => Path.Combine(App.FFmpegPath, Platform.ExeName("ffprobe"));
+    private readonly string _ffmpegDir;
+
+    /// <summary>
+    /// <paramref name="ffmpegDir"/> is the folder holding ffmpeg/ffprobe (and yt-dlp).
+    /// The WPF host passes <c>App.FFmpegPath</c>; the Avalonia host passes its own app
+    /// data dir. Defaults to an "ffmpeg" folder next to the running binary so a
+    /// parameterless <c>new FFmpegService()</c> still works the way it used to.
+    /// </summary>
+    public FFmpegService(string? ffmpegDir = null)
+    {
+        _ffmpegDir = ffmpegDir
+            ?? Path.Combine(AppContext.BaseDirectory, "ffmpeg");
+    }
+
+    public string FFmpegExe => Path.Combine(_ffmpegDir, Platform.ExeName("ffmpeg"));
+    public string FFprobeExe => Path.Combine(_ffmpegDir, Platform.ExeName("ffprobe"));
 
     public event Action<string>? Log;
     public event Action<double>? Progress;

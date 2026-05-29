@@ -1269,7 +1269,7 @@ internal class ClipBar
         _bg = new Rectangle
         {
             RadiusX = 6, RadiusY = 6,
-            Fill = MakeGradient(clip.AccentColor),
+            Fill = MakeGradient(clip.AccentColor.ToMediaColor()),
             Stroke = new SolidColorBrush(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF)),
             StrokeThickness = 1
         };
@@ -1285,7 +1285,7 @@ internal class ClipBar
             RadiusX = 6, RadiusY = 6,
             Opacity = 0.25,
             IsHitTestVisible = false,
-            Fill = new SolidColorBrush(clip.AccentColor)
+            Fill = new SolidColorBrush(clip.AccentColor.ToMediaColor())
         };
         Root.Children.Add(tint);
 
