@@ -16,7 +16,8 @@
                 <TextBlock Text="🎬 Video Editor" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" Foreground="{StaticResource TextBrush}"/>
                 <Border Width="1" Background="{StaticResource LineBrush}" Margin="6,2"/>
                 <Button x:Name="openBtn" Content="Open files…" Click="OpenFiles_Click"/>
-                <Button x:Name="exportBtn" Content="Export…" IsEnabled="False"/>
+                <Button x:Name="exportBtn" Content="Export…" IsEnabled="False" Click="Export_Click"/>
+                <ProgressBar x:Name="exportProgress" Width="140" Height="6" Minimum="0" Maximum="1" Value="0" IsVisible="False" VerticalAlignment="Center"/>
                 <TextBlock x:Name="platformText" VerticalAlignment="Center" Margin="12,0,0,0" Foreground="{StaticResource TextDimBrush}" FontSize="11.5"/>
             </StackPanel>
         </Border>

@@ -177,6 +177,73 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void Export_Click(object? sender, RoutedEventArgs e)
+    {
+        var videoClips = _clips.Where(c => !c.IsAudioOnly).ToList();
+        if (videoClips.Count == 0)
+        {
+            statusText.Text = "Nothing to export - add at least one video clip.";
+            return;
+        }
+
+        var top = TopLevel.GetTopLevel(this);
+        if (top is null) return;
+
+        var firstName = Path.GetFileNameWithoutExtension(videoClips[0].SourceFile);
+        var save = await top.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export video",
+            SuggestedFileName = $"{firstName}_export.mp4",
+            DefaultExtension = "mp4",
+            FileTypeChoices = new[]
+            {
+                new FilePickerFileType("MP4 video") { Patterns = new[] { "*.mp4" } }
+            }
+        });
+        if (save is null) return;
+        var output = save.TryGetLocalPath();
+        if (string.IsNullOrEmpty(output)) { statusText.Text = "Could not resolve the save path."; return; }
+
+        // Project canvas = the first video clip's dimensions (sensible MVP default).
+        int canvasW = videoClips[0].VideoWidth > 0 ? videoClips[0].VideoWidth : 1920;
+        int canvasH = videoClips[0].VideoHeight > 0 ? videoClips[0].VideoHeight : 1080;
+        double totalDuration = _clips.Sum(c => c.EffectiveDuration);
+
+        openBtn.IsEnabled = false;
+        exportBtn.IsEnabled = false;
+        exportProgress.IsVisible = true;
+        exportProgress.Value = 0;
+        statusText.Text = "Exporting…";
+
+        var progress = new Progress<double>(v => Dispatcher.UIThread.Post(() => exportProgress.Value = v));
+        try
+        {
+            await _ff.ExportProjectAsync(
+                _clips.ToList(),
+                new List<VideoBlock>(),
+                canvasW, canvasH,
+                canvasW, canvasH,
+                totalDuration,
+                output!,
+                fitMode: "contain",
+                textOverlays: null,
+                progress: progress);
+            exportProgress.Value = 1;
+            statusText.Text = $"Exported → {Path.GetFileName(output)}";
+            Platform.RevealInFileManager(output!);
+        }
+        catch (Exception ex)
+        {
+            statusText.Text = "Export failed: " + ex.Message;
+        }
+        finally
+        {
+            openBtn.IsEnabled = true;
+            exportBtn.IsEnabled = _clips.Count > 0;
+            exportProgress.IsVisible = false;
+        }
+    }
+
     private static void TryDelete(string path)
     {
         try { if (File.Exists(path)) File.Delete(path); } catch { }
