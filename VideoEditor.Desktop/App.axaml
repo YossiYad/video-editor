@@ -1,0 +1,32 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="VideoEditor.Desktop.App"
+             RequestedThemeVariant="Dark">
+
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <!-- Dark palette ported from the WPF App.xaml.cs BuildDarkTheme(). -->
+            <Color x:Key="Bg0">#07080D</Color>
+            <Color x:Key="Bg1">#0F1119</Color>
+            <Color x:Key="Bg2">#161A25</Color>
+            <Color x:Key="Bg3">#1D2231</Color>
+            <Color x:Key="Bg4">#262C3E</Color>
+            <Color x:Key="AccentColor">#8B5CFF</Color>
+
+            <SolidColorBrush x:Key="Bg0Brush" Color="{StaticResource Bg0}"/>
+            <SolidColorBrush x:Key="Bg1Brush" Color="{StaticResource Bg1}"/>
+            <SolidColorBrush x:Key="Bg2Brush" Color="{StaticResource Bg2}"/>
+            <SolidColorBrush x:Key="Bg3Brush" Color="{StaticResource Bg3}"/>
+            <SolidColorBrush x:Key="Bg4Brush" Color="{StaticResource Bg4}"/>
+            <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}"/>
+            <SolidColorBrush x:Key="TextBrush" Color="#E8EAF2"/>
+            <SolidColorBrush x:Key="TextMuteBrush" Color="#8A91A8"/>
+            <SolidColorBrush x:Key="TextDimBrush" Color="#5A6178"/>
+            <SolidColorBrush x:Key="LineBrush" Color="#1FFFFFFF"/>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
