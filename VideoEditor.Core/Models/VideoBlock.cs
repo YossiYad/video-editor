@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using System.Windows.Media;
 
 namespace VideoEditor.Models;
 
@@ -13,7 +12,7 @@ public class VideoBlock : INotifyPropertyChanged
     private double _startSeconds;
     private double _endSeconds;
     private bool _coversWholeVideo = true;
-    private Color _color = Colors.Black;
+    private RgbColor _color = new(0, 0, 0); // Black
     private BlockMode _mode = BlockMode.Solid;
     private int _blurStrength = 25;
     private string _label = "Block";
@@ -25,7 +24,7 @@ public class VideoBlock : INotifyPropertyChanged
     public double StartSeconds { get => _startSeconds; set => Set(ref _startSeconds, value); }
     public double EndSeconds { get => _endSeconds; set => Set(ref _endSeconds, value); }
     public bool CoversWholeVideo { get => _coversWholeVideo; set => Set(ref _coversWholeVideo, value); }
-    public Color Color { get => _color; set => Set(ref _color, value); }
+    public RgbColor Color { get => _color; set => Set(ref _color, value); }
     public BlockMode Mode { get => _mode; set => Set(ref _mode, value); }
     public int BlurStrength { get => _blurStrength; set => Set(ref _blurStrength, value); }
 
