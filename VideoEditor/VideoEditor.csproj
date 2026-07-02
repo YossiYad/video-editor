@@ -35,6 +35,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\VideoEditor.Core\VideoEditor.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Folder Include="Tools\" />
     <!-- Bundle the .ico as a WPF Resource so MainWindow's Icon="icon.ico" binding
          finds it at runtime (the ApplicationIcon csproj setting above is enough for

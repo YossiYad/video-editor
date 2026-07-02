@@ -11,8 +11,22 @@ namespace VideoEditor.Services;
 
 public class FFmpegService
 {
-    public string FFmpegExe => Path.Combine(App.FFmpegPath, "ffmpeg.exe");
-    public string FFprobeExe => Path.Combine(App.FFmpegPath, "ffprobe.exe");
+    private readonly string _ffmpegDir;
+
+    /// <summary>
+    /// <paramref name="ffmpegDir"/> is the folder holding ffmpeg/ffprobe (and yt-dlp).
+    /// The WPF host passes <c>App.FFmpegPath</c>; the Avalonia host passes its own app
+    /// data dir. Defaults to an "ffmpeg" folder next to the running binary so a
+    /// parameterless <c>new FFmpegService()</c> still works the way it used to.
+    /// </summary>
+    public FFmpegService(string? ffmpegDir = null)
+    {
+        _ffmpegDir = ffmpegDir
+            ?? Path.Combine(AppContext.BaseDirectory, "ffmpeg");
+    }
+
+    public string FFmpegExe => Path.Combine(_ffmpegDir, Platform.ExeName("ffmpeg"));
+    public string FFprobeExe => Path.Combine(_ffmpegDir, Platform.ExeName("ffprobe"));
 
     public event Action<string>? Log;
     public event Action<double>? Progress;
@@ -230,20 +244,47 @@ public class FFmpegService
 
     private static string ResolveDrawtextFont(bool bold, bool italic)
     {
-        string winFonts = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts");
-        var candidates = (bold, italic) switch
+        // Candidate font filenames per OS, in preference order. Windows uses Segoe UI /
+        // Arial; macOS and Linux ship different families, so we list common ones and fall
+        // back to whatever TTF/OTF we can find in the OS font directories.
+        string[] candidates = Platform.IsWindows
+            ? (bold, italic) switch
+            {
+                (true,  true)  => new[] { "segoeuiz.ttf", "arialbi.ttf", "segoeuib.ttf", "arialbd.ttf", "segoeui.ttf", "arial.ttf" },
+                (true,  false) => new[] { "segoeuib.ttf", "arialbd.ttf", "segoeui.ttf",  "arial.ttf" },
+                (false, true)  => new[] { "segoeuii.ttf", "ariali.ttf",  "segoeui.ttf",  "arial.ttf" },
+                _              => new[] { "segoeui.ttf",  "arial.ttf",   "tahoma.ttf" },
+            }
+            : Platform.IsMacOS
+                ? new[] { "Helvetica.ttc", "HelveticaNeue.ttc", "Arial.ttf", "ArialHB.ttc", "SFNS.ttf", "Geneva.ttf" }
+                : new[] { "DejaVuSans.ttf", "LiberationSans-Regular.ttf", "FreeSans.ttf", "NotoSans-Regular.ttf", "Ubuntu-R.ttf" };
+
+        foreach (var dir in Platform.FontDirectories)
         {
-            (true,  true)  => new[] { "segoeuiz.ttf", "arialbi.ttf", "segoeuib.ttf", "arialbd.ttf", "segoeui.ttf", "arial.ttf" },
-            (true,  false) => new[] { "segoeuib.ttf", "arialbd.ttf", "segoeui.ttf",  "arial.ttf" },
-            (false, true)  => new[] { "segoeuii.ttf", "ariali.ttf",  "segoeui.ttf",  "arial.ttf" },
-            _              => new[] { "segoeui.ttf",  "arial.ttf",   "tahoma.ttf" },
-        };
-        foreach (var name in candidates)
-        {
-            var p = Path.Combine(winFonts, name);
-            if (File.Exists(p)) return p;
+            foreach (var name in candidates)
+            {
+                var p = Path.Combine(dir, name);
+                if (File.Exists(p)) return p;
+            }
         }
-        return Path.Combine(winFonts, "arial.ttf");
+        // Last resort: the first TTF/OTF/TTC found anywhere in the OS font dirs, so
+        // drawtext always has *some* valid font rather than a missing-file error.
+        foreach (var dir in Platform.FontDirectories)
+        {
+            if (!Directory.Exists(dir)) continue;
+            try
+            {
+                foreach (var f in Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories))
+                {
+                    var ext = Path.GetExtension(f).ToLowerInvariant();
+                    if (ext is ".ttf" or ".otf" or ".ttc") return f;
+                }
+            }
+            catch { /* permission or IO issue on a font dir - try the next one */ }
+        }
+        // Nothing found; return a Windows-style guess (the caller's drawtext will error
+        // clearly if it truly does not exist, which only happens on a misconfigured box).
+        return Path.Combine(Platform.FontDirectories.Length > 0 ? Platform.FontDirectories[0] : "", "arial.ttf");
     }
 
     public Task RemoveLogoAsync(string videoIn, string output, int x, int y, int w, int h, double duration, IProgress<double>? progress = null)

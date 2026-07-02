@@ -33,8 +33,11 @@ settings.json
 # Whisper.cpp binaries + models (downloaded at runtime)
 whisper/
 
-# MODNet AI background model (downloaded at runtime)
-models/
+# MODNet AI background model (downloaded at runtime). Anchored to the repo root and
+# bin output so it does NOT match source folders like VideoEditor.Core/Models/
+# (git is case-insensitive on Windows).
+/models/
+**/bin/**/models/
 
 # RUN.cmd cache (release ZIP downloaded when .NET SDK is missing)
 .launcher-cache/

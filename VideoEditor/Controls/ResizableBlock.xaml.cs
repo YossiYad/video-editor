@@ -115,7 +115,7 @@ public partial class ResizableBlock : UserControl
         switch (Model.Mode)
         {
             case BlockMode.Solid:
-                fill.Fill = new SolidColorBrush(Model.Color);
+                fill.Fill = new SolidColorBrush(Model.Color.ToMediaColor());
                 fill.Opacity = 1.0;
                 patternFill.Visibility = Visibility.Collapsed;
                 modeBadgeText.Text = "SOLID";

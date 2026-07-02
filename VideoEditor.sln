@@ -1,18 +1,62 @@
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VideoEditor", "VideoEditor\VideoEditor.csproj", "{B8F3E1A0-1234-4567-89AB-CDEF01234567}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VideoEditor.Core", "VideoEditor.Core\VideoEditor.Core.csproj", "{EEE28D61-84A8-482B-8D91-7D8E5971A75F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VideoEditor.Desktop", "VideoEditor.Desktop\VideoEditor.Desktop.csproj", "{5F3B1D01-1292-4FBD-AED1-3D723CF4EA67}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
 		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{B8F3E1A0-1234-4567-89AB-CDEF01234567}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{B8F3E1A0-1234-4567-89AB-CDEF01234567}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B8F3E1A0-1234-4567-89AB-CDEF01234567}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B8F3E1A0-1234-4567-89AB-CDEF01234567}.Debug|x64.Build.0 = Debug|Any CPU
+		{B8F3E1A0-1234-4567-89AB-CDEF01234567}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B8F3E1A0-1234-4567-89AB-CDEF01234567}.Debug|x86.Build.0 = Debug|Any CPU
 		{B8F3E1A0-1234-4567-89AB-CDEF01234567}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B8F3E1A0-1234-4567-89AB-CDEF01234567}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B8F3E1A0-1234-4567-89AB-CDEF01234567}.Release|x64.ActiveCfg = Release|Any CPU
+		{B8F3E1A0-1234-4567-89AB-CDEF01234567}.Release|x64.Build.0 = Release|Any CPU
+		{B8F3E1A0-1234-4567-89AB-CDEF01234567}.Release|x86.ActiveCfg = Release|Any CPU
+		{B8F3E1A0-1234-4567-89AB-CDEF01234567}.Release|x86.Build.0 = Release|Any CPU
+		{EEE28D61-84A8-482B-8D91-7D8E5971A75F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EEE28D61-84A8-482B-8D91-7D8E5971A75F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EEE28D61-84A8-482B-8D91-7D8E5971A75F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{EEE28D61-84A8-482B-8D91-7D8E5971A75F}.Debug|x64.Build.0 = Debug|Any CPU
+		{EEE28D61-84A8-482B-8D91-7D8E5971A75F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{EEE28D61-84A8-482B-8D91-7D8E5971A75F}.Debug|x86.Build.0 = Debug|Any CPU
+		{EEE28D61-84A8-482B-8D91-7D8E5971A75F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EEE28D61-84A8-482B-8D91-7D8E5971A75F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EEE28D61-84A8-482B-8D91-7D8E5971A75F}.Release|x64.ActiveCfg = Release|Any CPU
+		{EEE28D61-84A8-482B-8D91-7D8E5971A75F}.Release|x64.Build.0 = Release|Any CPU
+		{EEE28D61-84A8-482B-8D91-7D8E5971A75F}.Release|x86.ActiveCfg = Release|Any CPU
+		{EEE28D61-84A8-482B-8D91-7D8E5971A75F}.Release|x86.Build.0 = Release|Any CPU
+		{5F3B1D01-1292-4FBD-AED1-3D723CF4EA67}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5F3B1D01-1292-4FBD-AED1-3D723CF4EA67}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5F3B1D01-1292-4FBD-AED1-3D723CF4EA67}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5F3B1D01-1292-4FBD-AED1-3D723CF4EA67}.Debug|x64.Build.0 = Debug|Any CPU
+		{5F3B1D01-1292-4FBD-AED1-3D723CF4EA67}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5F3B1D01-1292-4FBD-AED1-3D723CF4EA67}.Debug|x86.Build.0 = Debug|Any CPU
+		{5F3B1D01-1292-4FBD-AED1-3D723CF4EA67}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F3B1D01-1292-4FBD-AED1-3D723CF4EA67}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F3B1D01-1292-4FBD-AED1-3D723CF4EA67}.Release|x64.ActiveCfg = Release|Any CPU
+		{5F3B1D01-1292-4FBD-AED1-3D723CF4EA67}.Release|x64.Build.0 = Release|Any CPU
+		{5F3B1D01-1292-4FBD-AED1-3D723CF4EA67}.Release|x86.ActiveCfg = Release|Any CPU
+		{5F3B1D01-1292-4FBD-AED1-3D723CF4EA67}.Release|x86.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
 	EndGlobalSection
 EndGlobal

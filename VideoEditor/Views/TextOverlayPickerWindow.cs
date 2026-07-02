@@ -10,20 +10,8 @@ using System.Windows.Media.Imaging;
 
 namespace VideoEditor.Views;
 
-public sealed class TextOverlayOptions
-{
-    public string Text { get; set; } = "";
-    public int X { get; set; }
-    public int Y { get; set; }
-    public int FontSize { get; set; } = 48;
-    public string FontColor { get; set; } = "white";
-    public bool Bold { get; set; } = true;
-    public bool Italic { get; set; }
-    public bool BackgroundEnabled { get; set; } = true;
-    public string BackgroundColor { get; set; } = "black";
-    public double BackgroundOpacity { get; set; } = 0.55;
-    public int BackgroundPadding { get; set; } = 14;
-}
+// TextOverlayOptions moved to VideoEditor.Core (Models/TextOverlayOptions.cs), kept in
+// this same namespace so references resolve unchanged.
 
 public class TextOverlayPickerWindow : Window
 {

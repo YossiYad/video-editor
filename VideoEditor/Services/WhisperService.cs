@@ -21,9 +21,9 @@ public sealed class WhisperService
     {
         get
         {
-            var cli = Path.Combine(WhisperFolder, "whisper-cli.exe");
+            var cli = Path.Combine(WhisperFolder, Platform.ExeName("whisper-cli"));
             if (File.Exists(cli)) return cli;
-            var main = Path.Combine(WhisperFolder, "main.exe");
+            var main = Path.Combine(WhisperFolder, Platform.ExeName("main"));
             if (File.Exists(main)) return main;
             return cli;
         }
@@ -41,8 +41,8 @@ public sealed class WhisperService
         $"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{key}.bin";
 
     public static bool IsBinaryReady() =>
-        File.Exists(Path.Combine(WhisperFolder, "whisper-cli.exe")) ||
-        File.Exists(Path.Combine(WhisperFolder, "main.exe"));
+        File.Exists(Path.Combine(WhisperFolder, Platform.ExeName("whisper-cli"))) ||
+        File.Exists(Path.Combine(WhisperFolder, Platform.ExeName("main")));
 
     public static bool IsModelReady(string key) => File.Exists(ModelPath(key));
 
@@ -50,6 +50,21 @@ public sealed class WhisperService
     {
         if (IsBinaryReady()) return;
         Directory.CreateDirectory(WhisperFolder);
+
+        // whisper.cpp publishes a prebuilt binary only for Windows (whisper-bin-x64.zip).
+        // On macOS/Linux there is no official prebuilt archive, so we can't auto-fetch it.
+        // Give the user a clear, actionable message instead of downloading a Windows zip
+        // that won't run. (Cross-platform whisper fetch is a follow-up: build from source
+        // or install via Homebrew/apt and drop the binary into the whisper/ folder.)
+        if (!Platform.IsWindows)
+        {
+            throw new PlatformNotSupportedException(
+                "AI Captions needs the whisper.cpp binary. There is no official prebuilt " +
+                "build for macOS/Linux yet. Install whisper.cpp (e.g. `brew install whisper-cpp` " +
+                "on macOS, or build from source on Linux) and copy the `whisper-cli` binary " +
+                $"into:\n{WhisperFolder}");
+        }
+
         Log?.Invoke("Downloading whisper.cpp (~80 MB) - first run only...");
 
         var tmpZip = Path.Combine(Path.GetTempPath(), $"whisper_{Guid.NewGuid():N}.zip");
@@ -146,7 +161,7 @@ public sealed class WhisperService
             Log?.Invoke("Extracting audio to 16 kHz mono WAV...");
             var ffmpegArgs = $"-y -ss {inSec.ToString(ci)} -t {durSec.ToString(ci)} -i \"{mediaPath}\" " +
                              $"-ac 1 -ar 16000 -vn -c:a pcm_s16le \"{tempWav}\"";
-            await RunProcessAsync(Path.Combine(App.FFmpegPath, "ffmpeg.exe"), ffmpegArgs, line =>
+            await RunProcessAsync(Path.Combine(App.FFmpegPath, Platform.ExeName("ffmpeg")), ffmpegArgs, line =>
             {
                 Log?.Invoke(line);
             }, ct);

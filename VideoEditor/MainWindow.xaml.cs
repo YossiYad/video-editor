@@ -22,7 +22,7 @@ namespace VideoEditor;
 
 public partial class MainWindow : Window
 {
-    private readonly FFmpegService _ff = new();
+    private readonly FFmpegService _ff = new(App.FFmpegPath);
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(80) };
 
     private readonly Dictionary<VideoBlock, ResizableBlock> _blockControls = new();
@@ -3388,7 +3388,7 @@ public partial class MainWindow : Window
             Y = Math.Max(0, canvasH / 2 - blockH / 2),
             Width = blockW, Height = blockH,
             StartSeconds = 0, EndSeconds = timeline.TotalSeconds, CoversWholeVideo = true,
-            Color = Colors.Black, Mode = BlockMode.Solid,
+            Color = new RgbColor(0, 0, 0), Mode = BlockMode.Solid,
             Label = $"Block {timeline.Blocks.Count + GetInlineRecorderBlocks().Count + 1}"
         };
         if (!IsInlineRecorderVisible()) timeline.Blocks.Add(b);
@@ -3507,7 +3507,7 @@ public partial class MainWindow : Window
         _suppress = true;
         clipNameText.Text = c.DisplayName;
         clipMetaText.Text = $"{(c.VideoWidth > 0 ? c.VideoWidth + "×" + c.VideoHeight : "audio")} · {Timeline.FormatTime(c.OriginalDuration)}";
-        var accent = new SolidColorBrush(c.AccentColor);
+        var accent = new SolidColorBrush(c.AccentColor.ToMediaColor());
         clipAccentTile.Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x33, c.AccentColor.R, c.AccentColor.G, c.AccentColor.B));
         clipAccentTile.BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x66, c.AccentColor.R, c.AccentColor.G, c.AccentColor.B));
         clipInBox.Text = c.InPoint.ToString("0.###");
@@ -3857,7 +3857,7 @@ public partial class MainWindow : Window
     private void Color_Click(object sender, RoutedEventArgs e)
     {
         if (_selectedBlock == null) return;
-        if (sender is Button b && b.Tag is string name) _selectedBlock.Color = (Color)ColorConverter.ConvertFromString(name);
+        if (sender is Button b && b.Tag is string name) _selectedBlock.Color = ((Color)ColorConverter.ConvertFromString(name)).ToRgbColor();
     }
     private void Strength_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
@@ -4373,7 +4373,7 @@ public partial class MainWindow : Window
                 Speed = parent.Speed,
                 Volume = parent.Volume,
                 VideoWidth = 0, VideoHeight = 0,
-                AccentColor = System.Windows.Media.Color.FromRgb(0x6E, 0x44, 0xD6),
+                AccentColor = new RgbColor(0x6E, 0x44, 0xD6),
                 IsAudioOnly = true,
                 TimelineStart = parent.TimelineStart
             };
@@ -5296,7 +5296,7 @@ public partial class MainWindow : Window
             Y = Math.Max(0, canvasH - h - 24),
             Width = w,
             Height = h,
-            Color = Color.FromRgb(0x25, 0x67, 0xFF),
+            Color = new RgbColor(0x25, 0x67, 0xFF),
             Mode = BlockMode.Solid,
             Label = "Camera Recorder"
         };
@@ -6872,7 +6872,7 @@ public partial class MainWindow : Window
                 OutPoint = duration,
                 VideoWidth = 0,
                 VideoHeight = 0,
-                AccentColor = System.Windows.Media.Color.FromRgb(0x6E, 0x44, 0xD6),
+                AccentColor = new RgbColor(0x6E, 0x44, 0xD6),
                 IsAudioOnly = true,
                 TimelineStart = timeline.CurrentSeconds
             };
@@ -7086,13 +7086,7 @@ public partial class MainWindow : Window
                 "Merge complete.\n\nOpen the output folder?",
                 "Merge Videos", MessageBoxButton.YesNo, MessageBoxImage.Information);
             if (openResult == MessageBoxResult.Yes)
-            {
-                try
-                {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{output}\"") { UseShellExecute = true });
-                }
-                catch { }
-            }
+                VideoEditor.Services.Platform.RevealInFileManager(output);
         }
         catch (Exception ex)
         {
@@ -8136,17 +8130,8 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
     // breaking when the file name contains characters that interact with the shell parser.
     private static void RevealInExplorer(string filePath)
     {
-        try
-        {
-            var psi = new System.Diagnostics.ProcessStartInfo("explorer.exe")
-            {
-                UseShellExecute = true
-            };
-            psi.ArgumentList.Add("/select,");
-            psi.ArgumentList.Add(filePath);
-            System.Diagnostics.Process.Start(psi);
-        }
-        catch { }
+        // Cross-platform reveal: Explorer (Windows), Finder (macOS), file manager (Linux).
+        VideoEditor.Services.Platform.RevealInFileManager(filePath);
     }
 
     private static bool IsAppTempFile(string path)
@@ -8206,7 +8191,7 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
         public double CanvasCropTop;
         public double CanvasCropRight;
         public double CanvasCropBottom;
-        public Color AccentColor;
+        public RgbColor AccentColor;
 
         public static ClipSnapshot FromClip(VideoClip c) => new()
         {

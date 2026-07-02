@@ -2,7 +2,6 @@ using System;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
-using System.Windows.Media;
 
 namespace VideoEditor.Models;
 
@@ -17,7 +16,7 @@ public class VideoClip : INotifyPropertyChanged
     private double _rotateDegrees;
     private bool _flipH;
     private bool _flipV;
-    private Color _accentColor = Colors.MediumPurple;
+    private RgbColor _accentColor = new(0x93, 0x70, 0xDB); // MediumPurple
     private int _videoWidth;
     private int _videoHeight;
     private int _loopCount = 1;
@@ -49,7 +48,7 @@ public class VideoClip : INotifyPropertyChanged
     public double RotateDegrees { get => _rotateDegrees; set => Set(ref _rotateDegrees, value); }
     public bool FlipH { get => _flipH; set => Set(ref _flipH, value); }
     public bool FlipV { get => _flipV; set => Set(ref _flipV, value); }
-    public Color AccentColor { get => _accentColor; set => Set(ref _accentColor, value); }
+    public RgbColor AccentColor { get => _accentColor; set => Set(ref _accentColor, value); }
     public int VideoWidth { get => _videoWidth; set => Set(ref _videoWidth, value); }
     public int VideoHeight { get => _videoHeight; set => Set(ref _videoHeight, value); }
     public int LoopCount { get => _loopCount; set => Set(ref _loopCount, value); }
@@ -107,19 +106,19 @@ public class VideoClip : INotifyPropertyChanged
     private static double ClampCrop(double value) =>
         Math.Max(0, Math.Min(100000, value));
 
-    private static readonly Color[] _palette = new[]
+    private static readonly RgbColor[] _palette = new[]
     {
-        Color.FromRgb(0x7C, 0x4D, 0xFF),
-        Color.FromRgb(0x00, 0xB8, 0xD9),
-        Color.FromRgb(0xFF, 0x6B, 0x6B),
-        Color.FromRgb(0x51, 0xCF, 0x66),
-        Color.FromRgb(0xFF, 0xD4, 0x3B),
-        Color.FromRgb(0xE6, 0x40, 0x9C),
-        Color.FromRgb(0xF7, 0x6B, 0x1C),
-        Color.FromRgb(0x4D, 0x96, 0xFF),
+        new RgbColor(0x7C, 0x4D, 0xFF),
+        new RgbColor(0x00, 0xB8, 0xD9),
+        new RgbColor(0xFF, 0x6B, 0x6B),
+        new RgbColor(0x51, 0xCF, 0x66),
+        new RgbColor(0xFF, 0xD4, 0x3B),
+        new RgbColor(0xE6, 0x40, 0x9C),
+        new RgbColor(0xF7, 0x6B, 0x1C),
+        new RgbColor(0x4D, 0x96, 0xFF),
     };
     private static int _colorIdx;
-    public static Color NextColor()
+    public static RgbColor NextColor()
     {
         var c = _palette[_colorIdx % _palette.Length];
         _colorIdx++;
