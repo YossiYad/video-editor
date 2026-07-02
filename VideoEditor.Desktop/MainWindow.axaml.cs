@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -11,6 +12,8 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using VideoEditor.Models;
 using VideoEditor.Services;
+using Xabe.FFmpeg;
+using Xabe.FFmpeg.Downloader;
 
 namespace VideoEditor.Desktop;
 
@@ -24,6 +27,8 @@ public partial class MainWindow : Window
     // The project timeline clips. Same VideoClip type the WPF app and the Core export
     // engine use, so Stage C6 can hand this straight to ExportProjectAsync.
     private readonly ObservableCollection<VideoClip> _clips = new();
+    private readonly string _ffmpegDir;
+    private Task? _ffmpegSetupTask;
 
     private VideoClip? _selectedClip;
     private int _previewToken; // guards against out-of-order async frame loads
@@ -34,9 +39,10 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        var ffmpegDir = Path.Combine(AppContext.BaseDirectory, "ffmpeg");
-        Directory.CreateDirectory(ffmpegDir);
-        _ff = new FFmpegService(ffmpegDir);
+        _ffmpegDir = Path.Combine(AppContext.BaseDirectory, "ffmpeg");
+        Directory.CreateDirectory(_ffmpegDir);
+        FFmpeg.SetExecutablesPath(_ffmpegDir);
+        _ff = new FFmpegService(_ffmpegDir);
         clipList.ItemsSource = _clips;
         platformText.Text = $"{Platform.RuntimeId}  ·  ffmpeg: {Platform.ExeName("ffmpeg")}";
     }
@@ -73,6 +79,8 @@ public partial class MainWindow : Window
 
     private async Task AddClipsAsync(IEnumerable<string> paths)
     {
+        if (!await EnsureFfmpegAsync()) return;
+
         int added = 0;
         double timelineEnd = _clips.Sum(c => c.EffectiveDuration);
         foreach (var path in paths)
@@ -139,6 +147,8 @@ public partial class MainWindow : Window
     // (an ffmpeg frame-pipe) is a later optimization.
     private async Task ShowPreviewFrameAsync(VideoClip clip, double timeSeconds)
     {
+        if (!await EnsureFfmpegAsync()) return;
+
         if (clip.IsAudioOnly)
         {
             previewImage.Source = null;
@@ -179,6 +189,8 @@ public partial class MainWindow : Window
 
     private async void Export_Click(object? sender, RoutedEventArgs e)
     {
+        if (!await EnsureFfmpegAsync()) return;
+
         var videoClips = _clips.Where(c => !c.IsAudioOnly).ToList();
         if (videoClips.Count == 0)
         {
@@ -247,5 +259,49 @@ public partial class MainWindow : Window
     private static void TryDelete(string path)
     {
         try { if (File.Exists(path)) File.Delete(path); } catch { }
+    }
+
+    private async Task<bool> EnsureFfmpegAsync()
+    {
+        var ffmpegExe = Path.Combine(_ffmpegDir, Platform.ExeName("ffmpeg"));
+        var ffprobeExe = Path.Combine(_ffmpegDir, Platform.ExeName("ffprobe"));
+        if (File.Exists(ffmpegExe) && File.Exists(ffprobeExe))
+            return true;
+
+        _ffmpegSetupTask ??= DownloadFfmpegAsync();
+        try
+        {
+            await _ffmpegSetupTask;
+            return File.Exists(ffmpegExe) && File.Exists(ffprobeExe);
+        }
+        catch (Exception ex)
+        {
+            statusText.Text = $"FFmpeg setup failed: {ex.Message}";
+            return false;
+        }
+    }
+
+    private async Task DownloadFfmpegAsync()
+    {
+        statusText.Text = "Preparing FFmpeg - first run only...";
+        await FFmpegDownloader.GetLatestVersion(FFmpegVersion.Official, _ffmpegDir);
+        MakeExecutable(Path.Combine(_ffmpegDir, "ffmpeg"));
+        MakeExecutable(Path.Combine(_ffmpegDir, "ffprobe"));
+        statusText.Text = "FFmpeg ready.";
+    }
+
+    private static void MakeExecutable(string path)
+    {
+        if (Platform.IsWindows || !File.Exists(path)) return;
+        try
+        {
+            using var p = Process.Start(new ProcessStartInfo("chmod", $"+x \"{path}\"")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+            p?.WaitForExit(5000);
+        }
+        catch { }
     }
 }
