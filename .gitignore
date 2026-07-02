@@ -3,6 +3,8 @@ bin/
 obj/
 dist/
 publish/
+verify-build/
+verify-obj/
 
 # Visual Studio
 .vs/
@@ -36,3 +38,6 @@ models/
 
 # RUN.cmd cache (release ZIP downloaded when .NET SDK is missing)
 .launcher-cache/
+
+# Local helper script; shortcut updates are embedded in the build files
+VideoEditor/Tools/UpdateDesktopShortcut.ps1

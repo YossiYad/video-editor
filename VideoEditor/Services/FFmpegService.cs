@@ -589,10 +589,16 @@ public class FFmpegService
         int crf = AppSettings.ExportCrf;
         int abps = AppSettings.ExportAudioBitrate;
 
+        bool manualCanvasTransform = c.HasManualCanvasTransform && c.VideoWidth > 0 && c.VideoHeight > 0;
         var vfPre = new List<string>();
-        if (c.RotateDegrees == 90) vfPre.Add("transpose=1");
-        else if (c.RotateDegrees == 180) vfPre.Add("transpose=1,transpose=1");
-        else if (c.RotateDegrees == 270) vfPre.Add("transpose=2");
+        double rotate = NormalizeDegrees(c.RotateDegrees);
+        if (!manualCanvasTransform)
+        {
+            if (IsAngle(rotate, 90)) vfPre.Add("transpose=1");
+            else if (IsAngle(rotate, 180)) vfPre.Add("transpose=1,transpose=1");
+            else if (IsAngle(rotate, 270)) vfPre.Add("transpose=2");
+            else if (!IsAngle(rotate, 0)) vfPre.Add(BuildArbitraryRotateFilter(rotate, ci));
+        }
         if (c.FlipH) vfPre.Add("hflip");
         if (c.FlipV) vfPre.Add("vflip");
         if (Math.Abs(c.Speed - 1.0) > 0.01)
@@ -602,20 +608,35 @@ public class FFmpegService
 
         string videoFilterArg;
         // Per-clip manual canvas transform overrides the global fit mode.
-        // Scale source by (contain-fit * CanvasScale) and lay it on a black canvas at the
+        // Scale source by (contain-fit * CanvasScale * per-axis stretch) and lay it on a black canvas at the
         // user's offset; overlay clips anything beyond the target rectangle automatically.
-        if (c.HasManualCanvasTransform && c.VideoWidth > 0 && c.VideoHeight > 0)
+        if (manualCanvasTransform)
         {
             double baseScale = Math.Min((double)targetW / c.VideoWidth, (double)targetH / c.VideoHeight);
-            int finalW = Math.Max(2, (int)Math.Round(c.VideoWidth * baseScale * c.CanvasScale));
-            int finalH = Math.Max(2, (int)Math.Round(c.VideoHeight * baseScale * c.CanvasScale));
-            int posX = (targetW - finalW) / 2 + (int)Math.Round(c.CanvasOffsetX * targetW);
-            int posY = (targetH - finalH) / 2 + (int)Math.Round(c.CanvasOffsetY * targetH);
+            var crop = NormalizedCanvasCrop(c);
+            int cropW = Math.Max(2, c.VideoWidth - crop.left - crop.right);
+            int cropH = Math.Max(2, c.VideoHeight - crop.top - crop.bottom);
+            int finalW = Math.Max(2, (int)Math.Round(cropW * baseScale * c.CanvasScale * c.CanvasScaleX));
+            int finalH = Math.Max(2, (int)Math.Round(cropH * baseScale * c.CanvasScale * c.CanvasScaleY));
+            int cropShiftX = (int)Math.Round(((crop.left - crop.right) * baseScale * c.CanvasScale * c.CanvasScaleX) / 2);
+            int cropShiftY = (int)Math.Round(((crop.top - crop.bottom) * baseScale * c.CanvasScale * c.CanvasScaleY) / 2);
+            int posX = (targetW - finalW) / 2 + (int)Math.Round(c.CanvasOffsetX * targetW) + cropShiftX;
+            int posY = (targetH - finalH) / 2 + (int)Math.Round(c.CanvasOffsetY * targetH) + cropShiftY;
 
             var preChain = vfPre.Count > 0 ? string.Join(",", vfPre) + "," : "";
             var tailChain = string.Join(",", vfTail);
+            string cropFilter = c.HasManualCanvasCrop
+                ? $"crop={cropW}:{cropH}:{crop.left}:{crop.top},"
+                : "";
+            string rotateFilter = BuildManualCanvasRotateFilter(rotate, finalW, finalH, ci, out int rotatedW, out int rotatedH);
+            if (rotateFilter.Length > 0)
+            {
+                posX -= (rotatedW - finalW) / 2;
+                posY -= (rotatedH - finalH) / 2;
+            }
+
             string complex =
-                $"[0:v]{preChain}scale={finalW}:{finalH}[fg];" +
+                $"[0:v]{preChain}{cropFilter}scale={finalW}:{finalH}{rotateFilter}[fg];" +
                 $"color=c=black:s={targetW}x{targetH}:r={fps}[bg];" +
                 $"[bg][fg]overlay={posX}:{posY}:shortest=1,{tailChain}[v]";
             videoFilterArg = $"-filter_complex \"{complex}\" -map \"[v]\" -map 0:a?";
@@ -668,6 +689,58 @@ public class FFmpegService
         args += $" \"{output}\"";
 
         await RunAsync(args, c.EffectiveDuration, progress);
+    }
+
+    private static double NormalizeDegrees(double degrees)
+    {
+        double d = degrees % 360;
+        if (d < 0) d += 360;
+        return d;
+    }
+
+    private static string BuildArbitraryRotateFilter(double degrees, System.Globalization.CultureInfo ci)
+    {
+        double radians = degrees * Math.PI / 180.0;
+        return $"rotate={radians.ToString("0.########", ci)}:ow=rotw(iw):oh=roth(ih):c=black";
+    }
+
+    private static string BuildManualCanvasRotateFilter(double degrees, int width, int height, System.Globalization.CultureInfo ci, out int rotatedW, out int rotatedH)
+    {
+        rotatedW = width;
+        rotatedH = height;
+        degrees = NormalizeDegrees(degrees);
+        if (IsAngle(degrees, 0))
+            return "";
+
+        double radians = degrees * Math.PI / 180.0;
+        double cos = Math.Abs(Math.Cos(radians));
+        double sin = Math.Abs(Math.Sin(radians));
+        rotatedW = Math.Max(2, (int)Math.Ceiling(width * cos + height * sin));
+        rotatedH = Math.Max(2, (int)Math.Ceiling(width * sin + height * cos));
+        return $",rotate={radians.ToString("0.########", ci)}:ow={rotatedW}:oh={rotatedH}:c=black";
+    }
+
+    private static bool IsAngle(double actual, double expected)
+    {
+        double delta = Math.Abs(NormalizeAngleDelta(actual - expected));
+        return delta < 0.001;
+    }
+
+    private static double NormalizeAngleDelta(double value)
+    {
+        value = ((value + 180) % 360 + 360) % 360 - 180;
+        return value;
+    }
+
+    private static (int left, int top, int right, int bottom) NormalizedCanvasCrop(VideoClip c)
+    {
+        int maxW = Math.Max(0, c.VideoWidth - 2);
+        int maxH = Math.Max(0, c.VideoHeight - 2);
+        int left = Math.Clamp((int)Math.Round(c.CanvasCropLeft), 0, maxW);
+        int right = Math.Clamp((int)Math.Round(c.CanvasCropRight), 0, Math.Max(0, maxW - left));
+        int top = Math.Clamp((int)Math.Round(c.CanvasCropTop), 0, maxH);
+        int bottom = Math.Clamp((int)Math.Round(c.CanvasCropBottom), 0, Math.Max(0, maxH - top));
+        return (left, top, right, bottom);
     }
 
     /// <summary>

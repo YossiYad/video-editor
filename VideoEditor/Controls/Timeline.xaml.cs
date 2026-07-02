@@ -589,6 +589,59 @@ public partial class Timeline : UserControl
         SelectionChanged?.Invoke();
     }
 
+    internal enum PreviewOverlaySelectionMode
+    {
+        Replace,
+        Add,
+        Toggle,
+        Remove
+    }
+
+    internal void SelectPreviewOverlayItems(IEnumerable<VideoBlock> blocks, IEnumerable<TextOverlay> texts, bool ctrl) =>
+        SelectPreviewOverlayItems(blocks, texts, ctrl ? PreviewOverlaySelectionMode.Add : PreviewOverlaySelectionMode.Replace);
+
+    internal void SelectPreviewOverlayItems(IEnumerable<VideoBlock> blocks, IEnumerable<TextOverlay> texts, PreviewOverlaySelectionMode mode)
+    {
+        var blockList = blocks.ToList();
+        var textList = texts.ToList();
+        if (mode == PreviewOverlaySelectionMode.Replace || _selectedClips.Count > 0 || _selectedAudios.Count > 0)
+            ClearAllSelectionSets();
+
+        foreach (var b in blockList)
+        {
+            if (mode == PreviewOverlaySelectionMode.Remove)
+                _selectedBlocks.Remove(b);
+            else if (mode == PreviewOverlaySelectionMode.Toggle && _selectedBlocks.Contains(b))
+                _selectedBlocks.Remove(b);
+            else
+                _selectedBlocks.Add(b);
+        }
+        foreach (var t in textList)
+        {
+            if (mode == PreviewOverlaySelectionMode.Remove)
+                _selectedTextOverlays.Remove(t);
+            else if (mode == PreviewOverlaySelectionMode.Toggle && _selectedTextOverlays.Contains(t))
+                _selectedTextOverlays.Remove(t);
+            else
+                _selectedTextOverlays.Add(t);
+        }
+
+        if (_selectedBlock == null || !_selectedBlocks.Contains(_selectedBlock))
+            _selectedBlock = _selectedBlocks.LastOrDefault();
+        if (_selectedTextOverlay == null || !_selectedTextOverlays.Contains(_selectedTextOverlay))
+            _selectedTextOverlay = _selectedTextOverlays.LastOrDefault();
+        if (mode != PreviewOverlaySelectionMode.Remove)
+        {
+            if (blockList.Count > 0 && _selectedBlocks.Contains(blockList.Last()))
+                _selectedBlock = blockList.Last();
+            if (textList.Count > 0 && _selectedTextOverlays.Contains(textList.Last()))
+                _selectedTextOverlay = textList.Last();
+        }
+
+        RefreshAllVisuals();
+        SelectionChanged?.Invoke();
+    }
+
     internal void HandleAudioClick(VideoClip c, bool ctrl)
     {
         if (!ctrl) { SelectAudio(c); return; }

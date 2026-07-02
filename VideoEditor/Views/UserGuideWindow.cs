@@ -392,7 +392,7 @@ public class UserGuideWindow : Window
             "סובב את גלגלת העכבר על הסרטון כדי להגדיל/להקטין. Ctrl+גלגלת = צעדים קטנים יותר ועדינים יותר.\nMouse-wheel on the preview to zoom. Ctrl+wheel = finer step."));
         p.Children.Add(MakeNumberedStep(5,
             "איפוס  ·  Reset",
-            "דאבל-קליק או קליק ימני על הסרטון = איפוס מלא. גם כפתור Reset בקטע CANVAS בפאנל הימני.\nDouble-click or right-click the video to reset. Also a Reset button in the right-pane CANVAS section."));
+            "דאבל-קליק על הסרטון = איפוס מלא. קליק ימני פותח תפריט Transform בסגנון OBS עם Reset, Fit, Fill, Stretch, Center, Rotate, Flip, Copy/Paste Transform.\nDouble-click the video to reset. Right-click opens an OBS-style Transform menu with Reset, Fit, Fill, Stretch, Center, Rotate, Flip, and Copy/Paste Transform."));
         p.Children.Add(MakeBullet("הסליידרים בפאנל ימין (Zoom / Offset X / Offset Y)  ·  Sliders in right pane (Zoom / Offset X / Offset Y) - חלופה מדויקת לגרירה.\nPrecise alternative to dragging."));
         return WrapSection(p);
     }

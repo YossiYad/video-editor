@@ -7,9 +7,22 @@ using System.Threading.Tasks;
 
 namespace VideoEditor.Services;
 
+public class LoginRequiredDownloadException : Exception
+{
+    public string Url { get; }
+    public string SiteName { get; }
+
+    public LoginRequiredDownloadException(string url, string siteName, string message, Exception innerException)
+        : base(message, innerException)
+    {
+        Url = url;
+        SiteName = siteName;
+    }
+}
+
 /// <summary>
 /// Downloads videos from URLs. Supports direct HTTP file links via HttpClient and
-/// uses yt-dlp.exe (auto-downloaded on first use) for streaming sites like YouTube/Vimeo.
+/// uses yt-dlp.exe for any site that yt-dlp can extract.
 /// </summary>
 public class DownloadService
 {
@@ -63,6 +76,102 @@ public class DownloadService
         catch { return false; }
     }
 
+    public async Task<string> DownloadFromUrlAsync(string url, string outputFolder, string ffmpegPath, IProgress<double>? progress = null, CancellationToken ct = default, bool allowBrowserLogin = false, int maxHeight = 1080)
+    {
+        Directory.CreateDirectory(outputFolder);
+
+        if (LooksLikeDirectFile(url))
+        {
+            try
+            {
+                return await DownloadDirectAsync(url, BuildDirectOutputPath(url, outputFolder), progress, ct);
+            }
+            catch (Exception directEx) when (directEx is not OperationCanceledException)
+            {
+                Log?.Invoke("Direct HTTP failed; trying yt-dlp...");
+                WriteLogFile($"Direct HTTP failed, falling back to yt-dlp: {directEx.GetType().Name}: {directEx.Message}");
+                try
+                {
+                    return await DownloadViaYtDlpWithBrowserLoginPromptAsync(url, outputFolder, ffmpegPath, allowBrowserLogin, maxHeight, progress, ct);
+                }
+                catch (Exception ytDlpEx) when (ytDlpEx is not OperationCanceledException)
+                {
+                    throw new Exception(
+                        $"Direct HTTP failed: {directEx.Message}\n" +
+                        $"yt-dlp fallback also failed: {ytDlpEx.Message}",
+                        ytDlpEx);
+                }
+            }
+        }
+
+        try
+        {
+            return await DownloadViaYtDlpWithBrowserLoginPromptAsync(url, outputFolder, ffmpegPath, allowBrowserLogin, maxHeight, progress, ct);
+        }
+        catch (Exception ytDlpEx) when (ytDlpEx is not OperationCanceledException && !LooksLikeDirectFile(url))
+        {
+            if (LooksLikeStreamingSite(url))
+                throw;
+
+            Log?.Invoke("yt-dlp failed; trying direct HTTP fallback...");
+            WriteLogFile($"yt-dlp failed, falling back to direct HTTP: {ytDlpEx.GetType().Name}: {ytDlpEx.Message}");
+            try
+            {
+                return await DownloadDirectAsync(url, BuildDirectOutputPath(url, outputFolder), progress, ct);
+            }
+            catch (Exception directEx) when (directEx is not OperationCanceledException)
+            {
+                throw new Exception(
+                    $"yt-dlp failed: {ytDlpEx.Message}\n" +
+                    $"Direct HTTP fallback also failed: {directEx.Message}",
+                    directEx);
+            }
+        }
+    }
+
+    private async Task<string> DownloadViaYtDlpWithBrowserLoginPromptAsync(string url, string outputFolder, string ffmpegPath, bool allowBrowserLogin, int maxHeight, IProgress<double>? progress = null, CancellationToken ct = default)
+    {
+        try
+        {
+            return await DownloadViaYtDlpAsync(url, outputFolder, ffmpegPath, null, maxHeight, progress, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException && ShouldRetryWithBrowserLogin(ex.Message))
+        {
+            if (!allowBrowserLogin)
+            {
+                throw new LoginRequiredDownloadException(
+                    url,
+                    GetSiteName(url),
+                    $"Login is required before downloading from {GetSiteName(url)}.",
+                    ex);
+            }
+
+            Log?.Invoke("Trying browser login cookies...");
+            WriteLogFile($"Retrying with browser cookies after login prompt: {ex.GetType().Name}: {ex.Message}");
+        }
+
+        var failures = new List<(string Browser, Exception Error)>();
+        foreach (var browser in new[] { "firefox", "edge", "chrome" })
+        {
+            try
+            {
+                Log?.Invoke($"Trying yt-dlp with {browser} login cookies...");
+                return await DownloadViaYtDlpAsync(url, outputFolder, ffmpegPath, browser, maxHeight, progress, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                failures.Add((browser, ex));
+                WriteLogFile($"yt-dlp with {browser} cookies failed: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        throw new LoginRequiredDownloadException(
+            url,
+            GetSiteName(url),
+            BuildBrowserLoginFailureMessage(failures),
+            failures.LastOrDefault().Error ?? new Exception("Browser login failed."));
+    }
+
     public async Task EnsureYtDlpAsync(IProgress<double>? progress = null)
     {
         if (File.Exists(YtDlpExePath)) return;
@@ -93,6 +202,7 @@ public class DownloadService
         client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 VideoEditor/1.0");
         using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
+        EnsureDirectResponseLooksDownloadable(response, url);
         long? total = response.Content.Headers.ContentLength;
         Log?.Invoke($"Starting download · {(total.HasValue ? FormatSize(total.Value) : "size unknown")}");
         await using var src = await response.Content.ReadAsStreamAsync(ct);
@@ -111,7 +221,7 @@ public class DownloadService
         return outputPath;
     }
 
-    public async Task<string> DownloadViaYtDlpAsync(string url, string outputFolder, string ffmpegPath, IProgress<double>? progress = null, CancellationToken ct = default)
+    public async Task<string> DownloadViaYtDlpAsync(string url, string outputFolder, string ffmpegPath, string? browserForCookies = null, int maxHeight = 1080, IProgress<double>? progress = null, CancellationToken ct = default)
     {
         WriteLogFile($"===== yt-dlp run started for URL: {url} =====");
         WriteLogFile($"yt-dlp.exe path: {YtDlpExePath}");
@@ -142,20 +252,36 @@ public class DownloadService
         var psi = new ProcessStartInfo
         {
             FileName = YtDlpExePath,
-            Arguments = $"-f \"bv*[ext=mp4][vcodec^=avc1][height<=1080]+ba[ext=m4a]/b[ext=mp4][height<=1080]/bv*[height<=1080]+ba/b[height<=1080]\" " +
-                        $"--merge-output-format mp4 --remux-video mp4 " +
-                        $"--ffmpeg-location \"{ffmpegPath}\" " +
-                        $"--no-playlist --no-warnings --newline " +
-                        $"-o \"{outputTemplate}\" \"{url}\"",
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true
         };
 
-        Log?.Invoke($"yt-dlp · {psi.Arguments}");
-        WriteLogFile($"Running: {YtDlpExePath} {psi.Arguments}");
+        psi.ArgumentList.Add("-f");
+        psi.ArgumentList.Add(BuildFormatSelector(maxHeight));
+        psi.ArgumentList.Add("--merge-output-format");
+        psi.ArgumentList.Add("mp4");
+        psi.ArgumentList.Add("--remux-video");
+        psi.ArgumentList.Add("mp4");
+        psi.ArgumentList.Add("--ffmpeg-location");
+        psi.ArgumentList.Add(ffmpegPath);
+        psi.ArgumentList.Add("--no-playlist");
+        psi.ArgumentList.Add("--no-warnings");
+        psi.ArgumentList.Add("--newline");
+        if (!string.IsNullOrWhiteSpace(browserForCookies))
+        {
+            psi.ArgumentList.Add("--cookies-from-browser");
+            psi.ArgumentList.Add(browserForCookies);
+        }
+        psi.ArgumentList.Add("-o");
+        psi.ArgumentList.Add(outputTemplate);
+        psi.ArgumentList.Add(url);
+
+        Log?.Invoke("yt-dlp · " + string.Join(" ", psi.ArgumentList.Select(QuoteArg)));
+        WriteLogFile($"Running: {YtDlpExePath} {string.Join(" ", psi.ArgumentList.Select(QuoteArg))}");
         string? finalPath = null;
+        var recentErrors = new Queue<string>();
 
         using var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
         p.OutputDataReceived += (_, e) =>
@@ -198,6 +324,8 @@ public class DownloadService
             if (string.IsNullOrEmpty(e.Data)) return;
             Log?.Invoke("ERR: " + e.Data);
             WriteLogFile($"ERR: {e.Data}");
+            recentErrors.Enqueue(e.Data);
+            while (recentErrors.Count > 5) recentErrors.Dequeue();
         };
         try
         {
@@ -226,10 +354,16 @@ public class DownloadService
         }
         WriteLogFile($"yt-dlp exited with code {p.ExitCode}");
         if (p.ExitCode != 0)
+        {
+            var detail = string.Join(Environment.NewLine, recentErrors);
+            if (string.IsNullOrWhiteSpace(detail))
+                detail = "No detailed error was reported by yt-dlp.";
             throw new Exception(
-                $"yt-dlp exited with code {p.ExitCode}. Common causes: outdated yt-dlp, " +
-                $"YouTube anti-bot block, or geo-restricted video. " +
+                $"yt-dlp exited with code {p.ExitCode}.{Environment.NewLine}" +
+                $"{detail}{Environment.NewLine}" +
+                $"Common causes: site login/private content, anti-bot block, age/audience restriction, or geo-restricted video.{Environment.NewLine}" +
                 $"Full log: {DownloadLogPath}");
+        }
 
         // If we didn't capture a final path, scan the folder for the newest video file.
         if (string.IsNullOrEmpty(finalPath) || !File.Exists(finalPath))
@@ -245,6 +379,136 @@ public class DownloadService
         Log?.Invoke($"yt-dlp done → {finalPath}");
         WriteLogFile($"yt-dlp done → {finalPath}");
         return finalPath;
+    }
+
+    private static string BuildDirectOutputPath(string url, string outputFolder)
+    {
+        string fileName;
+        try
+        {
+            var uri = new Uri(url);
+            fileName = Path.GetFileName(uri.LocalPath);
+        }
+        catch
+        {
+            fileName = "";
+        }
+
+        if (string.IsNullOrWhiteSpace(fileName) || !fileName.Contains('.'))
+            fileName = $"downloaded_{DateTime.Now:yyyyMMdd_HHmmss}.mp4";
+
+        foreach (var c in Path.GetInvalidFileNameChars())
+            fileName = fileName.Replace(c, '_');
+
+        return Path.Combine(outputFolder, fileName);
+    }
+
+    private static void EnsureDirectResponseLooksDownloadable(HttpResponseMessage response, string url)
+    {
+        var mediaType = response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(mediaType)) return;
+
+        var looksLikePage =
+            mediaType.StartsWith("text/") ||
+            mediaType is "application/json" or "application/xml" or "application/xhtml+xml";
+
+        if (looksLikePage && !LooksLikeDirectFile(url))
+            throw new InvalidOperationException($"The URL returned {mediaType}, not a downloadable video file.");
+    }
+
+    private static string QuoteArg(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return "\"\"";
+        return value.Any(char.IsWhiteSpace) || value.Contains('"')
+            ? "\"" + value.Replace("\"", "\\\"") + "\""
+            : value;
+    }
+
+    private static string BuildFormatSelector(int maxHeight)
+    {
+        if (maxHeight <= 0)
+            return "bv*+ba/b";
+
+        maxHeight = Math.Clamp(maxHeight, 144, 4320);
+        return $"bv*[height<={maxHeight}]+ba/b[height<={maxHeight}]/bv*+ba/b";
+    }
+
+    private static string BuildBrowserLoginFailureMessage(List<(string Browser, Exception Error)> failures)
+    {
+        var usableCookieFailures = failures
+            .Where(f => !IsBrowserCookieDecryptFailure(f.Error.Message))
+            .ToList();
+
+        var primary = usableCookieFailures.FirstOrDefault();
+        if (primary.Error != null)
+        {
+            var blockedBrowsers = failures
+                .Where(f => IsBrowserCookieDecryptFailure(f.Error.Message))
+                .Select(f => f.Browser)
+                .ToArray();
+
+            var msg =
+                $"yt-dlp could read browser login cookies, but the site still refused the download.{Environment.NewLine}" +
+                $"{primary.Browser}: {primary.Error.Message}";
+
+            if (blockedBrowsers.Length > 0)
+            {
+                msg += Environment.NewLine + Environment.NewLine +
+                       "Could not read cookies from: " + string.Join(", ", blockedBrowsers) + "." + Environment.NewLine +
+                       "On recent Chrome/Edge versions this can happen because Windows protects browser cookies with DPAPI/App-Bound encryption.";
+            }
+
+            return msg;
+        }
+
+        return
+            $"yt-dlp could not read browser login cookies from Firefox, Edge, or Chrome.{Environment.NewLine}" +
+            "Chrome/Edge may be blocked by Windows DPAPI/App-Bound cookie encryption. Try logging into the site in Firefox, then run the download again.";
+    }
+
+    private static bool ShouldRetryWithBrowserLogin(string message)
+    {
+        var needles = new[]
+        {
+            "login",
+            "private",
+            "not available to everyone",
+            "not available",
+            "age",
+            "audience",
+            "restricted",
+            "cookies",
+            "sign in",
+            "this content isn't available"
+        };
+
+        return needles.Any(n => message.Contains(n, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string GetSiteName(string url)
+    {
+        try
+        {
+            var host = new Uri(url).Host.ToLowerInvariant();
+            if (host.Contains("instagram")) return "Instagram";
+            if (host.Contains("tiktok")) return "TikTok";
+            if (host.Contains("facebook") || host == "fb.watch") return "Facebook";
+            if (host.Contains("youtube") || host == "youtu.be") return "YouTube";
+            if (host.Contains("x.com") || host.Contains("twitter")) return "X";
+            if (host.Contains("vimeo")) return "Vimeo";
+            return host.StartsWith("www.") ? host[4..] : host;
+        }
+        catch
+        {
+            return "this site";
+        }
+    }
+
+    private static bool IsBrowserCookieDecryptFailure(string message)
+    {
+        return message.Contains("Failed to decrypt", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("DPAPI", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("could not decrypt", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FormatSize(long bytes)

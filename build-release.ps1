@@ -8,16 +8,48 @@
 
 [CmdletBinding()]
 param(
-    [string]$OutputDir = (Join-Path $PSScriptRoot "publish\portable"),
+    [string]$OutputDir = "",
     [string]$Runtime = "win-x64",
     [switch]$Zip
 )
 
 $ErrorActionPreference = "Stop"
-$projectFile = Join-Path $PSScriptRoot "VideoEditor\VideoEditor.csproj"
+$scriptRoot = if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) { $PSScriptRoot } else { (Get-Location).Path }
+if ([string]::IsNullOrWhiteSpace($OutputDir)) {
+    $OutputDir = Join-Path $scriptRoot "publish\portable"
+}
+
+function Update-DesktopShortcut {
+    param([Parameter(Mandatory = $true)][string]$TargetPath)
+
+    $resolvedTarget = Resolve-Path -LiteralPath $TargetPath -ErrorAction Stop
+    $target = $resolvedTarget.ProviderPath
+    $shortcutPath = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'VideoEditor.lnk'
+
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = $target
+    $shortcut.Arguments = ""
+    $shortcut.WorkingDirectory = Split-Path -Parent $target
+    $shortcut.IconLocation = "$target,0"
+    $shortcut.Save()
+
+    Write-Host "Updated shortcut: $shortcutPath -> $target"
+}
+
+$projectFile = Join-Path $scriptRoot "VideoEditor\VideoEditor.csproj"
 
 if (-not (Test-Path $projectFile)) {
     throw "Could not find VideoEditor.csproj at $projectFile."
+}
+
+$portableExe = Join-Path $OutputDir "VideoEditor.exe"
+$runningPortable = @(Get-Process VideoEditor -ErrorAction SilentlyContinue | Where-Object {
+    try { $_.Path -eq $portableExe } catch { $false }
+})
+if ($runningPortable.Count -gt 0) {
+    $ids = ($runningPortable | Select-Object -ExpandProperty Id) -join ", "
+    throw "Cannot rebuild portable output because VideoEditor.exe is running from $OutputDir (PID: $ids). Close VideoEditor and run the build again."
 }
 
 try {
@@ -48,13 +80,14 @@ Write-Host "Publishing self-contained build for $Runtime ..." -ForegroundColor G
     -p:EnableCompressionInSingleFile=true `
     -p:PublishReadyToRun=true `
     -p:DebugType=embedded `
+    -p:UpdateDesktopShortcut=false `
     --output $OutputDir
 
 if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE."
 }
 
-$exe = Join-Path $OutputDir "VideoEditor.exe"
+$exe = $portableExe
 if (-not (Test-Path $exe)) {
     throw "Build finished but VideoEditor.exe is missing from $OutputDir."
 }
@@ -82,6 +115,10 @@ Write-Host "Build complete." -ForegroundColor Green
 Write-Host "  EXE:  $exe  ($sizeMB MB)" -ForegroundColor Green
 Write-Host "  This folder is fully portable - copy it to any Windows 10/11 x64 machine."
 Write-Host "  FFmpeg, Whisper models, and the AI background model auto-download on first launch."
+
+Write-Host ""
+Write-Host "Updating desktop shortcut ..." -ForegroundColor Cyan
+Update-DesktopShortcut -TargetPath $exe
 
 if ($Zip) {
     $zipName = "VideoEditor-$Runtime-portable.zip"

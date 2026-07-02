@@ -158,6 +158,7 @@ public partial class MainWindow : Window
         timeline.FFmpeg = _ff;
         InitFormatControls();
         ConfigureUsabilityHints();
+        SetSafeAreasEnabled(AppSettings.PreviewSafeAreas, save: false);
         // Re-apply on settings change at runtime
         AppSettings.Changed += () =>
         {
@@ -173,6 +174,7 @@ public partial class MainWindow : Window
                 UpdateInspectorFormatText();
                 UpdateExportFpsControls();
                 UpdatePreviewAspect();
+                SetSafeAreasEnabled(AppSettings.PreviewSafeAreas, save: false);
             });
         };
 
@@ -180,6 +182,7 @@ public partial class MainWindow : Window
         _tick.Start();
 
         PreviewKeyDown += MainWindow_PreviewKeyDown;
+        PreviewKeyUp += MainWindow_PreviewKeyUp;
 
         timeline.Seek += sec => SeekTo(sec);
         timeline.BlockSelected += b => SelectBlock(b);
@@ -191,7 +194,7 @@ public partial class MainWindow : Window
         timeline.ClipEdgeDragEnded += c => { /* leave preview at the trim point */ };
         timeline.AudioSelected += OnAudioSelected;
         timeline.AudioContextAction += OnAudioContextAction;
-        timeline.TextOverlaySelected += o => { /* selection visual handled by Timeline */ };
+        timeline.TextOverlaySelected += o => RefreshTextOverlayPreviewSelectionVisuals();
         timeline.TextOverlayContextAction += OnTextOverlayContext;
         timeline.TextOverlayChanged += o => _textOverlayDirty.Add(o);
         timeline.TextOverlaysChanged += () => UpdateStats();
@@ -208,11 +211,19 @@ public partial class MainWindow : Window
         overlayCanvas.SizeChanged += (_, _) =>
         {
             RepositionOverlay();
+            UpdateMeasurementRulerVisual();
+            UpdateSafeAreasVisual();
+            UpdatePreviewOverlayGroupBox();
             // Scale of every text-overlay preview control depends on canvas size - mark all dirty
             // so the next tick re-styles + re-places them. Cheap because it only happens on resize.
             foreach (var ov in timeline.TextOverlays) _textOverlayDirty.Add(ov);
         };
         overlayCanvas.MouseLeftButtonDown += OverlayCanvas_BackgroundClick;
+        videoContainerOuter.MouseLeftButtonDown += PreviewViewPan_MouseDown;
+        videoContainerOuter.MouseMove += PreviewViewPan_MouseMove;
+        videoContainerOuter.MouseLeftButtonUp += PreviewViewPan_MouseUp;
+        videoContainerOuter.MouseWheel += PreviewViewPan_MouseWheel;
+        videoContainerOuter.MouseLeave += PreviewCanvas_MouseLeave;
         WirePreviewCanvasTransformGestures();
     }
 
@@ -220,13 +231,115 @@ public partial class MainWindow : Window
     //
     // - Click and drag inside the preview to pan the selected clip on the canvas.
     // - Scroll the mouse wheel inside the preview to zoom in/out (Ctrl+Scroll = finer step).
+    // - Hold Space to pan/zoom the preview view itself, matching OBS fixed-preview scaling.
     // - Double-click resets the clip to "fit the canvas exactly" (scale=1, offset=0,0).
     //
     // Behaviour is no-op when no video clip is selected.
     private bool _canvasDragActive;
+    private bool _canvasDragMoved;
+    private UIElement? _canvasDragCaptureElement;
+    private VideoClip? _canvasDragClip;
+    private bool _canvasDragCtrlClickCandidate;
+    private bool _canvasDragWasSelectedAtMouseDown;
     private Point _canvasDragStartMouse;
     private double _canvasDragStartOffX;
     private double _canvasDragStartOffY;
+    private bool _previewMarqueeActive;
+    private bool _previewMarqueeMoved;
+    private Point _previewMarqueeStart;
+    private bool _previewOverlayDragActive;
+    private bool _previewOverlayDragMoved;
+    private Point _previewOverlayDragLast;
+    private Point _previewOverlayDragStart;
+    private object? _previewOverlayClickThroughItem;
+    private bool _previewOverlayClickThroughCandidate;
+    private bool _previewGroupResizeActive;
+    private string _previewGroupResizeTag = "";
+    private Point _previewGroupResizeStartMouse;
+    private Rect _previewGroupResizeStartBounds;
+    private Dictionary<VideoBlock, Rect>? _previewGroupResizeStartBlocks;
+    private Dictionary<TextOverlay, (double x, double y, int fontSize, int pad)>? _previewGroupResizeStartTexts;
+    private const double CanvasSnapDistance = 10.0;
+    private double? _canvasSnapGuideX;
+    private double? _canvasSnapGuideY;
+    private bool _measurementRulerEnabled;
+    private bool _safeAreasEnabled;
+    private bool _previewViewPanMode;
+    private bool _previewViewPanActive;
+    private bool _previewViewPanMoved;
+    private Point _previewViewPanStartMouse;
+    private Point _previewViewPanStartOffset;
+    private Point _previewViewPanOffset;
+    private int _previewViewZoomLevel;
+    private double _previewViewZoom = 1.0;
+    private const int PreviewViewMaxZoomLevel = 32;
+    private const double PreviewViewMaxZoomAmount = 8.0;
+    private string _measurementRulerDragMode = "";
+    private Point _measurementRulerDragStartMouse;
+    private Point _measurementRulerDragStartA;
+    private Point _measurementRulerDragStartB;
+    private Point _measurementRulerA = new(80, 80);
+    private Point _measurementRulerB = new(320, 80);
+    private readonly List<MeasurementRulerItem> _measurementRulers = new();
+    private readonly List<UIElement> _measurementRulerOverlays = new();
+    private int _activeMeasurementRulerIndex = -1;
+    private CanvasTransformSnapshot? _copiedCanvasTransform;
+
+    private sealed class MeasurementRulerItem
+    {
+        public string Name { get; set; } = "Ruler";
+        public Point A { get; set; }
+        public Point B { get; set; }
+        public string Unit { get; set; } = "px";
+    }
+
+    private sealed class CanvasTransformSnapshot
+    {
+        public double Scale;
+        public double ScaleX;
+        public double ScaleY;
+        public double OffsetX;
+        public double OffsetY;
+        public double CropLeft;
+        public double CropTop;
+        public double CropRight;
+        public double CropBottom;
+        public double RotateDegrees;
+        public bool FlipH;
+        public bool FlipV;
+
+        public static CanvasTransformSnapshot From(VideoClip c) => new()
+        {
+            Scale = c.CanvasScale,
+            ScaleX = c.CanvasScaleX,
+            ScaleY = c.CanvasScaleY,
+            OffsetX = c.CanvasOffsetX,
+            OffsetY = c.CanvasOffsetY,
+            CropLeft = c.CanvasCropLeft,
+            CropTop = c.CanvasCropTop,
+            CropRight = c.CanvasCropRight,
+            CropBottom = c.CanvasCropBottom,
+            RotateDegrees = c.RotateDegrees,
+            FlipH = c.FlipH,
+            FlipV = c.FlipV,
+        };
+
+        public void ApplyTo(VideoClip c)
+        {
+            c.CanvasScale = Scale;
+            c.CanvasScaleX = ScaleX;
+            c.CanvasScaleY = ScaleY;
+            c.CanvasOffsetX = OffsetX;
+            c.CanvasOffsetY = OffsetY;
+            c.CanvasCropLeft = CropLeft;
+            c.CanvasCropTop = CropTop;
+            c.CanvasCropRight = CropRight;
+            c.CanvasCropBottom = CropBottom;
+            c.RotateDegrees = RotateDegrees;
+            c.FlipH = FlipH;
+            c.FlipV = FlipV;
+        }
+    }
 
     private void WirePreviewCanvasTransformGestures()
     {
@@ -234,9 +347,855 @@ public partial class MainWindow : Window
         videoView.MouseLeftButtonDown += PreviewCanvas_MouseDown;
         videoView.MouseMove += PreviewCanvas_MouseMove;
         videoView.MouseLeftButtonUp += PreviewCanvas_MouseUp;
+        videoView.LostMouseCapture += PreviewCanvas_LostMouseCapture;
         videoView.MouseWheel += PreviewCanvas_MouseWheel;
         videoView.MouseRightButtonDown += PreviewCanvas_MouseRight;
-        videoView.Cursor = Cursors.SizeAll;
+        videoView.Cursor = Cursors.Arrow;
+
+        if (overlayCanvas != null)
+        {
+            overlayCanvas.MouseLeftButtonDown += PreviewCanvas_MouseDown;
+            overlayCanvas.MouseMove += PreviewCanvas_MouseMove;
+            overlayCanvas.MouseLeftButtonUp += PreviewCanvas_MouseUp;
+            overlayCanvas.LostMouseCapture += PreviewCanvas_LostMouseCapture;
+            overlayCanvas.MouseWheel += PreviewCanvas_MouseWheel;
+            overlayCanvas.MouseRightButtonDown += PreviewCanvas_MouseRight;
+            overlayCanvas.Cursor = Cursors.Arrow;
+        }
+    }
+
+    private void ToggleRuler_Click(object sender, RoutedEventArgs e)
+    {
+        _measurementRulerEnabled = !_measurementRulerEnabled;
+        if (_measurementRulerEnabled)
+        {
+            if (measurementRulerLayer.ActualWidth <= 1 || measurementRulerLayer.ActualHeight <= 1)
+            {
+                measurementRulerLayer.Width = Math.Max(1, videoStack.ActualWidth);
+                measurementRulerLayer.Height = Math.Max(1, videoStack.ActualHeight);
+            }
+
+            if (_measurementRulers.Count == 0)
+                AddMeasurementRuler();
+            else
+                SelectMeasurementRuler(Math.Clamp(_activeMeasurementRulerIndex, 0, _measurementRulers.Count - 1));
+
+            measurementRulerLayer.Visibility = Visibility.Visible;
+            toggleRulerBtn.Background = (Brush)FindResource("AccentSoft");
+            toggleRulerBtn.BorderBrush = (Brush)FindResource("Accent");
+            UpdateMeasurementRulerVisual();
+            ShowInspectorTab("ruler");
+            status.Text = "Measurement ruler on - drag the line or its endpoints.";
+        }
+        else
+        {
+            measurementRulerLayer.Visibility = Visibility.Collapsed;
+            toggleRulerBtn.ClearValue(BackgroundProperty);
+            toggleRulerBtn.ClearValue(BorderBrushProperty);
+            status.Text = "Measurement ruler off.";
+        }
+    }
+
+    private void TabRuler_Click(object sender, RoutedEventArgs e) => ShowInspectorTab("ruler");
+
+    private void AddRuler_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_measurementRulerEnabled)
+            SetMeasurementRulerEnabled(true);
+        AddMeasurementRuler();
+        ShowInspectorTab("ruler");
+    }
+
+    private void DeleteRuler_Click(object sender, RoutedEventArgs e)
+    {
+        if (_activeMeasurementRulerIndex < 0 || _activeMeasurementRulerIndex >= _measurementRulers.Count)
+            return;
+
+        _measurementRulers.RemoveAt(_activeMeasurementRulerIndex);
+        if (_measurementRulers.Count == 0)
+        {
+            _activeMeasurementRulerIndex = -1;
+            _measurementRulerEnabled = false;
+            measurementRulerLayer.Visibility = Visibility.Collapsed;
+            toggleRulerBtn.ClearValue(BackgroundProperty);
+            toggleRulerBtn.ClearValue(BorderBrushProperty);
+        }
+        else
+        {
+            SelectMeasurementRuler(Math.Min(_activeMeasurementRulerIndex, _measurementRulers.Count - 1));
+        }
+
+        RefreshRulerInspector();
+        UpdateMeasurementRulerVisual();
+        status.Text = "Measurement ruler deleted.";
+    }
+
+    private void ResetRuler_Click(object sender, RoutedEventArgs e)
+    {
+        var ruler = ActiveMeasurementRuler();
+        if (ruler == null) return;
+        var (a, b) = DefaultMeasurementRulerPoints();
+        ruler.A = a;
+        ruler.B = b;
+        SyncActiveMeasurementRulerFields();
+        RefreshRulerInspector();
+        UpdateMeasurementRulerVisual();
+    }
+
+    private void RulerList_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppress || rulerListBox.SelectedIndex < 0) return;
+        SelectMeasurementRuler(rulerListBox.SelectedIndex);
+    }
+
+    private void RulerUnit_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppress) return;
+        var ruler = ActiveMeasurementRuler();
+        if (ruler == null || rulerUnitBox.SelectedIndex < 0) return;
+        ruler.Unit = rulerUnitBox.SelectedIndex switch
+        {
+            1 => "pct",
+            2 => "cm",
+            3 => "in",
+            4 => "pt",
+            _ => "px"
+        };
+        RefreshRulerInspector();
+        UpdateMeasurementRulerVisual();
+    }
+
+    private void SetMeasurementRulerEnabled(bool enabled)
+    {
+        if (_measurementRulerEnabled == enabled) return;
+        _measurementRulerEnabled = !enabled;
+        ToggleRuler_Click(this, new RoutedEventArgs());
+    }
+
+    private void ToggleSafeAreas_Click(object sender, RoutedEventArgs e)
+    {
+        SetSafeAreasEnabled(!_safeAreasEnabled, save: true);
+        status.Text = _safeAreasEnabled ? "Safe areas on." : "Safe areas off.";
+    }
+
+    private void SetSafeAreasEnabled(bool enabled, bool save)
+    {
+        _safeAreasEnabled = enabled;
+        if (save)
+        {
+            AppSettings.PreviewSafeAreas = enabled;
+            AppSettings.Save();
+        }
+
+        if (safeAreasLayer != null)
+            safeAreasLayer.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+
+        if (toggleSafeAreasBtn != null)
+        {
+            if (enabled)
+            {
+                toggleSafeAreasBtn.Background = (Brush)FindResource("AccentSoft");
+                toggleSafeAreasBtn.BorderBrush = (Brush)FindResource("Accent");
+            }
+            else
+            {
+                toggleSafeAreasBtn.ClearValue(BackgroundProperty);
+                toggleSafeAreasBtn.ClearValue(BorderBrushProperty);
+            }
+        }
+
+        UpdateSafeAreasVisual();
+    }
+
+    private void UpdateSafeAreasVisual()
+    {
+        if (!_safeAreasEnabled || safeAreasLayer == null || videoStack == null)
+            return;
+
+        double w = Math.Max(1, videoStack.ActualWidth);
+        double h = Math.Max(1, videoStack.ActualHeight);
+        safeAreasLayer.Width = w;
+        safeAreasLayer.Height = h;
+        safeAreasLayer.Visibility = Visibility.Visible;
+
+        // OBS-style defaults: action safe = 90%, graphics/title safe = 80%.
+        SetSafeAreaRect(safeAreaActionRect, w * 0.05, h * 0.05, w * 0.90, h * 0.90);
+        SetSafeAreaRect(safeAreaGraphicsRect, w * 0.10, h * 0.10, w * 0.80, h * 0.80);
+
+        double fourByThreeW = Math.Min(w, h * 4.0 / 3.0);
+        double fourByThreeH = Math.Min(h, w * 3.0 / 4.0);
+        SetSafeAreaRect(safeAreaFourByThreeRect, (w - fourByThreeW) / 2, (h - fourByThreeH) / 2, fourByThreeW, fourByThreeH);
+
+        safeAreaCenterV.X1 = safeAreaCenterV.X2 = w / 2;
+        safeAreaCenterV.Y1 = 0;
+        safeAreaCenterV.Y2 = h;
+        safeAreaCenterH.X1 = 0;
+        safeAreaCenterH.X2 = w;
+        safeAreaCenterH.Y1 = safeAreaCenterH.Y2 = h / 2;
+    }
+
+    private static void SetSafeAreaRect(System.Windows.Shapes.Rectangle rect, double x, double y, double w, double h)
+    {
+        Canvas.SetLeft(rect, x);
+        Canvas.SetTop(rect, y);
+        rect.Width = Math.Max(1, w);
+        rect.Height = Math.Max(1, h);
+    }
+
+    private void ResetMeasurementRuler()
+    {
+        var (a, b) = DefaultMeasurementRulerPoints();
+        _measurementRulerA = a;
+        _measurementRulerB = b;
+    }
+
+    private (Point a, Point b) DefaultMeasurementRulerPoints()
+    {
+        var w = Math.Max(1, videoStack.ActualWidth);
+        var h = Math.Max(1, videoStack.ActualHeight);
+        return (new Point(w * 0.25, h * 0.5), new Point(w * 0.75, h * 0.5));
+    }
+
+    private MeasurementRulerItem? ActiveMeasurementRuler()
+    {
+        if (_activeMeasurementRulerIndex < 0 || _activeMeasurementRulerIndex >= _measurementRulers.Count)
+            return null;
+        return _measurementRulers[_activeMeasurementRulerIndex];
+    }
+
+    private void AddMeasurementRuler()
+    {
+        var (a, b) = DefaultMeasurementRulerPoints();
+        var ruler = new MeasurementRulerItem
+        {
+            Name = $"Ruler {_measurementRulers.Count + 1}",
+            A = a,
+            B = b,
+            Unit = ActiveMeasurementRuler()?.Unit ?? "px"
+        };
+        _measurementRulers.Add(ruler);
+        SelectMeasurementRuler(_measurementRulers.Count - 1);
+        status.Text = $"{ruler.Name} added.";
+    }
+
+    private void SelectMeasurementRuler(int index)
+    {
+        if (index < 0 || index >= _measurementRulers.Count) return;
+        _activeMeasurementRulerIndex = index;
+        SyncActiveMeasurementRulerFields();
+        RefreshRulerInspector();
+        UpdateMeasurementRulerVisual();
+    }
+
+    private void SyncActiveMeasurementRulerFields()
+    {
+        var ruler = ActiveMeasurementRuler();
+        if (ruler == null) return;
+        _measurementRulerA = ruler.A;
+        _measurementRulerB = ruler.B;
+    }
+
+    private void SaveActiveMeasurementRulerFields()
+    {
+        var ruler = ActiveMeasurementRuler();
+        if (ruler == null) return;
+        ruler.A = _measurementRulerA;
+        ruler.B = _measurementRulerB;
+    }
+
+    private void RefreshRulerInspector()
+    {
+        if (rulerListBox == null || rulerUnitBox == null) return;
+        _suppress = true;
+        try
+        {
+            rulerListBox.Items.Clear();
+            for (int i = 0; i < _measurementRulers.Count; i++)
+            {
+                var r = _measurementRulers[i];
+                rulerListBox.Items.Add($"{i + 1}. {FormatMeasurementRuler(r)}");
+            }
+            rulerListBox.SelectedIndex = _activeMeasurementRulerIndex;
+            rulerUnitBox.SelectedIndex = ActiveMeasurementRuler()?.Unit switch
+            {
+                "pct" => 1,
+                "cm" => 2,
+                "in" => 3,
+                "pt" => 4,
+                _ => 0
+            };
+            rulerDetailsText.Text = ActiveMeasurementRuler() is { } active
+                ? $"{active.Name}: {FormatMeasurementRuler(active, includeAngle: true)}"
+                : "No ruler selected";
+        }
+        finally
+        {
+            _suppress = false;
+        }
+    }
+
+    private void MeasurementRuler_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement el) return;
+        _measurementRulerDragMode = el.Tag?.ToString() ?? "";
+        _measurementRulerDragStartMouse = e.GetPosition(measurementRulerLayer);
+        _measurementRulerDragStartA = _measurementRulerA;
+        _measurementRulerDragStartB = _measurementRulerB;
+        el.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void MeasurementRuler_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_measurementRulerDragMode) ||
+            sender is not FrameworkElement el ||
+            !el.IsMouseCaptured)
+            return;
+
+        var p = e.GetPosition(measurementRulerLayer);
+        var delta = p - _measurementRulerDragStartMouse;
+        if (_measurementRulerDragMode == "start")
+            _measurementRulerA = ClampMeasurementPoint(_measurementRulerDragStartA + delta);
+        else if (_measurementRulerDragMode == "end")
+            _measurementRulerB = ClampMeasurementPoint(_measurementRulerDragStartB + delta);
+        else
+        {
+            _measurementRulerA = ClampMeasurementPoint(_measurementRulerDragStartA + delta);
+            _measurementRulerB = ClampMeasurementPoint(_measurementRulerDragStartB + delta);
+        }
+
+        SaveActiveMeasurementRulerFields();
+        UpdateMeasurementRulerVisual();
+        RefreshRulerInspector();
+        e.Handled = true;
+    }
+
+    private void MeasurementRuler_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement el && el.IsMouseCaptured)
+            el.ReleaseMouseCapture();
+        _measurementRulerDragMode = "";
+        e.Handled = true;
+    }
+
+    private Point ClampMeasurementPoint(Point p)
+    {
+        var w = Math.Max(1, measurementRulerLayer.ActualWidth);
+        var h = Math.Max(1, measurementRulerLayer.ActualHeight);
+        return new Point(Math.Clamp(p.X, 0, w), Math.Clamp(p.Y, 0, h));
+    }
+
+    private void UpdateMeasurementRulerVisual()
+    {
+        if (!_measurementRulerEnabled || measurementRulerLayer == null) return;
+        measurementRulerLayer.Width = Math.Max(1, videoStack.ActualWidth);
+        measurementRulerLayer.Height = Math.Max(1, videoStack.ActualHeight);
+        RenderInactiveMeasurementRulers();
+
+        var active = ActiveMeasurementRuler();
+        bool hasActive = active != null;
+        measurementRulerLine.Visibility = hasActive ? Visibility.Visible : Visibility.Collapsed;
+        measurementRulerShadow.Visibility = hasActive ? Visibility.Visible : Visibility.Collapsed;
+        measurementRulerStartHandle.Visibility = hasActive ? Visibility.Visible : Visibility.Collapsed;
+        measurementRulerEndHandle.Visibility = hasActive ? Visibility.Visible : Visibility.Collapsed;
+        measurementRulerMoveHandle.Visibility = hasActive ? Visibility.Visible : Visibility.Collapsed;
+        measurementRulerLabel.Visibility = hasActive ? Visibility.Visible : Visibility.Collapsed;
+        if (!hasActive) return;
+
+        measurementRulerLine.X1 = measurementRulerShadow.X1 = _measurementRulerA.X;
+        measurementRulerLine.Y1 = measurementRulerShadow.Y1 = _measurementRulerA.Y;
+        measurementRulerLine.X2 = measurementRulerShadow.X2 = _measurementRulerB.X;
+        measurementRulerLine.Y2 = measurementRulerShadow.Y2 = _measurementRulerB.Y;
+
+        PlaceRulerHandle(measurementRulerStartHandle, _measurementRulerA);
+        PlaceRulerHandle(measurementRulerEndHandle, _measurementRulerB);
+        PlaceRulerHandle(measurementRulerMoveHandle, new Point(
+            (_measurementRulerA.X + _measurementRulerB.X) / 2,
+            (_measurementRulerA.Y + _measurementRulerB.Y) / 2));
+
+        var dx = _measurementRulerB.X - _measurementRulerA.X;
+        var dy = _measurementRulerB.Y - _measurementRulerA.Y;
+        var len = Math.Sqrt(dx * dx + dy * dy);
+        var angle = Math.Atan2(dy, dx) * 180 / Math.PI;
+        measurementRulerText.Text = $"{len:0}px · {angle:0.#}°";
+
+        measurementRulerText.Text = FormatMeasurementRuler(active!, includeAngle: true);
+        measurementRulerLabel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var labelW = Math.Max(130, measurementRulerLabel.DesiredSize.Width);
+        var labelX = Math.Min(Math.Max((measurementRulerLine.X1 + measurementRulerLine.X2) / 2 + 14, 4), Math.Max(4, measurementRulerLayer.Width - labelW - 4));
+        var labelY = Math.Min(Math.Max((measurementRulerLine.Y1 + measurementRulerLine.Y2) / 2 - 34, 4), Math.Max(4, measurementRulerLayer.Height - 28));
+        Canvas.SetLeft(measurementRulerLabel, labelX);
+        Canvas.SetTop(measurementRulerLabel, labelY);
+    }
+
+    private static void PlaceRulerHandle(FrameworkElement handle, Point p)
+    {
+        Canvas.SetLeft(handle, p.X - handle.Width / 2);
+        Canvas.SetTop(handle, p.Y - handle.Height / 2);
+    }
+
+    private void RenderInactiveMeasurementRulers()
+    {
+        foreach (var el in _measurementRulerOverlays)
+            measurementRulerLayer.Children.Remove(el);
+        _measurementRulerOverlays.Clear();
+
+        for (int i = 0; i < _measurementRulers.Count; i++)
+        {
+            if (i == _activeMeasurementRulerIndex) continue;
+            var r = _measurementRulers[i];
+            AddInactiveRulerLine(r.A, r.B, Color.FromArgb(0x66, 0x00, 0x00, 0x00), 5);
+            AddInactiveRulerLine(r.A, r.B, Color.FromArgb(0x99, 0xFF, 0xD4, 0x3B), 2);
+
+            var label = new Border
+            {
+                Background = new SolidColorBrush(Color.FromArgb(0xCC, 0x0A, 0x0C, 0x12)),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(0x44, 0xFF, 0xFF, 0xFF)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 2, 6, 2),
+                IsHitTestVisible = false,
+                Child = new TextBlock
+                {
+                    Text = FormatMeasurementRuler(r),
+                    Foreground = Brushes.White,
+                    FontSize = 10.5,
+                    FontFamily = new FontFamily("Consolas")
+                }
+            };
+            measurementRulerLayer.Children.Add(label);
+            _measurementRulerOverlays.Add(label);
+            label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            Canvas.SetLeft(label, Math.Clamp((r.A.X + r.B.X) / 2 + 10, 2, Math.Max(2, measurementRulerLayer.Width - label.DesiredSize.Width - 2)));
+            Canvas.SetTop(label, Math.Clamp((r.A.Y + r.B.Y) / 2 - 28, 2, Math.Max(2, measurementRulerLayer.Height - label.DesiredSize.Height - 2)));
+        }
+    }
+
+    private void AddInactiveRulerLine(Point a, Point b, Color color, double thickness)
+    {
+        var line = new System.Windows.Shapes.Line
+        {
+            X1 = a.X,
+            Y1 = a.Y,
+            X2 = b.X,
+            Y2 = b.Y,
+            Stroke = new SolidColorBrush(color),
+            StrokeThickness = thickness,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            IsHitTestVisible = false
+        };
+        measurementRulerLayer.Children.Add(line);
+        _measurementRulerOverlays.Add(line);
+    }
+
+    private string FormatMeasurementRuler(MeasurementRulerItem ruler, bool includeAngle = false)
+    {
+        var (dx, dy, len) = ProjectRulerDelta(ruler);
+        string value = ruler.Unit switch
+        {
+            "pct" => $"{Math.Abs(dx) / Math.Max(1, ProjectCanvasSize().width) * 100:0.#}% W, {Math.Abs(dy) / Math.Max(1, ProjectCanvasSize().height) * 100:0.#}% H",
+            "cm" => $"{len / 96.0 * 2.54:0.##} cm",
+            "in" => $"{len / 96.0:0.###} in",
+            "pt" => $"{len / 96.0 * 72.0:0.#} pt",
+            _ => $"{len:0.#} px"
+        };
+
+        if (!includeAngle)
+            return value;
+
+        var angle = Math.Atan2(ruler.B.Y - ruler.A.Y, ruler.B.X - ruler.A.X) * 180 / Math.PI;
+        return $"{value} - {angle:0.#} deg";
+    }
+
+    private (double dx, double dy, double len) ProjectRulerDelta(MeasurementRulerItem ruler)
+    {
+        var (width, height) = ProjectCanvasSize();
+        double layerW = Math.Max(1, measurementRulerLayer?.ActualWidth ?? videoStack.ActualWidth);
+        double layerH = Math.Max(1, measurementRulerLayer?.ActualHeight ?? videoStack.ActualHeight);
+        double dx = (ruler.B.X - ruler.A.X) * width / layerW;
+        double dy = (ruler.B.Y - ruler.A.Y) * height / layerH;
+        return (dx, dy, Math.Sqrt(dx * dx + dy * dy));
+    }
+
+    private (double width, double height) ProjectCanvasSize()
+    {
+        var first = timeline.Clips.FirstOrDefault(c => !c.IsAudioOnly);
+        var (tw, th) = VideoEditor.Services.ProjectFormats.Resolve(AppSettings.TargetFormatPreset, first);
+        return (Math.Max(1, tw), Math.Max(1, th));
+    }
+
+    private static (double left, double top, double right, double bottom) NormalizedCrop(VideoClip c)
+    {
+        double maxW = Math.Max(0, c.VideoWidth - 2);
+        double maxH = Math.Max(0, c.VideoHeight - 2);
+        double l = Math.Clamp(c.CanvasCropLeft, 0, maxW);
+        double r = Math.Clamp(c.CanvasCropRight, 0, Math.Max(0, maxW - l));
+        double t = Math.Clamp(c.CanvasCropTop, 0, maxH);
+        double b = Math.Clamp(c.CanvasCropBottom, 0, Math.Max(0, maxH - t));
+        return (l, t, r, b);
+    }
+
+    private static void ApplyClampedCrop(VideoClip c, double left, double top, double right, double bottom)
+    {
+        double maxW = Math.Max(0, c.VideoWidth - 2);
+        double maxH = Math.Max(0, c.VideoHeight - 2);
+        left = Math.Clamp(left, 0, maxW);
+        right = Math.Clamp(right, 0, Math.Max(0, maxW - left));
+        top = Math.Clamp(top, 0, maxH);
+        bottom = Math.Clamp(bottom, 0, Math.Max(0, maxH - top));
+        c.CanvasCropLeft = left;
+        c.CanvasCropTop = top;
+        c.CanvasCropRight = right;
+        c.CanvasCropBottom = bottom;
+    }
+
+    private Rect GetVisibleCanvasBounds(VideoClip c, double offsetX, double offsetY, double scale, double? scaleXOverride = null, double? scaleYOverride = null)
+    {
+        if (videoStack.ActualWidth < 1 || videoStack.ActualHeight < 1 || c.VideoWidth <= 0 || c.VideoHeight <= 0)
+            return Rect.Empty;
+
+        double canvasW = videoStack.ActualWidth;
+        double canvasH = videoStack.ActualHeight;
+        double baseScale = Math.Min(canvasW / c.VideoWidth, canvasH / c.VideoHeight);
+        double scaleX = scaleXOverride ?? c.CanvasScaleX;
+        double scaleY = scaleYOverride ?? c.CanvasScaleY;
+        var crop = NormalizedCrop(c);
+        double visibleW = Math.Max(1, (c.VideoWidth - crop.left - crop.right) * baseScale * scale * scaleX);
+        double visibleH = Math.Max(1, (c.VideoHeight - crop.top - crop.bottom) * baseScale * scale * scaleY);
+        double cropShiftX = ((crop.left - crop.right) * baseScale * scale * scaleX) / 2;
+        double cropShiftY = ((crop.top - crop.bottom) * baseScale * scale * scaleY) / 2;
+        double centerX = canvasW / 2 + offsetX * canvasW + cropShiftX;
+        double centerY = canvasH / 2 + offsetY * canvasH + cropShiftY;
+        return RotatedBounds(centerX, centerY, visibleW, visibleH, c.RotateDegrees);
+    }
+
+    private static Rect RotatedBounds(double centerX, double centerY, double width, double height, double degrees)
+    {
+        double radians = degrees * Math.PI / 180.0;
+        double cos = Math.Abs(Math.Cos(radians));
+        double sin = Math.Abs(Math.Sin(radians));
+        double rotatedW = width * cos + height * sin;
+        double rotatedH = width * sin + height * cos;
+        return new Rect(centerX - rotatedW / 2, centerY - rotatedH / 2, rotatedW, rotatedH);
+    }
+
+    private Vector GetCanvasSnapOffset(VideoClip c, double offsetX, double offsetY, double scale, double? scaleXOverride = null, double? scaleYOverride = null)
+    {
+        _canvasSnapGuideX = null;
+        _canvasSnapGuideY = null;
+        if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
+            return new Vector();
+
+        var bounds = GetVisibleCanvasBounds(c, offsetX, offsetY, scale, scaleXOverride, scaleYOverride);
+        if (bounds.IsEmpty) return new Vector();
+
+        double canvasW = Math.Max(1, videoStack.ActualWidth);
+        double canvasH = Math.Max(1, videoStack.ActualHeight);
+        double dx = SnapAxis(bounds.Left, bounds.Right, canvasW, out var guideX);
+        double dy = SnapAxis(bounds.Top, bounds.Bottom, canvasH, out var guideY);
+
+        var sourceSnap = GetOverlaySourceSnapOffset(bounds, dx, dy, out var sourceGuideX, out var sourceGuideY);
+        if (Math.Abs(sourceSnap.X) > 0.001)
+        {
+            dx = sourceSnap.X;
+            guideX = sourceGuideX;
+        }
+        if (Math.Abs(sourceSnap.Y) > 0.001)
+        {
+            dy = sourceSnap.Y;
+            guideY = sourceGuideY;
+        }
+
+        _canvasSnapGuideX = Math.Abs(dx) > 0.001 ? guideX : null;
+        _canvasSnapGuideY = Math.Abs(dy) > 0.001 ? guideY : null;
+        return new Vector(dx, dy);
+    }
+
+    private static double SnapAxis(double start, double end, double canvasSize, out double guide)
+    {
+        double offset = 0;
+        guide = double.NaN;
+        if (Math.Abs(start) < CanvasSnapDistance)
+        {
+            offset = -start;
+            guide = 0;
+        }
+        if (Math.Abs(offset) < 0.001 && Math.Abs(canvasSize - end) < CanvasSnapDistance)
+        {
+            offset = canvasSize - end;
+            guide = canvasSize;
+        }
+
+        double size = end - start;
+        double center = start + size / 2;
+        if (Math.Abs(offset) < 0.001 &&
+            Math.Abs(canvasSize - size) > CanvasSnapDistance &&
+            Math.Abs(canvasSize / 2 - center) < CanvasSnapDistance)
+        {
+            offset = canvasSize / 2 - center;
+            guide = canvasSize / 2;
+        }
+        return offset;
+    }
+
+    private Vector GetOverlaySourceSnapOffset(Rect movingBounds, double screenDx, double screenDy, out double guideX, out double guideY)
+    {
+        guideX = double.NaN;
+        guideY = double.NaN;
+        double bestDx = 0;
+        double bestDy = 0;
+        double bestXDistance = Math.Abs(screenDx) > 0.001 ? Math.Abs(screenDx) : CanvasSnapDistance;
+        double bestYDistance = Math.Abs(screenDy) > 0.001 ? Math.Abs(screenDy) : CanvasSnapDistance;
+
+        foreach (var target in GetVisibleOverlaySnapBounds())
+        {
+            TrySnapToTargetAxis(
+                new[] { movingBounds.Left, movingBounds.Left + movingBounds.Width / 2, movingBounds.Right },
+                new[] { target.Left, target.Left + target.Width / 2, target.Right },
+                ref bestDx,
+                ref guideX,
+                ref bestXDistance);
+            TrySnapToTargetAxis(
+                new[] { movingBounds.Top, movingBounds.Top + movingBounds.Height / 2, movingBounds.Bottom },
+                new[] { target.Top, target.Top + target.Height / 2, target.Bottom },
+                ref bestDy,
+                ref guideY,
+                ref bestYDistance);
+        }
+
+        return new Vector(bestDx, bestDy);
+    }
+
+    private IEnumerable<Rect> GetVisibleOverlaySnapBounds(bool excludeCurrentSelection = false)
+    {
+        if (overlayCanvas == null) yield break;
+
+        foreach (var kv in _blockControls)
+        {
+            var block = kv.Key;
+            var ctl = kv.Value;
+            if (excludeCurrentSelection && timeline.SelectedBlocks.Contains(block)) continue;
+            if (ctl.Visibility != Visibility.Visible || !ReferenceEquals(ctl.Parent, overlayCanvas)) continue;
+            if (block.Width <= 1 || block.Height <= 1) continue;
+            yield return new Rect(block.X, block.Y, block.Width, block.Height);
+        }
+
+        foreach (var kv in _textOverlayPreviewControls)
+        {
+            if (excludeCurrentSelection && timeline.SelectedTextOverlays.Contains(kv.Key)) continue;
+            var ctl = kv.Value;
+            if (ctl.Visibility != Visibility.Visible || !ReferenceEquals(ctl.Parent, overlayCanvas)) continue;
+            double x = Canvas.GetLeft(ctl);
+            double y = Canvas.GetTop(ctl);
+            double w = ctl.ActualWidth;
+            double h = ctl.ActualHeight;
+            if (double.IsNaN(x) || double.IsNaN(y) || w <= 1 || h <= 1) continue;
+            yield return new Rect(x, y, w, h);
+        }
+    }
+
+    private static void TrySnapToTargetAxis(double[] movingLines, double[] targetLines, ref double bestOffset, ref double guide, ref double bestDistance)
+    {
+        foreach (double moving in movingLines)
+        {
+            foreach (double target in targetLines)
+            {
+                double offset = target - moving;
+                double distance = Math.Abs(offset);
+                if (distance < bestDistance && distance < CanvasSnapDistance)
+                {
+                    bestDistance = distance;
+                    bestOffset = offset;
+                    guide = target;
+                }
+            }
+        }
+    }
+
+    private void UpdateCanvasSnapGuides(VideoClip c, double offsetX, double offsetY, double scale, Vector snap, double? scaleXOverride = null, double? scaleYOverride = null)
+    {
+        if (canvasSnapGuideLayer == null) return;
+        if (Math.Abs(snap.X) < 0.001 && Math.Abs(snap.Y) < 0.001)
+        {
+            HideCanvasSnapGuides();
+            return;
+        }
+
+        double canvasW = Math.Max(1, videoStack.ActualWidth);
+        double canvasH = Math.Max(1, videoStack.ActualHeight);
+        canvasSnapGuideLayer.Width = canvasW;
+        canvasSnapGuideLayer.Height = canvasH;
+        canvasSnapGuideLayer.Visibility = Visibility.Visible;
+
+        var bounds = GetVisibleCanvasBounds(c, offsetX, offsetY, scale, scaleXOverride, scaleYOverride);
+        if (Math.Abs(snap.X) >= 0.001)
+        {
+            double x = _canvasSnapGuideX ?? SnapGuidePosition(bounds.Left, bounds.Right, canvasW);
+            canvasSnapGuideV.X1 = canvasSnapGuideV.X2 = x;
+            canvasSnapGuideV.Y1 = 0;
+            canvasSnapGuideV.Y2 = canvasH;
+            canvasSnapGuideV.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            canvasSnapGuideV.Visibility = Visibility.Collapsed;
+        }
+
+        if (Math.Abs(snap.Y) >= 0.001)
+        {
+            double y = _canvasSnapGuideY ?? SnapGuidePosition(bounds.Top, bounds.Bottom, canvasH);
+            canvasSnapGuideH.X1 = 0;
+            canvasSnapGuideH.X2 = canvasW;
+            canvasSnapGuideH.Y1 = canvasSnapGuideH.Y2 = y;
+            canvasSnapGuideH.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            canvasSnapGuideH.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void HideCanvasSnapGuides()
+    {
+        if (canvasSnapGuideLayer == null) return;
+        canvasSnapGuideLayer.Visibility = Visibility.Collapsed;
+        canvasSnapGuideV.Visibility = Visibility.Collapsed;
+        canvasSnapGuideH.Visibility = Visibility.Collapsed;
+        _canvasSnapGuideX = null;
+        _canvasSnapGuideY = null;
+    }
+
+    private Vector GetPreviewOverlaySnapOffset(Rect movingBounds)
+    {
+        _canvasSnapGuideX = null;
+        _canvasSnapGuideY = null;
+        if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
+            return new Vector();
+
+        double canvasW = Math.Max(1, overlayCanvas.ActualWidth);
+        double canvasH = Math.Max(1, overlayCanvas.ActualHeight);
+        double dx = SnapAxis(movingBounds.Left, movingBounds.Right, canvasW, out var guideX);
+        double dy = SnapAxis(movingBounds.Top, movingBounds.Bottom, canvasH, out var guideY);
+
+        double bestXDistance = Math.Abs(dx) > 0.001 ? Math.Abs(dx) : CanvasSnapDistance;
+        double bestYDistance = Math.Abs(dy) > 0.001 ? Math.Abs(dy) : CanvasSnapDistance;
+        foreach (var target in GetVisibleOverlaySnapBounds(excludeCurrentSelection: true))
+        {
+            TrySnapToTargetAxis(
+                new[] { movingBounds.Left, movingBounds.Left + movingBounds.Width / 2, movingBounds.Right },
+                new[] { target.Left, target.Left + target.Width / 2, target.Right },
+                ref dx,
+                ref guideX,
+                ref bestXDistance);
+            TrySnapToTargetAxis(
+                new[] { movingBounds.Top, movingBounds.Top + movingBounds.Height / 2, movingBounds.Bottom },
+                new[] { target.Top, target.Top + target.Height / 2, target.Bottom },
+                ref dy,
+                ref guideY,
+                ref bestYDistance);
+        }
+
+        _canvasSnapGuideX = Math.Abs(dx) > 0.001 ? guideX : null;
+        _canvasSnapGuideY = Math.Abs(dy) > 0.001 ? guideY : null;
+        return new Vector(dx, dy);
+    }
+
+    private void UpdatePreviewOverlaySnapGuides(Rect bounds, Vector snap)
+    {
+        if (canvasSnapGuideLayer == null) return;
+        if (Math.Abs(snap.X) < 0.001 && Math.Abs(snap.Y) < 0.001)
+        {
+            HideCanvasSnapGuides();
+            return;
+        }
+
+        double canvasW = Math.Max(1, overlayCanvas.ActualWidth);
+        double canvasH = Math.Max(1, overlayCanvas.ActualHeight);
+        canvasSnapGuideLayer.Width = canvasW;
+        canvasSnapGuideLayer.Height = canvasH;
+        canvasSnapGuideLayer.Visibility = Visibility.Visible;
+
+        if (Math.Abs(snap.X) >= 0.001)
+        {
+            double x = _canvasSnapGuideX ?? SnapGuidePosition(bounds.Left, bounds.Right, canvasW);
+            canvasSnapGuideV.X1 = canvasSnapGuideV.X2 = x;
+            canvasSnapGuideV.Y1 = 0;
+            canvasSnapGuideV.Y2 = canvasH;
+            canvasSnapGuideV.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            canvasSnapGuideV.Visibility = Visibility.Collapsed;
+        }
+
+        if (Math.Abs(snap.Y) >= 0.001)
+        {
+            double y = _canvasSnapGuideY ?? SnapGuidePosition(bounds.Top, bounds.Bottom, canvasH);
+            canvasSnapGuideH.X1 = 0;
+            canvasSnapGuideH.X2 = canvasW;
+            canvasSnapGuideH.Y1 = canvasSnapGuideH.Y2 = y;
+            canvasSnapGuideH.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            canvasSnapGuideH.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private static double SnapGuidePosition(double start, double end, double canvasSize)
+    {
+        double size = end - start;
+        double center = start + size / 2;
+        if (Math.Abs(start) <= CanvasSnapDistance)
+            return 0;
+        if (Math.Abs(canvasSize - end) <= CanvasSnapDistance)
+            return canvasSize;
+        if (Math.Abs(canvasSize - size) > CanvasSnapDistance &&
+            Math.Abs(canvasSize / 2 - center) <= CanvasSnapDistance)
+            return canvasSize / 2;
+        return center;
+    }
+
+    private static double AngleFromCenter(Point p, Point center)
+    {
+        return Math.Atan2(p.Y - center.Y, p.X - center.X) * 180 / Math.PI + 90;
+    }
+
+    private static double SnapCanvasRotation(double angle)
+    {
+        double normalized = ((angle % 360) + 360) % 360;
+        if ((Keyboard.Modifiers & ModifierKeys.Control) != 0)
+            return normalized;
+
+        double step = (Keyboard.Modifiers & ModifierKeys.Shift) != 0 ? 15 : 45;
+        double snapped = Math.Round(normalized / step) * step;
+        double delta = Math.Abs(NormalizeAngleDelta(normalized - snapped));
+        if (delta <= ((Keyboard.Modifiers & ModifierKeys.Shift) != 0 ? 7.5 : 5))
+            normalized = snapped;
+        return ((normalized % 360) + 360) % 360;
+    }
+
+    private static double NormalizeAngleDelta(double value)
+    {
+        value = ((value + 180) % 360 + 360) % 360 - 180;
+        return value;
+    }
+
+    private Rect BuildCanvasCropClipRect(VideoClip c)
+    {
+        if (videoView.ActualWidth < 1 || videoView.ActualHeight < 1 || c.VideoWidth <= 0 || c.VideoHeight <= 0)
+            return Rect.Empty;
+
+        var crop = NormalizedCrop(c);
+        double baseScale = Math.Min(videoView.ActualWidth / c.VideoWidth, videoView.ActualHeight / c.VideoHeight);
+        double contentW = c.VideoWidth * baseScale;
+        double contentH = c.VideoHeight * baseScale;
+        double x = (videoView.ActualWidth - contentW) / 2 + crop.left * baseScale;
+        double y = (videoView.ActualHeight - contentH) / 2 + crop.top * baseScale;
+        double w = Math.Max(1, contentW - (crop.left + crop.right) * baseScale);
+        double h = Math.Max(1, contentH - (crop.top + crop.bottom) * baseScale);
+        return new Rect(x, y, w, h);
     }
 
     private VideoClip? CanvasTargetClip() =>
@@ -244,50 +1203,792 @@ public partial class MainWindow : Window
 
     private void PreviewCanvas_MouseDown(object sender, MouseButtonEventArgs e)
     {
+        if (sender == overlayCanvas && e.OriginalSource != overlayCanvas) return;
+        if (_previewViewPanMode)
+        {
+            if (e.ClickCount >= 2)
+            {
+                ResetPreviewViewPan();
+                status.Text = "Preview view reset.";
+                e.Handled = true;
+                return;
+            }
+            BeginPreviewViewPan(e.GetPosition(videoContainerOuter));
+            e.Handled = true;
+            return;
+        }
+
         var c = CanvasTargetClip();
-        if (c == null) return;
+        var previewPoint = e.GetPosition(videoStack);
+        bool hitClip = c != null && PreviewPointHitsCanvasClip(c, previewPoint);
+        if (c == null || !hitClip)
+        {
+            if (sender == overlayCanvas || sender == videoView)
+            {
+                StartPreviewMarquee(e.GetPosition(overlayCanvas));
+                e.Handled = true;
+            }
+            return;
+        }
+        bool ctrlDown = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        bool wasSelected = timeline.SelectedClips.Contains(c);
+        if (ctrlDown)
+        {
+            if (!wasSelected)
+                SelectClip(c);
+        }
+        else if (_selectedClip != c || timeline.SelectedClips.Count != 1)
+        {
+            SelectClip(c);
+        }
+
         if (e.ClickCount >= 2)
         {
             c.CanvasScale = 1.0;
+            c.CanvasScaleX = 1.0;
+            c.CanvasScaleY = 1.0;
             c.CanvasOffsetX = 0;
             c.CanvasOffsetY = 0;
+            c.CanvasCropLeft = 0;
+            c.CanvasCropTop = 0;
+            c.CanvasCropRight = 0;
+            c.CanvasCropBottom = 0;
             ApplyClipTransform(c);
             UpdateInspectorCanvasFields();
             e.Handled = true;
             return;
         }
         _canvasDragActive = true;
-        _canvasDragStartMouse = e.GetPosition(videoView);
+        _canvasDragMoved = false;
+        _canvasDragCaptureElement = sender as UIElement ?? videoView;
+        _canvasDragClip = c;
+        _canvasDragCtrlClickCandidate = ctrlDown;
+        _canvasDragWasSelectedAtMouseDown = wasSelected;
+        _canvasDragStartMouse = e.GetPosition(videoStack);
         _canvasDragStartOffX = c.CanvasOffsetX;
         _canvasDragStartOffY = c.CanvasOffsetY;
-        videoView.CaptureMouse();
+        _canvasDragCaptureElement.CaptureMouse();
         e.Handled = true;
+    }
+
+    private bool PreviewPointHitsCanvasClip(VideoClip c, Point p)
+    {
+        if (c.IsAudioOnly || c.VideoWidth <= 0 || c.VideoHeight <= 0)
+            return false;
+
+        var bounds = GetVisibleCanvasBounds(c, c.CanvasOffsetX, c.CanvasOffsetY, c.CanvasScale);
+        if (bounds.IsEmpty || !bounds.Contains(p))
+            return false;
+
+        if (Math.Abs(c.RotateDegrees) < 0.001)
+            return true;
+
+        double cx = bounds.Left + bounds.Width / 2;
+        double cy = bounds.Top + bounds.Height / 2;
+        var local = RotateVector(new Vector(p.X - cx, p.Y - cy), -c.RotateDegrees);
+        double canvasW = Math.Max(1, videoStack.ActualWidth);
+        double canvasH = Math.Max(1, videoStack.ActualHeight);
+        double baseScale = Math.Min(canvasW / c.VideoWidth, canvasH / c.VideoHeight);
+        var crop = NormalizedCrop(c);
+        double visibleW = Math.Max(1, (c.VideoWidth - crop.left - crop.right) * baseScale * c.CanvasScale * c.CanvasScaleX);
+        double visibleH = Math.Max(1, (c.VideoHeight - crop.top - crop.bottom) * baseScale * c.CanvasScale * c.CanvasScaleY);
+        return Math.Abs(local.X) <= visibleW / 2 && Math.Abs(local.Y) <= visibleH / 2;
+    }
+
+    private void PreviewViewPan_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!_previewViewPanMode || e.Handled) return;
+        if (e.ClickCount >= 2)
+        {
+            ResetPreviewViewPan();
+            status.Text = "Preview view reset.";
+            e.Handled = true;
+            return;
+        }
+        BeginPreviewViewPan(e.GetPosition(videoContainerOuter));
+        e.Handled = true;
+    }
+
+    private void PreviewViewPan_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_previewViewPanActive) return;
+        var p = e.GetPosition(videoContainerOuter);
+        var delta = p - _previewViewPanStartMouse;
+        if (Math.Abs(delta.X) > 1 || Math.Abs(delta.Y) > 1)
+            _previewViewPanMoved = true;
+        _previewViewPanOffset = new Point(_previewViewPanStartOffset.X + delta.X, _previewViewPanStartOffset.Y + delta.Y);
+        ApplyPreviewViewTransform();
+        e.Handled = true;
+    }
+
+    private void PreviewViewPan_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_previewViewPanActive) return;
+        EndPreviewViewPan();
+        e.Handled = true;
+    }
+
+    private void PreviewViewPan_MouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (!_previewViewPanMode || e.Handled) return;
+        AdjustPreviewViewZoom(e.Delta);
+        e.Handled = true;
+    }
+
+    private void BeginPreviewViewPan(Point p)
+    {
+        _previewViewPanActive = true;
+        _previewViewPanStartMouse = p;
+        _previewViewPanStartOffset = _previewViewPanOffset;
+        videoContainerOuter.CaptureMouse();
+        SetPreviewBaseCursor(Cursors.ScrollAll);
+    }
+
+    private void EndPreviewViewPan()
+    {
+        _previewViewPanActive = false;
+        if (videoContainerOuter.IsMouseCaptured)
+            videoContainerOuter.ReleaseMouseCapture();
+        SetPreviewBaseCursor(_previewViewPanMode ? Cursors.Hand : Cursors.Arrow);
+    }
+
+    private void SetPreviewViewPanMode(bool enabled)
+    {
+        _previewViewPanMode = enabled;
+        if (!enabled && _previewViewPanActive)
+            EndPreviewViewPan();
+        SetPreviewBaseCursor(enabled ? Cursors.Hand : Cursors.Arrow);
+    }
+
+    private void SetPreviewBaseCursor(Cursor cursor)
+    {
+        if (videoContainerOuter != null) videoContainerOuter.Cursor = cursor;
+        if (videoView != null) videoView.Cursor = cursor;
+        if (overlayCanvas != null) overlayCanvas.Cursor = cursor;
+    }
+
+    private void UpdatePreviewCanvasCursor(Point previewPoint)
+    {
+        if (_previewViewPanMode)
+        {
+            SetPreviewBaseCursor(_previewViewPanActive ? Cursors.ScrollAll : Cursors.Hand);
+            return;
+        }
+
+        if (_previewMarqueeActive)
+        {
+            SetPreviewBaseCursor(Cursors.Cross);
+            return;
+        }
+
+        if (_canvasDragActive)
+        {
+            SetPreviewBaseCursor(Cursors.SizeAll);
+            return;
+        }
+
+        var c = CanvasTargetClip();
+        SetPreviewBaseCursor(c != null && PreviewPointHitsCanvasClip(c, previewPoint)
+            ? Cursors.SizeAll
+            : Cursors.Arrow);
+    }
+
+    private void PreviewCanvas_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (_previewMarqueeActive || _canvasDragActive || _previewViewPanActive)
+            return;
+
+        SetPreviewBaseCursor(_previewViewPanMode ? Cursors.Hand : Cursors.Arrow);
+    }
+
+    private void ApplyPreviewViewTransform()
+    {
+        if (videoContainer == null) return;
+        ClampPreviewViewPanOffset();
+        bool isDefault =
+            Math.Abs(_previewViewPanOffset.X) < 0.01 &&
+            Math.Abs(_previewViewPanOffset.Y) < 0.01 &&
+            Math.Abs(_previewViewZoom - 1.0) < 0.001;
+
+        if (isDefault)
+        {
+            videoContainer.RenderTransform = null;
+            UpdatePreviewViewZoomHud();
+            return;
+        }
+
+        var transform = new TransformGroup();
+        transform.Children.Add(new ScaleTransform(_previewViewZoom, _previewViewZoom));
+        transform.Children.Add(new TranslateTransform(_previewViewPanOffset.X, _previewViewPanOffset.Y));
+        videoContainer.RenderTransformOrigin = new Point(0.5, 0.5);
+        videoContainer.RenderTransform = transform;
+        UpdatePreviewViewZoomHud();
+    }
+
+    private void ClampPreviewViewPanOffset()
+    {
+        if (videoContainerOuter == null || videoContainer == null) return;
+
+        double viewportW = videoContainerOuter.ActualWidth;
+        double viewportH = videoContainerOuter.ActualHeight;
+        double baseW = videoContainer.ActualWidth > 0 ? videoContainer.ActualWidth : videoContainer.Width;
+        double baseH = videoContainer.ActualHeight > 0 ? videoContainer.ActualHeight : videoContainer.Height;
+        if (viewportW <= 0 || viewportH <= 0 || baseW <= 0 || baseH <= 0) return;
+
+        double scaledW = baseW * _previewViewZoom;
+        double scaledH = baseH * _previewViewZoom;
+        double limitX = Math.Max((scaledW - viewportW) * 0.5, 0.0) + viewportW * 0.5;
+        double limitY = Math.Max((scaledH - viewportH) * 0.5, 0.0) + viewportH * 0.5;
+
+        _previewViewPanOffset = new Point(
+            Math.Clamp(_previewViewPanOffset.X, -limitX, limitX),
+            Math.Clamp(_previewViewPanOffset.Y, -limitY, limitY));
+    }
+
+    private void AdjustPreviewViewZoom(int wheelDelta)
+    {
+        int notches = wheelDelta == 0
+            ? 0
+            : Math.Max(1, Math.Abs(wheelDelta) / 120) * Math.Sign(wheelDelta);
+        AdjustPreviewViewZoomLevel(notches);
+    }
+
+    private void AdjustPreviewViewZoomLevel(int levelDelta)
+    {
+        if (levelDelta == 0) return;
+        int nextLevel = Math.Clamp(_previewViewZoomLevel + levelDelta, -PreviewViewMaxZoomLevel, PreviewViewMaxZoomLevel);
+        if (nextLevel == _previewViewZoomLevel) return;
+
+        double oldZoom = _previewViewZoom;
+        _previewViewZoomLevel = nextLevel;
+        _previewViewZoom = Math.Pow(PreviewViewMaxZoomAmount, _previewViewZoomLevel / (double)PreviewViewMaxZoomLevel);
+        double offsetRatio = oldZoom <= 0 ? 1.0 : _previewViewZoom / oldZoom;
+        _previewViewPanOffset = new Point(_previewViewPanOffset.X * offsetRatio, _previewViewPanOffset.Y * offsetRatio);
+        ApplyPreviewViewTransform();
+        status.Text = $"Preview view {Math.Round(_previewViewZoom * 100)}%.";
+    }
+
+    private void ResetPreviewViewPan()
+    {
+        _previewViewPanOffset = new Point();
+        _previewViewZoomLevel = 0;
+        _previewViewZoom = 1.0;
+        ApplyPreviewViewTransform();
+    }
+
+    private void UpdatePreviewViewZoomHud()
+    {
+        if (previewViewZoomText == null) return;
+        previewViewZoomText.Text = $"{Math.Round(_previewViewZoom * 100)}%";
+    }
+
+    private void PreviewViewZoomIn_Click(object sender, RoutedEventArgs e)
+    {
+        AdjustPreviewViewZoomLevel(1);
+    }
+
+    private void PreviewViewZoomOut_Click(object sender, RoutedEventArgs e)
+    {
+        AdjustPreviewViewZoomLevel(-1);
+    }
+
+    private void PreviewViewZoomFit_Click(object sender, RoutedEventArgs e)
+    {
+        ResetPreviewViewPan();
+        status.Text = "Preview view reset.";
     }
 
     private void PreviewCanvas_MouseMove(object sender, MouseEventArgs e)
     {
-        if (!_canvasDragActive) return;
+        if (_previewMarqueeActive)
+        {
+            UpdatePreviewMarquee(e.GetPosition(overlayCanvas));
+            e.Handled = true;
+            return;
+        }
+
+        if (!_canvasDragActive)
+        {
+            UpdatePreviewCanvasCursor(e.GetPosition(videoStack));
+            return;
+        }
         var c = CanvasTargetClip();
         if (c == null) return;
-        var p = e.GetPosition(videoView);
-        double w = videoView.ActualWidth, h = videoView.ActualHeight;
+        var p = e.GetPosition(videoStack);
+        if (!_canvasDragMoved)
+        {
+            double dx = p.X - _canvasDragStartMouse.X;
+            double dy = p.Y - _canvasDragStartMouse.Y;
+            double thresholdX = Math.Max(2.0, SystemParameters.MinimumHorizontalDragDistance);
+            double thresholdY = Math.Max(2.0, SystemParameters.MinimumVerticalDragDistance);
+            if (Math.Abs(dx) < thresholdX && Math.Abs(dy) < thresholdY)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            _canvasDragMoved = true;
+            _canvasDragStartMouse = p;
+            _canvasDragStartOffX = c.CanvasOffsetX;
+            _canvasDragStartOffY = c.CanvasOffsetY;
+            e.Handled = true;
+            return;
+        }
+
+        double w = videoStack.ActualWidth, h = videoStack.ActualHeight;
         if (w < 1 || h < 1) return;
-        c.CanvasOffsetX = _canvasDragStartOffX + (p.X - _canvasDragStartMouse.X) / w;
-        c.CanvasOffsetY = _canvasDragStartOffY + (p.Y - _canvasDragStartMouse.Y) / h;
+        double newOffX = _canvasDragStartOffX + (p.X - _canvasDragStartMouse.X) / w;
+        double newOffY = _canvasDragStartOffY + (p.Y - _canvasDragStartMouse.Y) / h;
+        if ((Keyboard.Modifiers & ModifierKeys.Control) == 0)
+        {
+            var snap = GetCanvasSnapOffset(c, newOffX, newOffY, c.CanvasScale);
+            newOffX += snap.X / w;
+            newOffY += snap.Y / h;
+            UpdateCanvasSnapGuides(c, newOffX, newOffY, c.CanvasScale, snap);
+        }
+        else
+        {
+            HideCanvasSnapGuides();
+        }
+        c.CanvasOffsetX = newOffX;
+        c.CanvasOffsetY = newOffY;
         ApplyClipTransform(c);
         UpdateInspectorCanvasFields();
+        e.Handled = true;
     }
 
     private void PreviewCanvas_MouseUp(object sender, MouseButtonEventArgs e)
     {
+        if (_previewMarqueeActive)
+        {
+            FinishPreviewMarquee(e.GetPosition(overlayCanvas));
+            e.Handled = true;
+            return;
+        }
+
         if (!_canvasDragActive) return;
+        bool moved = _canvasDragMoved;
+        var clickClip = _canvasDragClip;
+        bool ctrlClickCandidate = _canvasDragCtrlClickCandidate;
+        bool wasSelectedAtMouseDown = _canvasDragWasSelectedAtMouseDown;
         _canvasDragActive = false;
-        videoView.ReleaseMouseCapture();
+        _canvasDragMoved = false;
+        _canvasDragClip = null;
+        _canvasDragCtrlClickCandidate = false;
+        _canvasDragWasSelectedAtMouseDown = false;
+        _canvasDragCaptureElement?.ReleaseMouseCapture();
+        _canvasDragCaptureElement = null;
+        HideCanvasSnapGuides();
+        if (ctrlClickCandidate && !moved && clickClip != null)
+        {
+            if (wasSelectedAtMouseDown)
+                timeline.HandleClipClick(clickClip, ctrl: true);
+            else
+                status.Text = $"Clip selection: {timeline.SelectedClips.Count}";
+            RepositionCanvasHandles();
+        }
+        UpdatePreviewCanvasCursor(e.GetPosition(videoStack));
         e.Handled = true;
+    }
+
+    private void PreviewCanvas_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        if (!_canvasDragActive || !ReferenceEquals(sender, _canvasDragCaptureElement))
+            return;
+
+        _canvasDragActive = false;
+        _canvasDragMoved = false;
+        _canvasDragClip = null;
+        _canvasDragCtrlClickCandidate = false;
+        _canvasDragWasSelectedAtMouseDown = false;
+        _canvasDragCaptureElement = null;
+        HideCanvasSnapGuides();
+        SetPreviewBaseCursor(Cursors.Arrow);
+    }
+
+    private void StartPreviewMarquee(Point p)
+    {
+        _previewMarqueeActive = true;
+        _previewMarqueeMoved = false;
+        _previewMarqueeStart = p;
+        previewSelectionLayer.Width = Math.Max(1, overlayCanvas.ActualWidth);
+        previewSelectionLayer.Height = Math.Max(1, overlayCanvas.ActualHeight);
+        previewSelectionLayer.Visibility = Visibility.Collapsed;
+        overlayCanvas.CaptureMouse();
+    }
+
+    private void UpdatePreviewMarquee(Point p)
+    {
+        if (previewSelectionLayer == null) return;
+        if (!_previewMarqueeMoved)
+        {
+            double dx = p.X - _previewMarqueeStart.X;
+            double dy = p.Y - _previewMarqueeStart.Y;
+            double thresholdX = Math.Max(2.0, SystemParameters.MinimumHorizontalDragDistance);
+            double thresholdY = Math.Max(2.0, SystemParameters.MinimumVerticalDragDistance);
+            if (Math.Abs(dx) < thresholdX && Math.Abs(dy) < thresholdY)
+                return;
+
+            _previewMarqueeMoved = true;
+            previewSelectionLayer.Visibility = Visibility.Visible;
+            SetPreviewBaseCursor(Cursors.Cross);
+        }
+
+        var rect = MakeRect(_previewMarqueeStart, p);
+        Canvas.SetLeft(previewSelectionBox, rect.Left);
+        Canvas.SetTop(previewSelectionBox, rect.Top);
+        previewSelectionBox.Width = rect.Width;
+        previewSelectionBox.Height = rect.Height;
+    }
+
+    private void FinishPreviewMarquee(Point p)
+    {
+        bool moved = _previewMarqueeMoved;
+        _previewMarqueeActive = false;
+        _previewMarqueeMoved = false;
+        if (overlayCanvas.IsMouseCaptured) overlayCanvas.ReleaseMouseCapture();
+        previewSelectionLayer.Visibility = Visibility.Collapsed;
+        UpdatePreviewCanvasCursor(p);
+
+        var marquee = MakeRect(_previewMarqueeStart, p);
+        var mode = CurrentPreviewOverlaySelectionMode();
+        if (!moved || marquee.Width < 4 || marquee.Height < 4)
+        {
+            if (mode == Timeline.PreviewOverlaySelectionMode.Replace)
+                timeline.ClearAllSelection();
+            return;
+        }
+
+        var blockHits = _blockControls
+            .Where(kv => kv.Value.Visibility == Visibility.Visible &&
+                         ReferenceEquals(kv.Value.Parent, overlayCanvas) &&
+                         marquee.IntersectsWith(new Rect(kv.Key.X, kv.Key.Y, kv.Key.Width, kv.Key.Height)))
+            .Select(kv => kv.Key)
+            .ToList();
+
+        var textHits = _textOverlayPreviewControls
+            .Where(kv => kv.Value.Visibility == Visibility.Visible &&
+                         ReferenceEquals(kv.Value.Parent, overlayCanvas) &&
+                         PreviewElementRect(kv.Value).IntersectsWith(marquee))
+            .Select(kv => kv.Key)
+            .ToList();
+
+        if (blockHits.Count == 0 && textHits.Count == 0)
+        {
+            if (mode == Timeline.PreviewOverlaySelectionMode.Replace) timeline.ClearAllSelection();
+            return;
+        }
+
+        timeline.SelectPreviewOverlayItems(blockHits, textHits, mode);
+        RefreshTextOverlayPreviewSelectionVisuals();
+        status.Text = mode switch
+        {
+            Timeline.PreviewOverlaySelectionMode.Remove => $"Preview removed {blockHits.Count + textHits.Count} item{(blockHits.Count + textHits.Count == 1 ? "" : "s")} from selection.",
+            Timeline.PreviewOverlaySelectionMode.Toggle => $"Preview toggled {blockHits.Count + textHits.Count} item{(blockHits.Count + textHits.Count == 1 ? "" : "s")}.",
+            Timeline.PreviewOverlaySelectionMode.Add => $"Preview added {blockHits.Count + textHits.Count} item{(blockHits.Count + textHits.Count == 1 ? "" : "s")} to selection.",
+            _ => $"Preview selected {blockHits.Count + textHits.Count} item{(blockHits.Count + textHits.Count == 1 ? "" : "s")}."
+        };
+    }
+
+    private static Timeline.PreviewOverlaySelectionMode CurrentPreviewOverlaySelectionMode()
+    {
+        var modifiers = Keyboard.Modifiers;
+        if ((modifiers & ModifierKeys.Alt) != 0)
+            return Timeline.PreviewOverlaySelectionMode.Remove;
+        if ((modifiers & ModifierKeys.Control) != 0)
+            return Timeline.PreviewOverlaySelectionMode.Toggle;
+        if ((modifiers & ModifierKeys.Shift) != 0)
+            return Timeline.PreviewOverlaySelectionMode.Add;
+        return Timeline.PreviewOverlaySelectionMode.Replace;
+    }
+
+    private static Rect MakeRect(Point a, Point b)
+    {
+        double x = Math.Min(a.X, b.X);
+        double y = Math.Min(a.Y, b.Y);
+        return new Rect(x, y, Math.Abs(a.X - b.X), Math.Abs(a.Y - b.Y));
+    }
+
+    private static Rect PreviewElementRect(FrameworkElement el)
+    {
+        double x = Canvas.GetLeft(el);
+        double y = Canvas.GetTop(el);
+        if (double.IsNaN(x)) x = 0;
+        if (double.IsNaN(y)) y = 0;
+        return new Rect(x, y, Math.Max(1, el.ActualWidth), Math.Max(1, el.ActualHeight));
+    }
+
+    private void SelectPreviewItemBelow(Point overlayPoint, object? currentItem)
+    {
+        if (overlayCanvas == null) return;
+
+        var hits = overlayCanvas.Children
+            .OfType<FrameworkElement>()
+            .Where(el => el.Visibility == Visibility.Visible)
+            .OrderByDescending(Panel.GetZIndex)
+            .ThenByDescending(el => overlayCanvas.Children.IndexOf(el));
+
+        foreach (var el in hits)
+        {
+            if (el is VideoEditor.Controls.ResizableBlock rb)
+            {
+                if (ReferenceEquals(currentItem, rb.Model))
+                    continue;
+
+                var rect = new Rect(rb.Model.X, rb.Model.Y, Math.Max(1, rb.Model.Width), Math.Max(1, rb.Model.Height));
+                if (!rect.Contains(overlayPoint))
+                    continue;
+
+                timeline.HandleBlockClick(rb.Model, ctrl: false);
+                _selectedClip = null;
+                RefreshTextOverlayPreviewSelectionVisuals();
+                status.Text = "Selected hide block below.";
+                return;
+            }
+
+            if (el is Border { Tag: TextOverlay ov })
+            {
+                if (ReferenceEquals(currentItem, ov))
+                    continue;
+
+                if (!PreviewElementRect(el).Contains(overlayPoint))
+                    continue;
+
+                timeline.HandleTextOverlayClick(ov, ctrl: false);
+                _selectedBlock = null;
+                _selectedClip = null;
+                RefreshTextOverlayPreviewSelectionVisuals();
+                status.Text = "Selected text overlay below.";
+                return;
+            }
+        }
+
+        var c = CanvasTargetClip();
+        if (c != null && PreviewPointHitsCanvasClip(c, overlayPoint))
+        {
+            SelectClip(c);
+            status.Text = "Selected video below.";
+            return;
+        }
+
+        timeline.ClearAllSelection();
+        _selectedBlock = null;
+        _selectedClip = null;
+        RefreshTextOverlayPreviewSelectionVisuals();
+        RepositionCanvasHandles();
+        status.Text = "Preview selection cleared.";
+    }
+
+    private Rect? PreviewOverlaySelectionBounds()
+    {
+        Rect? bounds = null;
+
+        foreach (var block in timeline.SelectedBlocks)
+        {
+            if (!_blockControls.TryGetValue(block, out var ctl)) continue;
+            if (ctl.Visibility != Visibility.Visible || !ReferenceEquals(ctl.Parent, overlayCanvas)) continue;
+            var rect = new Rect(block.X, block.Y, Math.Max(1, block.Width), Math.Max(1, block.Height));
+            bounds = bounds.HasValue ? Rect.Union(bounds.Value, rect) : rect;
+        }
+
+        foreach (var ov in timeline.SelectedTextOverlays)
+        {
+            if (!_textOverlayPreviewControls.TryGetValue(ov, out var ctl)) continue;
+            if (ctl.Visibility != Visibility.Visible || !ReferenceEquals(ctl.Parent, overlayCanvas)) continue;
+            var rect = PreviewElementRect(ctl);
+            bounds = bounds.HasValue ? Rect.Union(bounds.Value, rect) : rect;
+        }
+
+        return bounds;
+    }
+
+    private void UpdatePreviewOverlayGroupBox()
+    {
+        if (previewOverlayGroupLayer == null || previewOverlayGroupBox == null || overlayCanvas == null)
+            return;
+
+        if (!ShouldShowPreviewOverlayTransformBox())
+        {
+            previewOverlayGroupLayer.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var bounds = PreviewOverlaySelectionBounds();
+        if (!bounds.HasValue)
+        {
+            previewOverlayGroupLayer.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        previewOverlayGroupLayer.Width = Math.Max(1, overlayCanvas.ActualWidth);
+        previewOverlayGroupLayer.Height = Math.Max(1, overlayCanvas.ActualHeight);
+        var rect = bounds.Value;
+        double left = Math.Max(0, rect.Left - 3);
+        double top = Math.Max(0, rect.Top - 3);
+        double width = Math.Max(1, rect.Width + 6);
+        double height = Math.Max(1, rect.Height + 6);
+        Canvas.SetLeft(previewOverlayGroupBox, left);
+        Canvas.SetTop(previewOverlayGroupBox, top);
+        previewOverlayGroupBox.Width = width;
+        previewOverlayGroupBox.Height = height;
+        PositionPreviewGroupHandles(left, top, width, height);
+        previewOverlayGroupLayer.Visibility = Visibility.Visible;
+    }
+
+    private void PositionPreviewGroupHandles(double left, double top, double width, double height)
+    {
+        PositionPreviewHandle(previewGroupHandleTL, left, top);
+        PositionPreviewHandle(previewGroupHandleTR, left + width, top);
+        PositionPreviewHandle(previewGroupHandleBL, left, top + height);
+        PositionPreviewHandle(previewGroupHandleBR, left + width, top + height);
+        PositionPreviewHandle(previewGroupHandleTC, left + width / 2, top);
+        PositionPreviewHandle(previewGroupHandleBC, left + width / 2, top + height);
+        PositionPreviewHandle(previewGroupHandleCL, left, top + height / 2);
+        PositionPreviewHandle(previewGroupHandleCR, left + width, top + height / 2);
+    }
+
+    private static void PositionPreviewHandle(FrameworkElement handle, double centerX, double centerY)
+    {
+        Canvas.SetLeft(handle, centerX - handle.Width / 2);
+        Canvas.SetTop(handle, centerY - handle.Height / 2);
+    }
+
+    private bool ShouldShowPreviewOverlayTransformBox()
+    {
+        int count = PreviewOverlaySelectionCount();
+        return count > 1 || (count == 1 && timeline.SelectedTextOverlays.Count == 1);
+    }
+
+    private void PreviewGroupHandle_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not Border handle || !ShouldShowPreviewOverlayTransformBox())
+            return;
+        var bounds = PreviewOverlaySelectionBounds();
+        if (!bounds.HasValue || bounds.Value.Width < 1 || bounds.Value.Height < 1)
+            return;
+
+        _previewGroupResizeActive = true;
+        _previewGroupResizeTag = handle.Tag?.ToString() ?? "";
+        _previewGroupResizeStartMouse = e.GetPosition(overlayCanvas);
+        _previewGroupResizeStartBounds = bounds.Value;
+        _previewGroupResizeStartBlocks = timeline.SelectedBlocks.ToDictionary(
+            b => b,
+            b => new Rect(b.X, b.Y, Math.Max(1, b.Width), Math.Max(1, b.Height)));
+        _previewGroupResizeStartTexts = timeline.SelectedTextOverlays.ToDictionary(
+            o => o,
+            o => (x: (double)o.X, y: (double)o.Y, fontSize: o.FontSize, pad: o.BackgroundPadding));
+        handle.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void PreviewGroupHandle_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_previewGroupResizeActive || sender is not Border handle || !handle.IsMouseCaptured)
+            return;
+        ResizePreviewOverlayGroup(e.GetPosition(overlayCanvas));
+        e.Handled = true;
+    }
+
+    private void PreviewGroupHandle_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is Border handle && handle.IsMouseCaptured)
+            handle.ReleaseMouseCapture();
+        if (_previewGroupResizeStartTexts != null)
+        {
+            foreach (var ov in _previewGroupResizeStartTexts.Keys.ToList())
+                timeline.NotifyTextOverlayChanged(ov);
+        }
+        _previewGroupResizeActive = false;
+        _previewGroupResizeTag = "";
+        _previewGroupResizeStartBlocks = null;
+        _previewGroupResizeStartTexts = null;
+        HideCanvasSnapGuides();
+        e.Handled = true;
+    }
+
+    private void ResizePreviewOverlayGroup(Point mouse)
+    {
+        if (_previewGroupResizeStartBlocks == null || _previewGroupResizeStartTexts == null)
+            return;
+
+        var start = _previewGroupResizeStartBounds;
+        double left = start.Left;
+        double top = start.Top;
+        double right = start.Right;
+        double bottom = start.Bottom;
+
+        if (_previewGroupResizeTag.Contains('l')) left = Math.Min(right - 8, mouse.X);
+        if (_previewGroupResizeTag.Contains('r')) right = Math.Max(left + 8, mouse.X);
+        if (_previewGroupResizeTag.Contains('t')) top = Math.Min(bottom - 8, mouse.Y);
+        if (_previewGroupResizeTag.Contains('b')) bottom = Math.Max(top + 8, mouse.Y);
+
+        if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0)
+        {
+            double sx = (right - left) / Math.Max(1, start.Width);
+            double sy = (bottom - top) / Math.Max(1, start.Height);
+            double s = Math.Max(0.05, Math.Min(Math.Abs(sx), Math.Abs(sy)));
+            if (_previewGroupResizeTag.Contains('l')) left = right - start.Width * s;
+            if (_previewGroupResizeTag.Contains('r')) right = left + start.Width * s;
+            if (_previewGroupResizeTag.Contains('t')) top = bottom - start.Height * s;
+            if (_previewGroupResizeTag.Contains('b')) bottom = top + start.Height * s;
+        }
+
+        var target = new Rect(left, top, Math.Max(8, right - left), Math.Max(8, bottom - top));
+        var snap = GetPreviewOverlaySnapOffset(target);
+        target.Offset(snap);
+        UpdatePreviewOverlaySnapGuides(target, snap);
+
+        double scaleX = target.Width / Math.Max(1, start.Width);
+        double scaleY = target.Height / Math.Max(1, start.Height);
+        double textScale = Math.Sqrt(Math.Abs(scaleX * scaleY));
+        double textPreviewScale = GetTextOverlayPreviewScale();
+
+        foreach (var kv in _previewGroupResizeStartBlocks)
+        {
+            var b = kv.Key;
+            var r = kv.Value;
+            b.X = target.Left + (r.Left - start.Left) * scaleX;
+            b.Y = target.Top + (r.Top - start.Top) * scaleY;
+            b.Width = Math.Max(8, r.Width * scaleX);
+            b.Height = Math.Max(8, r.Height * scaleY);
+        }
+
+        foreach (var kv in _previewGroupResizeStartTexts)
+        {
+            var ov = kv.Key;
+            var p = kv.Value;
+            double oldPreviewX = p.x * textPreviewScale;
+            double oldPreviewY = p.y * textPreviewScale;
+            double newPreviewX = target.Left + (oldPreviewX - start.Left) * scaleX;
+            double newPreviewY = target.Top + (oldPreviewY - start.Top) * scaleY;
+            ov.X = (int)Math.Round(newPreviewX / textPreviewScale);
+            ov.Y = (int)Math.Round(newPreviewY / textPreviewScale);
+            ov.FontSize = Math.Max(6, (int)Math.Round(p.fontSize * textScale));
+            ov.BackgroundPadding = Math.Max(0, (int)Math.Round(p.pad * textScale));
+            if (_textOverlayPreviewControls.TryGetValue(ov, out var ctl))
+            {
+                ApplyOverlayStyle(ctl, ov, textPreviewScale);
+                ApplyOverlayPlacement(ctl, ov, textPreviewScale);
+            }
+            _textOverlayDirty.Add(ov);
+        }
+
+        SyncBlockInspector();
+        RefreshTextOverlayPreviewSelectionVisuals();
+        UpdatePreviewOverlayGroupBox();
+        status.Text = $"Resized {PreviewOverlaySelectionCount()} preview items.";
     }
 
     private void PreviewCanvas_MouseWheel(object sender, MouseWheelEventArgs e)
     {
+        if (sender == overlayCanvas && e.OriginalSource != overlayCanvas) return;
+        if (_previewViewPanMode)
+        {
+            AdjustPreviewViewZoom(e.Delta);
+            e.Handled = true;
+            return;
+        }
+
         var c = CanvasTargetClip();
         if (c == null) return;
         double step = (Keyboard.Modifiers & ModifierKeys.Control) != 0 ? 0.02 : 0.08;
@@ -300,15 +2001,195 @@ public partial class MainWindow : Window
 
     private void PreviewCanvas_MouseRight(object sender, MouseButtonEventArgs e)
     {
-        // Right-click to reset, mirrors double-click but easier on touchpads.
+        if (sender == overlayCanvas && e.OriginalSource != overlayCanvas) return;
         var c = CanvasTargetClip();
         if (c == null) return;
+        var previewPoint = e.GetPosition(videoStack);
+        if (!PreviewPointHitsCanvasClip(c, previewPoint))
+        {
+            e.Handled = false;
+            return;
+        }
+
+        if (_selectedClip != c) SelectClip(c);
+
+        var menu = new ContextMenu();
+        menu.Items.Add(PreviewTransformMenuItem("Edit Transform...", () =>
+        {
+            var dlg = new CanvasTransformWindow(c, Math.Max(1, videoStack.ActualWidth), Math.Max(1, videoStack.ActualHeight))
+            {
+                Owner = this
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            c.CanvasOffsetX = dlg.CanvasOffsetX;
+            c.CanvasOffsetY = dlg.CanvasOffsetY;
+            c.CanvasScale = dlg.CanvasScale;
+            c.CanvasScaleX = dlg.CanvasScaleX;
+            c.CanvasScaleY = dlg.CanvasScaleY;
+            c.RotateDegrees = dlg.RotateDegrees;
+            ApplyClampedCrop(c, dlg.CropLeft, dlg.CropTop, dlg.CropRight, dlg.CropBottom);
+            ApplyPreviewTransformChange(c, "Canvas transform edited.");
+        }));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(PreviewTransformMenuItem("Fit to Canvas", () =>
+        {
+            c.CanvasScale = 1.0;
+            c.CanvasScaleX = 1.0;
+            c.CanvasScaleY = 1.0;
+            c.CanvasOffsetX = 0;
+            c.CanvasOffsetY = 0;
+            ApplyPreviewTransformChange(c, "Clip fitted to canvas.");
+        }));
+        menu.Items.Add(PreviewTransformMenuItem("Fill Canvas", () =>
+        {
+            FillPreviewCanvas(c);
+            ApplyPreviewTransformChange(c, "Clip filled the canvas.");
+        }));
+        menu.Items.Add(PreviewTransformMenuItem("Stretch to Canvas", () =>
+        {
+            StretchPreviewCanvas(c);
+            ApplyPreviewTransformChange(c, "Clip stretched to canvas.");
+        }));
+        menu.Items.Add(PreviewTransformMenuItem("Center to Canvas", () =>
+        {
+            c.CanvasOffsetX = 0;
+            c.CanvasOffsetY = 0;
+            ApplyPreviewTransformChange(c, "Clip centered on canvas.");
+        }));
+        menu.Items.Add(PreviewTransformMenuItem("Center Horizontally", () =>
+        {
+            c.CanvasOffsetX = 0;
+            ApplyPreviewTransformChange(c, "Clip centered horizontally.");
+        }));
+        menu.Items.Add(PreviewTransformMenuItem("Center Vertically", () =>
+        {
+            c.CanvasOffsetY = 0;
+            ApplyPreviewTransformChange(c, "Clip centered vertically.");
+        }));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(PreviewTransformMenuItem("Rotate 90 CW", () =>
+        {
+            c.RotateDegrees = (c.RotateDegrees + 90) % 360;
+            ApplyPreviewTransformChange(c, "Clip rotated 90 degrees.");
+        }));
+        menu.Items.Add(PreviewTransformMenuItem("Rotate 90 CCW", () =>
+        {
+            c.RotateDegrees = (c.RotateDegrees + 270) % 360;
+            ApplyPreviewTransformChange(c, "Clip rotated -90 degrees.");
+        }));
+        menu.Items.Add(PreviewTransformMenuItem("Rotate 180", () =>
+        {
+            c.RotateDegrees = (c.RotateDegrees + 180) % 360;
+            ApplyPreviewTransformChange(c, "Clip rotated 180 degrees.");
+        }));
+        menu.Items.Add(PreviewTransformMenuItem("Flip Horizontal", () =>
+        {
+            c.FlipH = !c.FlipH;
+            ApplyPreviewTransformChange(c, "Clip horizontal flip toggled.");
+        }));
+        menu.Items.Add(PreviewTransformMenuItem("Flip Vertical", () =>
+        {
+            c.FlipV = !c.FlipV;
+            ApplyPreviewTransformChange(c, "Clip vertical flip toggled.");
+        }));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(PreviewTransformMenuItem("Copy Transform", () =>
+        {
+            _copiedCanvasTransform = CanvasTransformSnapshot.From(c);
+            status.Text = "Canvas transform copied.";
+        }));
+        menu.Items.Add(PreviewTransformMenuItem("Paste Transform", () =>
+        {
+            _copiedCanvasTransform?.ApplyTo(c);
+            ApplyPreviewTransformChange(c, "Canvas transform pasted.");
+        }, _copiedCanvasTransform != null));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(PreviewTransformMenuItem("Reset Crop", () =>
+        {
+            c.CanvasCropLeft = 0;
+            c.CanvasCropTop = 0;
+            c.CanvasCropRight = 0;
+            c.CanvasCropBottom = 0;
+            ApplyPreviewTransformChange(c, "Canvas crop reset.");
+        }, c.HasManualCanvasCrop));
+        menu.Items.Add(PreviewTransformMenuItem("Reset Transform", () =>
+        {
+            ResetPreviewTransform(c);
+            ApplyPreviewTransformChange(c, "Canvas transform reset.");
+        }));
+
+        menu.PlacementTarget = sender as UIElement ?? videoStack;
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private MenuItem PreviewTransformMenuItem(string header, Action action, bool enabled = true)
+    {
+        var item = new MenuItem { Header = header, IsEnabled = enabled };
+        item.Click += (_, _) => action();
+        return item;
+    }
+
+    private void ResetPreviewTransform(VideoClip c)
+    {
         c.CanvasScale = 1.0;
+        c.CanvasScaleX = 1.0;
+        c.CanvasScaleY = 1.0;
         c.CanvasOffsetX = 0;
         c.CanvasOffsetY = 0;
+        c.CanvasCropLeft = 0;
+        c.CanvasCropTop = 0;
+        c.CanvasCropRight = 0;
+        c.CanvasCropBottom = 0;
+        c.RotateDegrees = 0;
+        c.FlipH = false;
+        c.FlipV = false;
+    }
+
+    private void FillPreviewCanvas(VideoClip c)
+    {
+        double canvasW = Math.Max(1, videoStack.ActualWidth);
+        double canvasH = Math.Max(1, videoStack.ActualHeight);
+        if (c.VideoWidth <= 0 || c.VideoHeight <= 0) return;
+
+        var crop = NormalizedCrop(c);
+        double visibleW = Math.Max(1, c.VideoWidth - crop.left - crop.right);
+        double visibleH = Math.Max(1, c.VideoHeight - crop.top - crop.bottom);
+        double baseScale = Math.Min(canvasW / c.VideoWidth, canvasH / c.VideoHeight);
+        double fillScale = Math.Max(canvasW / (visibleW * baseScale), canvasH / (visibleH * baseScale));
+
+        c.CanvasScale = Math.Max(0.05, Math.Min(8.0, fillScale));
+        c.CanvasScaleX = 1.0;
+        c.CanvasScaleY = 1.0;
+        c.CanvasOffsetX = 0;
+        c.CanvasOffsetY = 0;
+    }
+
+    private void StretchPreviewCanvas(VideoClip c)
+    {
+        double canvasW = Math.Max(1, videoStack.ActualWidth);
+        double canvasH = Math.Max(1, videoStack.ActualHeight);
+        if (c.VideoWidth <= 0 || c.VideoHeight <= 0) return;
+
+        var crop = NormalizedCrop(c);
+        double visibleW = Math.Max(1, c.VideoWidth - crop.left - crop.right);
+        double visibleH = Math.Max(1, c.VideoHeight - crop.top - crop.bottom);
+        double baseScale = Math.Min(canvasW / c.VideoWidth, canvasH / c.VideoHeight);
+
+        c.CanvasScale = 1.0;
+        c.CanvasScaleX = Math.Max(0.05, Math.Min(8.0, canvasW / (visibleW * baseScale)));
+        c.CanvasScaleY = Math.Max(0.05, Math.Min(8.0, canvasH / (visibleH * baseScale)));
+        c.CanvasOffsetX = 0;
+        c.CanvasOffsetY = 0;
+    }
+
+    private void ApplyPreviewTransformChange(VideoClip c, string message)
+    {
         ApplyClipTransform(c);
         UpdateInspectorCanvasFields();
-        e.Handled = true;
+        UpdateCanvasLabels(c);
+        status.Text = message;
     }
 
     private Action? _updateInspectorCanvasFields;
@@ -318,17 +2199,32 @@ public partial class MainWindow : Window
         RepositionCanvasHandles();
     }
 
-    // ===== Corner resize handles =====
+    // ===== OBS-style transform handles =====
     //
     // Four 20×20 squares pinned to the four corners of the project canvas via XAML
-    // alignment, so they don't depend on the Canvas's measured size (which is fragile).
-    // Dragging any handle scales the clip uniformly from the canvas centre - the new
+    // aspect ratio while anchoring the opposite side/corner. This feels much closer
+    // to OBS than scaling everything from the centre.
     // scale = startScale × (currentDistFromCentre / startDistFromCentre).
 
     private bool _handleDragActive;
-    private Point _handleDragCentre;
-    private double _handleDragStartDist;
+    private bool _handleDragCropMode;
+    private bool _handleDragRotateMode;
+    private string _handleDragTag = "";
+    private Point _handleDragStartMouse;
     private double _handleDragStartScale;
+    private double _handleDragStartScaleX;
+    private double _handleDragStartScaleY;
+    private double _handleDragStartOffX;
+    private double _handleDragStartOffY;
+    private double _handleDragStartW;
+    private double _handleDragStartH;
+    private double _handleDragStartCropLeft;
+    private double _handleDragStartCropTop;
+    private double _handleDragStartCropRight;
+    private double _handleDragStartCropBottom;
+    private Point _handleDragRotateCenter;
+    private double _handleDragStartAngle;
+    private double _handleDragStartRotate;
 
     private void RepositionCanvasHandles()
     {
@@ -338,6 +2234,7 @@ public partial class MainWindow : Window
             videoStack.ActualWidth < 1 || videoStack.ActualHeight < 1)
         {
             canvasHandlesLayer.Visibility = Visibility.Collapsed;
+            HideCanvasSpacingHelpers();
             return;
         }
         canvasHandlesLayer.Visibility = Visibility.Visible;
@@ -350,31 +2247,289 @@ public partial class MainWindow : Window
         double canvasW = videoStack.ActualWidth;
         double canvasH = videoStack.ActualHeight;
         double baseScale = Math.Min(canvasW / c.VideoWidth, canvasH / c.VideoHeight);
-        double dispW = c.VideoWidth * baseScale * c.CanvasScale;
-        double dispH = c.VideoHeight * baseScale * c.CanvasScale;
-        double layerW = Math.Min(dispW, canvasW);
-        double layerH = Math.Min(dispH, canvasH);
+        var crop = NormalizedCrop(c);
+        double dispW = (c.VideoWidth - crop.left - crop.right) * baseScale * c.CanvasScale * c.CanvasScaleX;
+        double dispH = (c.VideoHeight - crop.top - crop.bottom) * baseScale * c.CanvasScale * c.CanvasScaleY;
+        double fullW = c.VideoWidth * baseScale * c.CanvasScale * c.CanvasScaleX;
+        double fullH = c.VideoHeight * baseScale * c.CanvasScale * c.CanvasScaleY;
+        double layerW = Math.Max(2, Math.Min(dispW, canvasW));
+        double layerH = Math.Max(2, Math.Min(dispH, canvasH));
+        double cropShiftX = ((crop.left - crop.right) * baseScale * c.CanvasScale * c.CanvasScaleX) / 2;
+        double cropShiftY = ((crop.top - crop.bottom) * baseScale * c.CanvasScale * c.CanvasScaleY) / 2;
         canvasHandlesLayer.Width = layerW;
         canvasHandlesLayer.Height = layerH;
-        // Center in the canvas, then shift by the user's offset.
-        canvasHandlesLayer.RenderTransform = new TranslateTransform(
-            c.CanvasOffsetX * canvasW,
-            c.CanvasOffsetY * canvasH);
+        var tg = new TransformGroup();
+        if (c.RotateDegrees != 0)
+            tg.Children.Add(new RotateTransform(c.RotateDegrees));
+        tg.Children.Add(new TranslateTransform(
+            c.CanvasOffsetX * canvasW + cropShiftX,
+            c.CanvasOffsetY * canvasH + cropShiftY));
+        canvasHandlesLayer.RenderTransform = tg;
+        if (canvasHandleRotText != null)
+            canvasHandleRotText.RenderTransform = c.RotateDegrees == 0 ? null : new RotateTransform(-c.RotateDegrees);
+        UpdateCanvasHandleVisuals(c);
+        UpdateCanvasSpacingHelpers(c);
+    }
+
+    private void UpdateCanvasSpacingHelpers(VideoClip c)
+    {
+        if (canvasSpacingHelperLayer == null || videoStack.ActualWidth < 1 || videoStack.ActualHeight < 1)
+            return;
+
+        if (_selectedClip != c || _handleDragCropMode || c.IsAudioOnly || c.VideoWidth <= 0 || c.VideoHeight <= 0)
+        {
+            HideCanvasSpacingHelpers();
+            return;
+        }
+
+        var bounds = GetVisibleCanvasBounds(c, c.CanvasOffsetX, c.CanvasOffsetY, c.CanvasScale);
+        if (bounds.IsEmpty)
+        {
+            HideCanvasSpacingHelpers();
+            return;
+        }
+
+        double canvasW = Math.Max(1, videoStack.ActualWidth);
+        double canvasH = Math.Max(1, videoStack.ActualHeight);
+        canvasSpacingHelperLayer.Width = canvasW;
+        canvasSpacingHelperLayer.Height = canvasH;
+        canvasSpacingHelperLayer.Visibility = Visibility.Visible;
+
+        double centerX = Math.Clamp(bounds.Left + bounds.Width / 2, 0, canvasW);
+        double centerY = Math.Clamp(bounds.Top + bounds.Height / 2, 0, canvasH);
+        UpdateSpacingLine(
+            canvasSpacingLeftLine, canvasSpacingLeftLabel, canvasSpacingLeftText,
+            0, centerY, Math.Clamp(bounds.Left, 0, canvasW), centerY,
+            Math.Max(0, bounds.Left), horizontal: true);
+        UpdateSpacingLine(
+            canvasSpacingRightLine, canvasSpacingRightLabel, canvasSpacingRightText,
+            Math.Clamp(bounds.Right, 0, canvasW), centerY, canvasW, centerY,
+            Math.Max(0, canvasW - bounds.Right), horizontal: true);
+        UpdateSpacingLine(
+            canvasSpacingTopLine, canvasSpacingTopLabel, canvasSpacingTopText,
+            centerX, 0, centerX, Math.Clamp(bounds.Top, 0, canvasH),
+            Math.Max(0, bounds.Top), horizontal: false);
+        UpdateSpacingLine(
+            canvasSpacingBottomLine, canvasSpacingBottomLabel, canvasSpacingBottomText,
+            centerX, Math.Clamp(bounds.Bottom, 0, canvasH), centerX, canvasH,
+            Math.Max(0, canvasH - bounds.Bottom), horizontal: false);
+    }
+
+    private static void UpdateSpacingLine(System.Windows.Shapes.Line line, FrameworkElement label, TextBlock text,
+        double x1, double y1, double x2, double y2, double distance, bool horizontal)
+    {
+        if (distance < 4)
+        {
+            line.Visibility = Visibility.Collapsed;
+            label.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        line.X1 = x1;
+        line.Y1 = y1;
+        line.X2 = x2;
+        line.Y2 = y2;
+        line.Visibility = Visibility.Visible;
+        text.Text = $"{distance:0}px";
+        label.Visibility = Visibility.Visible;
+        label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double labelW = Math.Max(1, label.DesiredSize.Width);
+        double labelH = Math.Max(1, label.DesiredSize.Height);
+        double labelX = (x1 + x2) / 2 - labelW / 2;
+        double labelY = (y1 + y2) / 2 - labelH / 2;
+
+        if (horizontal)
+            labelY -= 18;
+        else
+            labelX += 12;
+
+        Canvas.SetLeft(label, Math.Max(2, labelX));
+        Canvas.SetTop(label, Math.Max(2, labelY));
+    }
+
+    private void HideCanvasSpacingHelpers()
+    {
+        if (canvasSpacingHelperLayer == null) return;
+        canvasSpacingHelperLayer.Visibility = Visibility.Collapsed;
+        foreach (var el in new UIElement[]
+        {
+            canvasSpacingLeftLine, canvasSpacingRightLine, canvasSpacingTopLine, canvasSpacingBottomLine,
+            canvasSpacingLeftLabel, canvasSpacingRightLabel, canvasSpacingTopLabel, canvasSpacingBottomLabel
+        })
+        {
+            el.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void UpdateCanvasHandleVisuals(VideoClip c)
+    {
+        var accent = TryFindResource("Accent") as Brush ?? Brushes.MediumPurple;
+        var cropBrush = new SolidColorBrush(Color.FromRgb(0x35, 0xD0, 0x7F));
+        bool activeCrop = _handleDragActive && _handleDragCropMode;
+        var outlineBrush = activeCrop ? cropBrush : accent;
+
+        if (canvasSelectionBorder != null)
+            canvasSelectionBorder.BorderBrush = outlineBrush;
+
+        foreach (var handle in new[]
+        {
+            canvasHandleTL, canvasHandleTR, canvasHandleTC, canvasHandleCL,
+            canvasHandleCR, canvasHandleBL, canvasHandleBR, canvasHandleBC
+        })
+        {
+            if (handle != null)
+                handle.BorderBrush = outlineBrush;
+        }
+
+        if (canvasHandleRot != null)
+            canvasHandleRot.Background = accent;
+        UpdateCanvasHandleCursors(c);
+
+        SetCanvasCropLine(canvasCropLeftLine, c.CanvasCropLeft > 0.5 || activeCrop && _handleDragTag.Contains('l'));
+        SetCanvasCropLine(canvasCropTopLine, c.CanvasCropTop > 0.5 || activeCrop && _handleDragTag.Contains('t'));
+        SetCanvasCropLine(canvasCropRightLine, c.CanvasCropRight > 0.5 || activeCrop && _handleDragTag.Contains('r'));
+        SetCanvasCropLine(canvasCropBottomLine, c.CanvasCropBottom > 0.5 || activeCrop && _handleDragTag.Contains('b'));
+    }
+
+    private const int CanvasHandleLeft = 1 << 0;
+    private const int CanvasHandleRight = 1 << 1;
+    private const int CanvasHandleTop = 1 << 2;
+    private const int CanvasHandleBottom = 1 << 3;
+
+    private void UpdateCanvasHandleCursors(VideoClip c)
+    {
+        SetCanvasHandleCursor(canvasHandleTL, CanvasHandleTop | CanvasHandleLeft, c);
+        SetCanvasHandleCursor(canvasHandleTR, CanvasHandleTop | CanvasHandleRight, c);
+        SetCanvasHandleCursor(canvasHandleTC, CanvasHandleTop, c);
+        SetCanvasHandleCursor(canvasHandleCL, CanvasHandleLeft, c);
+        SetCanvasHandleCursor(canvasHandleCR, CanvasHandleRight, c);
+        SetCanvasHandleCursor(canvasHandleBL, CanvasHandleBottom | CanvasHandleLeft, c);
+        SetCanvasHandleCursor(canvasHandleBR, CanvasHandleBottom | CanvasHandleRight, c);
+        SetCanvasHandleCursor(canvasHandleBC, CanvasHandleBottom, c);
+        if (canvasHandleRot != null)
+            canvasHandleRot.Cursor = Cursors.Hand;
+    }
+
+    private static void SetCanvasHandleCursor(FrameworkElement? handle, int flags, VideoClip c)
+    {
+        if (handle == null) return;
+        handle.Cursor = CursorForCanvasHandle(AdjustedCanvasHandleFlags(flags, c));
+    }
+
+    private static int AdjustedCanvasHandleFlags(int flags, VideoClip c)
+    {
+        bool isCorner = (flags & (flags - 1)) != 0;
+        if (isCorner && c.FlipH)
+            flags ^= CanvasHandleLeft | CanvasHandleRight;
+        if (isCorner && c.FlipV)
+            flags ^= CanvasHandleTop | CanvasHandleBottom;
+
+        int octant = (int)Math.Round((((c.RotateDegrees % 360) + 360) % 360) / 45.0);
+        if (octant % 4 >= 2)
+        {
+            if (isCorner)
+                flags ^= CanvasHandleTop | CanvasHandleBottom;
+            else
+                flags = SwapCanvasHandleAxes(flags);
+        }
+
+        if (octant % 2 == 1)
+        {
+            if (isCorner)
+            {
+                bool diagonalDown = (flags & CanvasHandleLeft) != 0 && (flags & CanvasHandleTop) != 0 ||
+                                    (flags & CanvasHandleRight) != 0 && (flags & CanvasHandleBottom) != 0;
+                flags = diagonalDown
+                    ? (flags & ~(CanvasHandleTop | CanvasHandleBottom))
+                    : (flags & ~(CanvasHandleLeft | CanvasHandleRight));
+            }
+            else
+            {
+                flags = SwapCanvasHandleAxes(flags);
+            }
+        }
+
+        return flags;
+    }
+
+    private static int SwapCanvasHandleAxes(int flags)
+    {
+        int swapped = 0;
+        if ((flags & CanvasHandleLeft) != 0) swapped |= CanvasHandleTop;
+        if ((flags & CanvasHandleRight) != 0) swapped |= CanvasHandleBottom;
+        if ((flags & CanvasHandleTop) != 0) swapped |= CanvasHandleLeft;
+        if ((flags & CanvasHandleBottom) != 0) swapped |= CanvasHandleRight;
+        return swapped;
+    }
+
+    private static Cursor CursorForCanvasHandle(int flags)
+    {
+        bool left = (flags & CanvasHandleLeft) != 0;
+        bool right = (flags & CanvasHandleRight) != 0;
+        bool top = (flags & CanvasHandleTop) != 0;
+        bool bottom = (flags & CanvasHandleBottom) != 0;
+
+        if (left && top || right && bottom)
+            return Cursors.SizeNWSE;
+        if (left && bottom || right && top)
+            return Cursors.SizeNESW;
+        if (left || right)
+            return Cursors.SizeWE;
+        if (top || bottom)
+            return Cursors.SizeNS;
+        return Cursors.Arrow;
+    }
+
+    private static void SetCanvasCropLine(UIElement? line, bool visible)
+    {
+        if (line != null)
+            line.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void CanvasHandle_MouseDown(object sender, MouseButtonEventArgs e)
     {
         var c = CanvasTargetClip();
         if (c == null || sender is not Border h) return;
-        // Centre of the visible project canvas - handles drag relative to this point.
-        double w = canvasHandlesLayer.ActualWidth;
-        double hh = canvasHandlesLayer.ActualHeight;
-        if (w < 1 || hh < 1) return;
-        _handleDragCentre = new Point(w / 2, hh / 2);
-        var mp = e.GetPosition(canvasHandlesLayer);
-        _handleDragStartDist = Math.Max(8, Distance(mp, _handleDragCentre));
+        double canvasW = videoStack.ActualWidth;
+        double canvasH = videoStack.ActualHeight;
+        if (canvasW < 1 || canvasH < 1 || c.VideoWidth <= 0 || c.VideoHeight <= 0) return;
+
+        double baseScale = Math.Min(canvasW / c.VideoWidth, canvasH / c.VideoHeight);
+        var crop = NormalizedCrop(c);
+        _handleDragStartW = (c.VideoWidth - crop.left - crop.right) * baseScale * c.CanvasScale * c.CanvasScaleX;
+        _handleDragStartH = (c.VideoHeight - crop.top - crop.bottom) * baseScale * c.CanvasScale * c.CanvasScaleY;
+        if (_handleDragStartW < 1 || _handleDragStartH < 1) return;
+
+        _handleDragTag = h.Tag?.ToString() ?? "";
+        _handleDragStartRotate = c.RotateDegrees;
+        _handleDragStartMouse = e.GetPosition(videoStack);
+        if (_handleDragTag == "rot")
+        {
+            var bounds = GetVisibleCanvasBounds(c, c.CanvasOffsetX, c.CanvasOffsetY, c.CanvasScale);
+            if (bounds.IsEmpty) return;
+            _handleDragRotateMode = true;
+            _handleDragRotateCenter = new Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2);
+            var screenMouse = e.GetPosition(videoStack);
+            _handleDragStartAngle = AngleFromCenter(screenMouse, _handleDragRotateCenter);
+            _handleDragCropMode = false;
+            _handleDragActive = true;
+            h.CaptureMouse();
+            e.Handled = true;
+            return;
+        }
+
         _handleDragStartScale = c.CanvasScale;
+        _handleDragStartScaleX = c.CanvasScaleX;
+        _handleDragStartScaleY = c.CanvasScaleY;
+        _handleDragStartOffX = c.CanvasOffsetX;
+        _handleDragStartOffY = c.CanvasOffsetY;
+        _handleDragStartCropLeft = c.CanvasCropLeft;
+        _handleDragStartCropTop = c.CanvasCropTop;
+        _handleDragStartCropRight = c.CanvasCropRight;
+        _handleDragStartCropBottom = c.CanvasCropBottom;
+        _handleDragCropMode = (Keyboard.Modifiers & ModifierKeys.Alt) != 0;
         _handleDragActive = true;
+        UpdateCanvasHandleVisuals(c);
         h.CaptureMouse();
         e.Handled = true;
     }
@@ -384,23 +2539,151 @@ public partial class MainWindow : Window
         if (!_handleDragActive) return;
         var c = CanvasTargetClip();
         if (c == null) return;
-        var mp = e.GetPosition(canvasHandlesLayer);
-        double dist = Math.Max(4, Distance(mp, _handleDragCentre));
-        c.CanvasScale = _handleDragStartScale * (dist / _handleDragStartDist);
+        double canvasW = Math.Max(1, videoStack.ActualWidth);
+        double canvasH = Math.Max(1, videoStack.ActualHeight);
+        var p = e.GetPosition(videoStack);
+        var delta = RotateVector(p - _handleDragStartMouse, -_handleDragStartRotate);
+
+        if (_handleDragRotateMode)
+        {
+            var screenMouse = e.GetPosition(videoStack);
+            double angle = _handleDragStartRotate + AngleFromCenter(screenMouse, _handleDragRotateCenter) - _handleDragStartAngle;
+            c.RotateDegrees = SnapCanvasRotation(angle);
+            ApplyClipTransform(c);
+            UpdateInspectorCanvasFields();
+            return;
+        }
+
+        if (_handleDragCropMode)
+        {
+            ApplyCanvasCropDrag(c, delta);
+            ApplyClipTransform(c);
+            UpdateCanvasHandleVisuals(c);
+            UpdateInspectorCanvasFields();
+            return;
+        }
+
+        bool left = _handleDragTag.Contains('l');
+        bool right = _handleDragTag.Contains('r');
+        bool top = _handleDragTag.Contains('t');
+        bool bottom = _handleDragTag.Contains('b');
+
+        double factorX = 1.0;
+        double factorY = 1.0;
+        if (left) factorX = (_handleDragStartW - delta.X) / _handleDragStartW;
+        else if (right) factorX = (_handleDragStartW + delta.X) / _handleDragStartW;
+        if (top) factorY = (_handleDragStartH - delta.Y) / _handleDragStartH;
+        else if (bottom) factorY = (_handleDragStartH + delta.Y) / _handleDragStartH;
+
+        bool hasX = left || right;
+        bool hasY = top || bottom;
+        bool freeformStretch = hasX != hasY || (hasX && hasY && (Keyboard.Modifiers & ModifierKeys.Shift) != 0);
+
+        double newScale = _handleDragStartScale;
+        double newScaleX = _handleDragStartScaleX;
+        double newScaleY = _handleDragStartScaleY;
+        double appliedFactorX;
+        double appliedFactorY;
+
+        if (freeformStretch)
+        {
+            if (hasX)
+                newScaleX = Math.Max(0.05, Math.Min(8.0, _handleDragStartScaleX * factorX));
+            if (hasY)
+                newScaleY = Math.Max(0.05, Math.Min(8.0, _handleDragStartScaleY * factorY));
+
+            appliedFactorX = newScaleX / Math.Max(0.0001, _handleDragStartScaleX);
+            appliedFactorY = newScaleY / Math.Max(0.0001, _handleDragStartScaleY);
+        }
+        else
+        {
+            double factor = Math.Abs(factorX - 1.0) >= Math.Abs(factorY - 1.0) ? factorX : factorY;
+            newScale = Math.Max(0.05, Math.Min(8.0, _handleDragStartScale * factor));
+            appliedFactorX = appliedFactorY = newScale / Math.Max(0.0001, _handleDragStartScale);
+        }
+
+        double newW = _handleDragStartW * appliedFactorX;
+        double newH = _handleDragStartH * appliedFactorY;
+
+        double startCenterX = canvasW / 2 + _handleDragStartOffX * canvasW;
+        double startCenterY = canvasH / 2 + _handleDragStartOffY * canvasH;
+        double newCenterX = startCenterX;
+        double newCenterY = startCenterY;
+
+        if (left)
+            newCenterX = (startCenterX + _handleDragStartW / 2) - newW / 2;
+        else if (right)
+            newCenterX = (startCenterX - _handleDragStartW / 2) + newW / 2;
+        if (top)
+            newCenterY = (startCenterY + _handleDragStartH / 2) - newH / 2;
+        else if (bottom)
+            newCenterY = (startCenterY - _handleDragStartH / 2) + newH / 2;
+
+        double proposedOffX = (newCenterX - canvasW / 2) / canvasW;
+        double proposedOffY = (newCenterY - canvasH / 2) / canvasH;
+        var snap = GetCanvasSnapOffset(c, proposedOffX, proposedOffY, newScale, newScaleX, newScaleY);
+        newCenterX += snap.X;
+        newCenterY += snap.Y;
+        UpdateCanvasSnapGuides(c, proposedOffX + snap.X / canvasW, proposedOffY + snap.Y / canvasH, newScale, snap, newScaleX, newScaleY);
+
+        c.CanvasScale = newScale;
+        c.CanvasScaleX = newScaleX;
+        c.CanvasScaleY = newScaleY;
+        c.CanvasOffsetX = (newCenterX - canvasW / 2) / canvasW;
+        c.CanvasOffsetY = (newCenterY - canvasH / 2) / canvasH;
         ApplyClipTransform(c);
         UpdateInspectorCanvasFields();
+    }
+
+    private void ApplyCanvasCropDrag(VideoClip c, Vector delta)
+    {
+        double canvasW = Math.Max(1, videoStack.ActualWidth);
+        double canvasH = Math.Max(1, videoStack.ActualHeight);
+        double baseScale = Math.Min(canvasW / c.VideoWidth, canvasH / c.VideoHeight) * Math.Max(0.0001, _handleDragStartScale);
+        double dxSource = delta.X / (baseScale * Math.Max(0.0001, c.CanvasScaleX));
+        double dySource = delta.Y / (baseScale * Math.Max(0.0001, c.CanvasScaleY));
+
+        bool left = _handleDragTag.Contains('l');
+        bool right = _handleDragTag.Contains('r');
+        bool top = _handleDragTag.Contains('t');
+        bool bottom = _handleDragTag.Contains('b');
+
+        double l = _handleDragStartCropLeft;
+        double t = _handleDragStartCropTop;
+        double r = _handleDragStartCropRight;
+        double b = _handleDragStartCropBottom;
+        if (left) l += dxSource;
+        if (right) r -= dxSource;
+        if (top) t += dySource;
+        if (bottom) b -= dySource;
+
+        ApplyClampedCrop(c, l, t, r, b);
+    }
+
+    private static Vector RotateVector(Vector v, double degrees)
+    {
+        if (Math.Abs(degrees) < 0.001) return v;
+        double radians = degrees * Math.PI / 180.0;
+        double cos = Math.Cos(radians);
+        double sin = Math.Sin(radians);
+        return new Vector(
+            v.X * cos - v.Y * sin,
+            v.X * sin + v.Y * cos);
     }
 
     private void CanvasHandle_MouseUp(object sender, MouseButtonEventArgs e)
     {
         if (!_handleDragActive) return;
         _handleDragActive = false;
+        _handleDragCropMode = false;
+        _handleDragRotateMode = false;
+        _handleDragTag = "";
+        HideCanvasSnapGuides();
+        if (CanvasTargetClip() is { } c)
+            UpdateCanvasHandleVisuals(c);
         if (sender is Border h) h.ReleaseMouseCapture();
         e.Handled = true;
     }
-
-    private static double Distance(Point a, Point b) =>
-        Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y));
 
     protected override void OnClosed(EventArgs e)
     {
@@ -509,7 +2792,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async System.Threading.Tasks.Task AddClipAsync(string path, double? insertAtSec = null)
+    private async System.Threading.Tasks.Task<VideoClip?> AddClipAsync(string path, double? insertAtSec = null)
     {
         status.Text = "Probing " + Path.GetFileName(path) + "...";
         bool wasFirstVideo = !timeline.Clips.Any(c => !c.IsAudioOnly);
@@ -552,11 +2835,14 @@ public partial class MainWindow : Window
                 _formatPickedThisSession = true;
                 ShowFormatPicker();
             }
+            SelectClip(clip);
+            return clip;
         }
         catch (Exception ex)
         {
             status.Text = VideoEditor.Services.Localization.IsHebrew ? "ההוספה נכשלה: " + ex.Message : "Failed to add: " + ex.Message;
         }
+        return null;
     }
 
     // ===== Project format helpers =====
@@ -666,6 +2952,8 @@ public partial class MainWindow : Window
             Dispatcher.BeginInvoke(new Action(() => ApplyClipTransform(_playingClip)),
                 System.Windows.Threading.DispatcherPriority.Loaded);
         RepositionCanvasHandles();
+        UpdateSafeAreasVisual();
+        ApplyPreviewViewTransform();
     }
 
     private void UpdateTopbarDims()
@@ -811,14 +3099,24 @@ public partial class MainWindow : Window
     {
         // Any transform change should also slide the handles to the new corners.
         Dispatcher.BeginInvoke(new Action(RepositionCanvasHandles), System.Windows.Threading.DispatcherPriority.Loaded);
+        if (clip.HasManualCanvasCrop)
+        {
+            var rect = BuildCanvasCropClipRect(clip);
+            videoView.Clip = rect.IsEmpty ? null : new RectangleGeometry(rect);
+        }
+        else
+        {
+            videoView.Clip = null;
+        }
+
         double cx = videoView.ActualWidth / 2, cy = videoView.ActualHeight / 2;
         var tg = new TransformGroup();
         // 1) flip around centre
         double sx = clip.FlipH ? -1 : 1;
         double sy = clip.FlipV ? -1 : 1;
         // 2) user canvas zoom multiplies the flip scale
-        sx *= clip.CanvasScale;
-        sy *= clip.CanvasScale;
+        sx *= clip.CanvasScale * clip.CanvasScaleX;
+        sy *= clip.CanvasScale * clip.CanvasScaleY;
         tg.Children.Add(new ScaleTransform(sx, sy, cx, cy));
         if (clip.RotateDegrees != 0)
             tg.Children.Add(new RotateTransform(clip.RotateDegrees, cx, cy));
@@ -826,8 +3124,8 @@ public partial class MainWindow : Window
         if (Math.Abs(clip.CanvasOffsetX) > 0.001 || Math.Abs(clip.CanvasOffsetY) > 0.001)
         {
             tg.Children.Add(new TranslateTransform(
-                clip.CanvasOffsetX * videoView.ActualWidth,
-                clip.CanvasOffsetY * videoView.ActualHeight));
+                clip.CanvasOffsetX * videoStack.ActualWidth,
+                clip.CanvasOffsetY * videoStack.ActualHeight));
         }
         videoView.RenderTransform = tg;
     }
@@ -1108,7 +3406,9 @@ public partial class MainWindow : Window
 
     private void OverlayCanvas_BackgroundClick(object sender, MouseButtonEventArgs e)
     {
-        if (e.OriginalSource == overlayCanvas) SelectBlock(null);
+        // OBS waits until mouse release to decide whether an empty preview click
+        // clears selection or a drag marquee changes it. PreviewCanvas_MouseUp
+        // owns that decision; clearing here on MouseDown makes tiny drags feel wrong.
     }
 
     private bool IsInlineRecorderVisible() => screenRecorderPanel?.Visibility == Visibility.Visible;
@@ -1119,17 +3419,24 @@ public partial class MainWindow : Window
     private void DeleteBlock_Click(object sender, RoutedEventArgs e)
     {
         if (_selectedBlock == null) return;
-        bool wasInlineBlock = _blockControls.TryGetValue(_selectedBlock, out var ctlPeek)
+        DeleteBlock(_selectedBlock);
+    }
+
+    private void DeleteBlock(VideoBlock block)
+    {
+        bool wasInlineBlock = _blockControls.TryGetValue(block, out var ctlPeek)
                               && ReferenceEquals(ctlPeek.Parent, inlineRecorderOverlayCanvas);
-        if (_blockControls.TryGetValue(_selectedBlock, out var ctl))
+        if (_blockControls.TryGetValue(block, out var ctl))
         {
             if (ctl.Parent is Canvas parentCanvas) parentCanvas.Children.Remove(ctl);
-            _blockControls.Remove(_selectedBlock);
+            _blockControls.Remove(block);
         }
-        timeline.Blocks.Remove(_selectedBlock);
+        timeline.Blocks.Remove(block);
         _selectedBlock = null;
         blockPanel.Visibility = Visibility.Collapsed;
         if (wasInlineBlock && IsInlineRecorderVisible() && !_inlineRecorderCameraOnly) RebuildInlineRecorderTabs();
+        UpdateBlockVisibility();
+        UpdatePreviewOverlayGroupBox();
     }
 
     // ===== Selection =====
@@ -1265,8 +3572,14 @@ public partial class MainWindow : Window
     {
         if (_selectedClip == null) return;
         _selectedClip.CanvasScale = 1.0;
+        _selectedClip.CanvasScaleX = 1.0;
+        _selectedClip.CanvasScaleY = 1.0;
         _selectedClip.CanvasOffsetX = 0;
         _selectedClip.CanvasOffsetY = 0;
+        _selectedClip.CanvasCropLeft = 0;
+        _selectedClip.CanvasCropTop = 0;
+        _selectedClip.CanvasCropRight = 0;
+        _selectedClip.CanvasCropBottom = 0;
         _suppress = true;
         canvasScaleSlider.Value = 1.0;
         canvasOffsetXSlider.Value = 0;
@@ -1299,6 +3612,7 @@ public partial class MainWindow : Window
         bool isMerge       = key == "merge";
         bool isAiCaptions  = key == "aiCaptions";
         bool isDownload    = key == "download";
+        bool isRuler       = key == "ruler";
         bool inRecorder    = IsInlineRecorderVisible();
 
         // Content panels
@@ -1310,6 +3624,7 @@ public partial class MainWindow : Window
         mergePanel.Visibility             = isMerge ? Visibility.Visible : Visibility.Collapsed;
         aiCaptionsPanel.Visibility        = isAiCaptions ? Visibility.Visible : Visibility.Collapsed;
         downloadPanel.Visibility          = isDownload   ? Visibility.Visible : Visibility.Collapsed;
+        rulerInspectorPanel.Visibility    = isRuler      ? Visibility.Visible : Visibility.Collapsed;
         if (!isTts) StopTtsPreview();
         if (multiSelectInspector != null)
         {
@@ -1333,6 +3648,7 @@ public partial class MainWindow : Window
         tabMergeBtn.IsChecked       = isMerge;
         tabAiCaptionsBtn.IsChecked  = isAiCaptions;
         tabDownloadBtn.IsChecked    = isDownload;
+        tabRulerBtn.IsChecked       = isRuler;
         tabBlockBtn.Visibility       = (!inRecorder && isBlock) ? Visibility.Visible : Visibility.Collapsed;
         tabClipBtn.Visibility        = (!inRecorder && isClip)  ? Visibility.Visible : Visibility.Collapsed;
         tabExportBtn.Visibility      = (!inRecorder && isExp)   ? Visibility.Visible : Visibility.Collapsed;
@@ -1340,6 +3656,7 @@ public partial class MainWindow : Window
         tabMergeBtn.Visibility       = isMerge ? Visibility.Visible : Visibility.Collapsed;
         tabAiCaptionsBtn.Visibility  = isAiCaptions ? Visibility.Visible : Visibility.Collapsed;
         tabDownloadBtn.Visibility    = isDownload ? Visibility.Visible : Visibility.Collapsed;
+        tabRulerBtn.Visibility       = isRuler ? Visibility.Visible : Visibility.Collapsed;
         normalTabsBar.Visibility = (!inRecorder && (isBlock || isClip || isExp))
             ? Visibility.Visible : Visibility.Collapsed;
         // The dynamic recorder tabs (Recording / Camera / Block N) are built by
@@ -1350,7 +3667,9 @@ public partial class MainWindow : Window
         UpdateInspectorTabsBarVisibility();
         if (tabBlockDot != null) tabBlockDot.Visibility = _selectedBlock != null ? Visibility.Visible : Visibility.Collapsed;
         if (tabClipDot != null)  tabClipDot.Visibility  = _selectedClip != null ? Visibility.Visible : Visibility.Collapsed;
+        if (tabRulerDot != null) tabRulerDot.Visibility = _measurementRulers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         tabClipBtn.Visibility = _selectedClip != null ? Visibility.Visible : Visibility.Collapsed;
+        if (isRuler) RefreshRulerInspector();
         _suppress = false;
     }
 
@@ -1362,7 +3681,8 @@ public partial class MainWindow : Window
                           || tabTtsBtn.Visibility == Visibility.Visible
                           || tabMergeBtn.Visibility == Visibility.Visible
                           || tabAiCaptionsBtn.Visibility == Visibility.Visible
-                          || tabDownloadBtn.Visibility == Visibility.Visible;
+                          || tabDownloadBtn.Visibility == Visibility.Visible
+                          || tabRulerBtn.Visibility == Visibility.Visible;
         inspectorTabsBar.Visibility = anyVisible ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -1653,6 +3973,44 @@ public partial class MainWindow : Window
         // Skip shortcuts if a text box has focus (so typing works normally)
         if (Keyboard.FocusedElement is TextBoxBase) return;
 
+        if (e.Key == Key.Space && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            SetPreviewViewPanMode(true);
+            e.Handled = true;
+            return;
+        }
+
+        if (_previewViewPanMode)
+        {
+            if (e.Key == Key.Add || e.Key == Key.OemPlus)
+            {
+                AdjustPreviewViewZoomLevel(1);
+                _previewViewPanMoved = true;
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.Subtract || e.Key == Key.OemMinus)
+            {
+                AdjustPreviewViewZoomLevel(-1);
+                _previewViewPanMoved = true;
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.D0 || e.Key == Key.NumPad0)
+            {
+                ResetPreviewViewPan();
+                _previewViewPanMoved = true;
+                status.Text = "Preview view reset.";
+                e.Handled = true;
+                return;
+            }
+        }
+
+        if (TryHandlePreviewNudge(e))
+            return;
+
         if (e.Key == Key.F1 || (e.Key == Key.OemQuestion && Keyboard.Modifiers == ModifierKeys.None))
         {
             Help_Click(this, new RoutedEventArgs());
@@ -1733,6 +4091,56 @@ public partial class MainWindow : Window
         }
     }
 
+    private void MainWindow_PreviewKeyUp(object sender, KeyEventArgs e)
+    {
+        if (Keyboard.FocusedElement is TextBoxBase) return;
+        if (e.Key != Key.Space || !_previewViewPanMode) return;
+
+        bool shouldTogglePlayback = !_previewViewPanMoved;
+        SetPreviewViewPanMode(false);
+        _previewViewPanMoved = false;
+        if (shouldTogglePlayback)
+        {
+            if (_isPlaying) PauseBtn_Click(this, new RoutedEventArgs());
+            else PlayBtn_Click(this, new RoutedEventArgs());
+        }
+        e.Handled = true;
+    }
+
+    private bool TryHandlePreviewNudge(KeyEventArgs e)
+    {
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key is not (Key.Left or Key.Right or Key.Up or Key.Down))
+            return false;
+
+        var modifiers = Keyboard.Modifiers;
+        if ((modifiers & ~(ModifierKeys.Shift | ModifierKeys.Control)) != 0)
+            return false;
+
+        double step = (modifiers & ModifierKeys.Shift) != 0 ? 10.0 : 1.0;
+        double dx = key == Key.Left ? -step : key == Key.Right ? step : 0;
+        double dy = key == Key.Up ? -step : key == Key.Down ? step : 0;
+
+        if (PreviewOverlaySelectionCount() > 0)
+        {
+            ApplyPreviewOverlayGroupDelta(dx, dy);
+            e.Handled = true;
+            return true;
+        }
+
+        var clip = _selectedClip != null && !_selectedClip.IsAudioOnly ? _selectedClip : null;
+        if (clip == null || videoStack.ActualWidth < 1 || videoStack.ActualHeight < 1)
+            return false;
+
+        clip.CanvasOffsetX += dx / videoStack.ActualWidth;
+        clip.CanvasOffsetY += dy / videoStack.ActualHeight;
+        ApplyClipTransform(clip);
+        UpdateInspectorCanvasFields();
+        status.Text = $"Nudged canvas {step:0}px.";
+        e.Handled = true;
+        return true;
+    }
+
     // Deletes/mutes every currently-selected item (single or multi). Each item is routed
     // through the existing per-type handling so side effects (block visual cleanup,
     // stopping video preview on a playing clip, attached-audio mute vs. audio-only remove)
@@ -1780,17 +4188,61 @@ public partial class MainWindow : Window
 
     // Wires a ResizableBlock for Ctrl-aware selection. Ctrl is read synchronously from
     // Keyboard.Modifiers because Selected fires from MouseLeftButtonDown / DragStarted
-    // while modifier state is still current. Note: multi-drag of preview-canvas blocks
-    // is intentionally out of scope for v1 (each block still drags itself); Ctrl+click
-    // multi-select and group Delete still work.
+    // while modifier state is still current.
     private void WireResizableBlock(VideoEditor.Controls.ResizableBlock ctl)
     {
         ctl.Selected += rb =>
         {
             bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
-            timeline.HandleBlockClick(rb.Model, ctrl);
+            bool preserveGroup = !ctrl && timeline.SelectedBlocks.Contains(rb.Model) && PreviewOverlaySelectionCount() > 1;
+            if (!preserveGroup) timeline.HandleBlockClick(rb.Model, ctrl);
         };
+        ctl.MoveRequested += (rb, dx, dy) =>
+        {
+            if (!timeline.SelectedBlocks.Contains(rb.Model) || PreviewOverlaySelectionCount() <= 1)
+                return false;
+
+            ApplyPreviewOverlayGroupDelta(dx, dy);
+            return true;
+        };
+        ctl.MoveCompleted += _ => HideCanvasSnapGuides();
         ctl.Changed += _ => SyncBlockInspector();
+        ctl.ClickedWithoutDrag += (rb, wasSelectedAtMouseDown) =>
+        {
+            if (!wasSelectedAtMouseDown || (Keyboard.Modifiers & ModifierKeys.Control) != 0)
+                return;
+
+            SelectPreviewItemBelow(Mouse.GetPosition(overlayCanvas), rb.Model);
+        };
+        ctl.MouseRightButtonUp += ResizableBlock_MouseRightButtonUp;
+    }
+
+    private void ResizableBlock_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not VideoEditor.Controls.ResizableBlock rb) return;
+        SelectBlock(rb.Model);
+
+        var menu = new ContextMenu();
+        var cover = new MenuItem { Header = "Cover whole video" };
+        cover.Click += (_, _) =>
+        {
+            rb.Model.CoversWholeVideo = true;
+            rb.Model.StartSeconds = 0;
+            rb.Model.EndSeconds = timeline.TotalSeconds;
+            SelectBlock(rb.Model);
+            status.Text = "Hide block covers the whole video.";
+        };
+        menu.Items.Add(cover);
+        var del = new MenuItem { Header = "Delete hide block" };
+        del.Click += (_, _) =>
+        {
+            DeleteBlock(rb.Model);
+            status.Text = "Hide block deleted.";
+        };
+        menu.Items.Add(del);
+        rb.ContextMenu = menu;
+        menu.IsOpen = true;
+        e.Handled = true;
     }
 
     // Routes timeline selection changes to the inspector and to ResizableBlock outlines
@@ -1800,6 +4252,8 @@ public partial class MainWindow : Window
     {
         foreach (var kv in _blockControls)
             kv.Value.SetSelected(timeline.SelectedBlocks.Contains(kv.Key));
+        RefreshTextOverlayPreviewSelectionVisuals();
+        UpdatePreviewOverlayGroupBox();
 
         int count = timeline.TotalSelectionCount;
         if (count > 1) { ShowInspectorTab("multi"); UpdateBlockVisibility(); return; }
@@ -1990,6 +4444,15 @@ public partial class MainWindow : Window
                 FlipV = c.FlipV,
                 VideoWidth = c.VideoWidth,
                 VideoHeight = c.VideoHeight,
+                CanvasScale = c.CanvasScale,
+                CanvasScaleX = c.CanvasScaleX,
+                CanvasScaleY = c.CanvasScaleY,
+                CanvasOffsetX = c.CanvasOffsetX,
+                CanvasOffsetY = c.CanvasOffsetY,
+                CanvasCropLeft = c.CanvasCropLeft,
+                CanvasCropTop = c.CanvasCropTop,
+                CanvasCropRight = c.CanvasCropRight,
+                CanvasCropBottom = c.CanvasCropBottom,
                 AccentColor = c.IsAudioOnly ? c.AccentColor : VideoClip.NextColor(),
                 LoopCount = c.LoopCount,
                 IsAudioOnly = c.IsAudioOnly
@@ -2042,10 +4505,11 @@ public partial class MainWindow : Window
             // visible even outside its range - otherwise it'd disappear the moment you
             // selected it to drag/resize.
             bool inRange = block.CoversWholeVideo || (t >= block.StartSeconds && t <= block.EndSeconds);
-            bool isEditing = block == _selectedBlock;
+            bool isEditing = block == _selectedBlock || timeline.SelectedBlocks.Contains(block);
             ctl.Visibility = (inRange || isEditing) ? Visibility.Visible : Visibility.Hidden;
         }
         UpdateTextOverlaysVisibility(t);
+        UpdatePreviewOverlayGroupBox();
     }
 
     private readonly Dictionary<TextOverlay, Border> _textOverlayPreviewControls = new();
@@ -2095,6 +4559,7 @@ public partial class MainWindow : Window
             bool active = !_isPlaying || (currentSec >= ov.StartSeconds && currentSec <= ov.EndSeconds);
             ctl!.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
         }
+        RefreshTextOverlayPreviewSelectionVisuals();
         _textOverlayDirty.Clear();
     }
 
@@ -2114,10 +4579,208 @@ public partial class MainWindow : Window
         {
             CornerRadius = new CornerRadius(6),
             Child = tb,
-            IsHitTestVisible = false
+            IsHitTestVisible = true,
+            Cursor = Cursors.SizeAll,
+            Tag = ov,
+            BorderBrush = Brushes.Transparent,
+            BorderThickness = new Thickness(2)
         };
+        border.MouseLeftButtonDown += TextOverlayPreview_MouseDown;
+        border.MouseMove += TextOverlayPreview_MouseMove;
+        border.MouseLeftButtonUp += TextOverlayPreview_MouseUp;
+        border.MouseRightButtonUp += TextOverlayPreview_MouseRightButtonUp;
         ApplyOverlayStyle(border, ov, 1.0);
         return border;
+    }
+
+    private void TextOverlayPreview_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not Border border || border.Tag is not TextOverlay ov) return;
+        bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        if (e.ClickCount >= 2)
+        {
+            timeline.HandleTextOverlayClick(ov, false);
+            _selectedBlock = null;
+            _selectedClip = null;
+            RefreshTextOverlayPreviewSelectionVisuals();
+            OnTextOverlayContext(ov, "edit");
+            e.Handled = true;
+            return;
+        }
+
+        bool preserveGroup = !ctrl && timeline.SelectedTextOverlays.Contains(ov) && PreviewOverlaySelectionCount() > 1;
+        bool wasSelectedAtMouseDown = timeline.SelectedTextOverlays.Contains(ov);
+        if (!preserveGroup) timeline.HandleTextOverlayClick(ov, ctrl);
+        _selectedBlock = null;
+        _selectedClip = null;
+        _previewOverlayDragActive = true;
+        _previewOverlayDragMoved = false;
+        _previewOverlayDragLast = _previewOverlayDragStart = e.GetPosition(overlayCanvas);
+        _previewOverlayClickThroughItem = ov;
+        _previewOverlayClickThroughCandidate = wasSelectedAtMouseDown && !ctrl;
+        border.CaptureMouse();
+        RefreshTextOverlayPreviewSelectionVisuals();
+        status.Text = ctrl
+            ? $"Text overlay selection: {timeline.SelectedTextOverlays.Count}"
+            : "Text overlay selected.";
+        e.Handled = true;
+    }
+
+    private void TextOverlayPreview_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_previewOverlayDragActive || sender is not Border border || !border.IsMouseCaptured)
+            return;
+
+        var p = e.GetPosition(overlayCanvas);
+        if (!_previewOverlayDragMoved)
+        {
+            double dxFromStart = p.X - _previewOverlayDragStart.X;
+            double dyFromStart = p.Y - _previewOverlayDragStart.Y;
+            double thresholdX = Math.Max(2.0, SystemParameters.MinimumHorizontalDragDistance);
+            double thresholdY = Math.Max(2.0, SystemParameters.MinimumVerticalDragDistance);
+            if (Math.Abs(dxFromStart) < thresholdX && Math.Abs(dyFromStart) < thresholdY)
+                return;
+
+            _previewOverlayDragMoved = true;
+            _previewOverlayDragLast = p;
+            e.Handled = true;
+            return;
+        }
+
+        var delta = p - _previewOverlayDragLast;
+        if (Math.Abs(delta.X) < 0.01 && Math.Abs(delta.Y) < 0.01)
+            return;
+
+        ApplyPreviewOverlayGroupDelta(delta.X, delta.Y);
+        _previewOverlayDragLast = p;
+        e.Handled = true;
+    }
+
+    private void TextOverlayPreview_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is Border border && border.IsMouseCaptured)
+            border.ReleaseMouseCapture();
+        bool clickThrough = _previewOverlayClickThroughCandidate && !_previewOverlayDragMoved && _previewOverlayClickThroughItem != null;
+        var clickItem = _previewOverlayClickThroughItem;
+        var clickPoint = e.GetPosition(overlayCanvas);
+        _previewOverlayDragActive = false;
+        _previewOverlayDragMoved = false;
+        _previewOverlayClickThroughCandidate = false;
+        _previewOverlayClickThroughItem = null;
+        HideCanvasSnapGuides();
+        if (clickThrough)
+            SelectPreviewItemBelow(clickPoint, clickItem);
+        e.Handled = true;
+    }
+
+    private void TextOverlayPreview_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not Border border || border.Tag is not TextOverlay ov) return;
+
+        timeline.HandleTextOverlayClick(ov, false);
+        _selectedBlock = null;
+        _selectedClip = null;
+        RefreshTextOverlayPreviewSelectionVisuals();
+
+        var menu = new ContextMenu();
+        var edit = new MenuItem { Header = "Edit text..." };
+        edit.Click += (_, _) => OnTextOverlayContext(ov, "edit");
+        menu.Items.Add(edit);
+        var del = new MenuItem { Header = "Delete text" };
+        del.Click += (_, _) => OnTextOverlayContext(ov, "delete");
+        menu.Items.Add(del);
+        border.ContextMenu = menu;
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    private int PreviewOverlaySelectionCount() => timeline.SelectedBlocks.Count + timeline.SelectedTextOverlays.Count;
+
+    private double GetTextOverlayPreviewScale()
+    {
+        var firstVideo = timeline.Clips.FirstOrDefault(c => !c.IsAudioOnly);
+        if (firstVideo == null || firstVideo.VideoWidth <= 0 || firstVideo.VideoHeight <= 0)
+            return 1.0;
+
+        double canvasW = Math.Max(1, overlayCanvas.ActualWidth);
+        double canvasH = Math.Max(1, overlayCanvas.ActualHeight);
+        return Math.Min(canvasW / firstVideo.VideoWidth, canvasH / firstVideo.VideoHeight);
+    }
+
+    private void ApplyPreviewOverlayGroupDelta(double dx, double dy)
+    {
+        if (overlayCanvas == null) return;
+        var selectedBlocks = timeline.SelectedBlocks.ToList();
+        var selectedTexts = timeline.SelectedTextOverlays.ToList();
+        if (selectedBlocks.Count + selectedTexts.Count == 0) return;
+
+        double minX = double.PositiveInfinity, minY = double.PositiveInfinity;
+        double maxX = double.NegativeInfinity, maxY = double.NegativeInfinity;
+
+        foreach (var b in selectedBlocks)
+        {
+            minX = Math.Min(minX, b.X);
+            minY = Math.Min(minY, b.Y);
+            maxX = Math.Max(maxX, b.X + b.Width);
+            maxY = Math.Max(maxY, b.Y + b.Height);
+        }
+
+        foreach (var ov in selectedTexts)
+        {
+            if (!_textOverlayPreviewControls.TryGetValue(ov, out var ctl)) continue;
+            var rect = PreviewElementRect(ctl);
+            minX = Math.Min(minX, rect.Left);
+            minY = Math.Min(minY, rect.Top);
+            maxX = Math.Max(maxX, rect.Right);
+            maxY = Math.Max(maxY, rect.Bottom);
+        }
+
+        if (double.IsInfinity(minX)) return;
+        var movingBounds = new Rect(minX + dx, minY + dy, Math.Max(1, maxX - minX), Math.Max(1, maxY - minY));
+        var snap = GetPreviewOverlaySnapOffset(movingBounds);
+        dx += snap.X;
+        dy += snap.Y;
+        movingBounds.Offset(snap);
+        UpdatePreviewOverlaySnapGuides(movingBounds, snap);
+
+        if (minX + dx < 0) dx = -minX;
+        if (minY + dy < 0) dy = -minY;
+        if (maxX + dx > overlayCanvas.ActualWidth) dx = overlayCanvas.ActualWidth - maxX;
+        if (maxY + dy > overlayCanvas.ActualHeight) dy = overlayCanvas.ActualHeight - maxY;
+
+        foreach (var b in selectedBlocks)
+        {
+            b.X += dx;
+            b.Y += dy;
+        }
+
+        double scale = GetTextOverlayPreviewScale();
+        foreach (var ov in selectedTexts)
+        {
+            ov.X = (int)Math.Round(ov.X + dx / scale);
+            ov.Y = (int)Math.Round(ov.Y + dy / scale);
+            if (_textOverlayPreviewControls.TryGetValue(ov, out var ctl))
+                ApplyOverlayPlacement(ctl, ov, scale);
+            _textOverlayDirty.Add(ov);
+        }
+
+        SyncBlockInspector();
+        RefreshTextOverlayPreviewSelectionVisuals();
+        UpdatePreviewOverlayGroupBox();
+        int movedCount = selectedBlocks.Count + selectedTexts.Count;
+        status.Text = movedCount > 1
+            ? $"Moved {movedCount} preview items."
+            : selectedBlocks.Count == 1 ? "Moved hide block." : "Moved text overlay.";
+    }
+
+    private void RefreshTextOverlayPreviewSelectionVisuals()
+    {
+        foreach (var kv in _textOverlayPreviewControls)
+        {
+            var selected = timeline.SelectedTextOverlays.Contains(kv.Key);
+            kv.Value.BorderBrush = selected ? (Brush)FindResource("AccentHover") : Brushes.Transparent;
+        }
+        UpdatePreviewOverlayGroupBox();
     }
 
     private static void ApplyOverlayStyle(Border ctl, TextOverlay ov, double scale)
@@ -2215,6 +4878,15 @@ public partial class MainWindow : Window
             FlipV = clip.FlipV,
             VideoWidth = clip.VideoWidth,
             VideoHeight = clip.VideoHeight,
+            CanvasScale = clip.CanvasScale,
+            CanvasScaleX = clip.CanvasScaleX,
+            CanvasScaleY = clip.CanvasScaleY,
+            CanvasOffsetX = clip.CanvasOffsetX,
+            CanvasOffsetY = clip.CanvasOffsetY,
+            CanvasCropLeft = clip.CanvasCropLeft,
+            CanvasCropTop = clip.CanvasCropTop,
+            CanvasCropRight = clip.CanvasCropRight,
+            CanvasCropBottom = clip.CanvasCropBottom,
             AccentColor = clip.IsAudioOnly ? clip.AccentColor : VideoClip.NextColor(),
             LoopCount = loopCount,
             IsAudioOnly = clip.IsAudioOnly,  // Preserve type when splitting audio-only clips
@@ -2257,6 +4929,15 @@ public partial class MainWindow : Window
                 FlipV = clip.FlipV,
                 VideoWidth = clip.VideoWidth,
                 VideoHeight = clip.VideoHeight,
+                CanvasScale = clip.CanvasScale,
+                CanvasScaleX = clip.CanvasScaleX,
+                CanvasScaleY = clip.CanvasScaleY,
+                CanvasOffsetX = clip.CanvasOffsetX,
+                CanvasOffsetY = clip.CanvasOffsetY,
+                CanvasCropLeft = clip.CanvasCropLeft,
+                CanvasCropTop = clip.CanvasCropTop,
+                CanvasCropRight = clip.CanvasCropRight,
+                CanvasCropBottom = clip.CanvasCropBottom,
                 AccentColor = VideoClip.NextColor(),
                 LoopCount = 1,
                 TimelineStart = origTLStart + partTL * i
@@ -2281,6 +4962,15 @@ public partial class MainWindow : Window
             FlipV = clip.FlipV,
             VideoWidth = clip.VideoWidth,
             VideoHeight = clip.VideoHeight,
+            CanvasScale = clip.CanvasScale,
+            CanvasScaleX = clip.CanvasScaleX,
+            CanvasScaleY = clip.CanvasScaleY,
+            CanvasOffsetX = clip.CanvasOffsetX,
+            CanvasOffsetY = clip.CanvasOffsetY,
+            CanvasCropLeft = clip.CanvasCropLeft,
+            CanvasCropTop = clip.CanvasCropTop,
+            CanvasCropRight = clip.CanvasCropRight,
+            CanvasCropBottom = clip.CanvasCropBottom,
             AccentColor = clip.IsAudioOnly ? clip.AccentColor : VideoClip.NextColor(),
             LoopCount = clip.LoopCount,
             IsAudioOnly = clip.IsAudioOnly,
@@ -4448,21 +7138,39 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
 
     private bool _downloadTabInitialized;
     private System.Threading.CancellationTokenSource? _downloadCts;
+    private string? _downloadLastPath;
+    private static readonly int[] DownloadQualityHeights = { 0, 4320, 2160, 1440, 1080, 720, 480 };
 
     private void OpenDownloadTab()
     {
         if (!_downloadTabInitialized)
         {
-            var defaultFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "VideoEditorDownloads");
-            downloadFolderBox.Text = defaultFolder;
+            downloadFolderBox.Text = ResolveDownloadFolder();
+            SyncDownloadOptionsFromSettings();
             UpdateDownloadDetection();
             _downloadTabInitialized = true;
+        }
+        else
+        {
+            SyncDownloadOptionsFromSettings();
         }
         ShowInspectorTab("download");
     }
 
+    private static string ResolveDownloadFolder()
+    {
+        if (!string.IsNullOrWhiteSpace(AppSettings.DownloadsFolder))
+            return AppSettings.DownloadsFolder;
+
+        return Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyVideos),
+            "VideoEditorDownloads");
+    }
+
     private void DownloadUrlBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
+        _downloadLastPath = null;
+        if (downloadAddToTimelineBtn != null) downloadAddToTimelineBtn.IsEnabled = false;
         UpdateDownloadDetection();
     }
 
@@ -4506,8 +7214,73 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
         if (dlg.ShowDialog() == true)
         {
             var folder = Path.GetDirectoryName(dlg.FileName);
-            if (!string.IsNullOrEmpty(folder)) downloadFolderBox.Text = folder;
+            if (!string.IsNullOrEmpty(folder))
+            {
+                downloadFolderBox.Text = folder;
+                AppSettings.DownloadsFolder = folder;
+                AppSettings.Save();
+            }
         }
+    }
+
+    private void DownloadSettings_Click(object sender, RoutedEventArgs e)
+    {
+        new SettingsWindow("downloads") { Owner = this }.ShowDialog();
+        if (downloadFolderBox != null && !string.IsNullOrWhiteSpace(AppSettings.DownloadsFolder))
+            downloadFolderBox.Text = AppSettings.DownloadsFolder;
+        SyncDownloadOptionsFromSettings();
+    }
+
+    private void SyncDownloadOptionsFromSettings()
+    {
+        if (downloadQualityBox == null) return;
+
+        _suppress = true;
+        try
+        {
+            var idx = Array.IndexOf(DownloadQualityHeights, AppSettings.DownloadMaxHeight);
+            downloadQualityBox.SelectedIndex = idx >= 0 ? idx : 4;
+            if (downloadRememberLoginCheck != null)
+                downloadRememberLoginCheck.IsChecked = AppSettings.DownloadRememberBrowserLogin;
+            if (downloadAutoAddCheck != null)
+                downloadAutoAddCheck.IsChecked = AppSettings.DownloadAutoAddToTimeline;
+        }
+        finally
+        {
+            _suppress = false;
+        }
+
+        UpdateDownloadOptionsSummary();
+    }
+
+    private void UpdateDownloadOptionsSummary()
+    {
+        if (downloadOptionsSummaryText == null) return;
+
+        var maxHeight = AppSettings.DownloadMaxHeight <= 0 ? "best available" : $"up to {AppSettings.DownloadMaxHeight}p";
+        var login = AppSettings.DownloadRememberBrowserLogin ? "browser login remembered" : "login asked only when needed";
+        var add = AppSettings.DownloadAutoAddToTimeline ? "auto-add enabled" : "manual Add to Timeline";
+        downloadOptionsSummaryText.Text = $"Quality: {maxHeight} · {login} · {add}";
+    }
+
+    private void DownloadQuality_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppress || downloadQualityBox == null) return;
+        var idx = Math.Clamp(downloadQualityBox.SelectedIndex, 0, DownloadQualityHeights.Length - 1);
+        AppSettings.DownloadMaxHeight = DownloadQualityHeights[idx];
+        AppSettings.Save();
+        UpdateDownloadOptionsSummary();
+    }
+
+    private void DownloadOption_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppress) return;
+        if (downloadRememberLoginCheck != null)
+            AppSettings.DownloadRememberBrowserLogin = downloadRememberLoginCheck.IsChecked == true;
+        if (downloadAutoAddCheck != null)
+            AppSettings.DownloadAutoAddToTimeline = downloadAutoAddCheck.IsChecked == true;
+        AppSettings.Save();
+        UpdateDownloadOptionsSummary();
     }
 
     private async void DownloadStart_Click(object sender, RoutedEventArgs e)
@@ -4538,10 +7311,13 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
             downloadStatusText.Text = "Cannot create folder: " + ex.Message;
             return;
         }
+        AppSettings.DownloadsFolder = folder;
+        AppSettings.Save();
 
-        bool useStreaming = !DownloadService.LooksLikeDirectFile(url);
         _downloadCts = new System.Threading.CancellationTokenSource();
         downloadStartBtn.Content = "⏹ Cancel";
+        downloadAddToTimelineBtn.IsEnabled = false;
+        _downloadLastPath = null;
         tabDownloadDot.Visibility = Visibility.Visible;
         downloadPhaseText.Text = "Downloading…";
         downloadProgress.Value = 0;
@@ -4564,27 +7340,28 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
         status.Text = "Starting download…";
         try
         {
-            string finalPath;
-            if (useStreaming)
-            {
-                finalPath = await dl.DownloadViaYtDlpAsync(url, folder, App.FFmpegPath, prog, _downloadCts.Token);
-            }
-            else
-            {
-                var uri = new Uri(url);
-                var fileName = Path.GetFileName(uri.LocalPath);
-                if (string.IsNullOrWhiteSpace(fileName) || !fileName.Contains('.')) fileName = "downloaded.mp4";
-                var outputPath = Path.Combine(folder, fileName);
-                finalPath = await dl.DownloadDirectAsync(url, outputPath, prog, _downloadCts.Token);
-            }
-            downloadPhaseText.Text = "Adding to timeline…";
-            status.Text = $"Downloaded → adding to timeline: {Path.GetFileName(finalPath)}";
-            await AddClipAsync(finalPath);
+            string finalPath = await DownloadWithLoginPromptsAsync(dl, url, folder, prog, _downloadCts.Token);
+            _downloadLastPath = finalPath;
             downloadProgress.Value = 1;
             progress.Value = 1;
             downloadPhaseText.Text = "Done";
-            downloadStatusText.Text = $"Added: {Path.GetFileName(finalPath)}";
-            status.Text = $"Added downloaded clip: {Path.GetFileName(finalPath)}";
+            downloadStatusText.Text = $"Downloaded: {Path.GetFileName(finalPath)}";
+            downloadAddToTimelineBtn.IsEnabled = true;
+            status.Text = $"Downloaded clip: {Path.GetFileName(finalPath)}";
+            if (AppSettings.DownloadAutoAddToTimeline)
+            {
+                try
+                {
+                    await AddDownloadedPathToTimelineAsync(finalPath);
+                }
+                catch (Exception addEx)
+                {
+                    downloadPhaseText.Text = "Downloaded";
+                    downloadStatusText.Text = "Downloaded, but add to timeline failed: " + addEx.Message;
+                    status.Text = "Add to timeline failed: " + addEx.Message;
+                    downloadAddToTimelineBtn.IsEnabled = true;
+                }
+            }
         }
         catch (OperationCanceledException)
         {
@@ -4606,9 +7383,86 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
         {
             _downloadCts?.Dispose();
             _downloadCts = null;
-            downloadStartBtn.Content = "⬇ Download & Add to Timeline";
+            downloadStartBtn.Content = "Download";
             tabDownloadDot.Visibility = Visibility.Collapsed;
         }
+    }
+
+    private async Task<string> DownloadWithLoginPromptsAsync(
+        DownloadService dl,
+        string url,
+        string folder,
+        IProgress<double> prog,
+        System.Threading.CancellationToken ct)
+    {
+        var allowBrowserLogin = AppSettings.DownloadRememberBrowserLogin;
+
+        while (true)
+        {
+            try
+            {
+                return await dl.DownloadFromUrlAsync(
+                    url, folder, App.FFmpegPath, prog, ct,
+                    allowBrowserLogin: allowBrowserLogin,
+                    maxHeight: AppSettings.DownloadMaxHeight);
+            }
+            catch (LoginRequiredDownloadException loginEx)
+            {
+                downloadPhaseText.Text = "Login required";
+                downloadStatusText.Text = loginEx.Message;
+                status.Text = "Download needs browser login.";
+
+                var dlg = new BrowserLoginRequiredDialog(loginEx) { Owner = this };
+                if (dlg.ShowDialog() != true)
+                    throw;
+
+                AppSettings.DownloadRememberBrowserLogin = dlg.RememberMe;
+                AppSettings.Save();
+
+                allowBrowserLogin = true;
+                downloadPhaseText.Text = "Retrying with browser login…";
+                downloadStatusText.Text = "Using browser login…";
+                status.Text = "Retrying download with browser login…";
+                downloadProgress.Value = 0;
+                progress.Value = 0;
+            }
+        }
+    }
+
+    private async void DownloadAddToTimeline_Click(object sender, RoutedEventArgs e)
+    {
+        var path = _downloadLastPath;
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            downloadStatusText.Text = "Download a video first.";
+            downloadAddToTimelineBtn.IsEnabled = false;
+            return;
+        }
+
+        try
+        {
+            await AddDownloadedPathToTimelineAsync(path);
+        }
+        catch (Exception ex)
+        {
+            downloadPhaseText.Text = "Failed";
+            downloadStatusText.Text = "Add to timeline failed: " + ex.Message;
+            status.Text = "Add to timeline failed: " + ex.Message;
+            downloadAddToTimelineBtn.IsEnabled = true;
+        }
+    }
+
+    private async Task AddDownloadedPathToTimelineAsync(string path)
+    {
+        downloadAddToTimelineBtn.IsEnabled = false;
+        downloadPhaseText.Text = "Adding to timeline…";
+        status.Text = $"Adding downloaded clip: {Path.GetFileName(path)}";
+        var addedClip = await AddClipAsync(path);
+        if (addedClip == null) return;
+        downloadPhaseText.Text = "Done";
+        downloadStatusText.Text = $"Added: {Path.GetFileName(path)}";
+        status.Text = $"Added downloaded clip: {Path.GetFileName(path)}";
+        downloadAddToTimelineBtn.IsEnabled = true;
     }
 
     private void Trim_Click(object s, RoutedEventArgs e)
@@ -5335,7 +8189,7 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
         public double OutPoint;
         public double Speed = 1.0;
         public double Volume = 1.0;
-        public int RotateDegrees;
+        public double RotateDegrees;
         public bool FlipH;
         public bool FlipV;
         public int VideoWidth;
@@ -5344,8 +8198,14 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
         public double TimelineStart;
         public bool IsAudioOnly;
         public double CanvasScale = 1.0;
+        public double CanvasScaleX = 1.0;
+        public double CanvasScaleY = 1.0;
         public double CanvasOffsetX;
         public double CanvasOffsetY;
+        public double CanvasCropLeft;
+        public double CanvasCropTop;
+        public double CanvasCropRight;
+        public double CanvasCropBottom;
         public Color AccentColor;
 
         public static ClipSnapshot FromClip(VideoClip c) => new()
@@ -5365,8 +8225,14 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
             TimelineStart = c.TimelineStart,
             IsAudioOnly = c.IsAudioOnly,
             CanvasScale = c.CanvasScale,
+            CanvasScaleX = c.CanvasScaleX,
+            CanvasScaleY = c.CanvasScaleY,
             CanvasOffsetX = c.CanvasOffsetX,
             CanvasOffsetY = c.CanvasOffsetY,
+            CanvasCropLeft = c.CanvasCropLeft,
+            CanvasCropTop = c.CanvasCropTop,
+            CanvasCropRight = c.CanvasCropRight,
+            CanvasCropBottom = c.CanvasCropBottom,
             AccentColor = c.AccentColor,
         };
 
@@ -5387,8 +8253,14 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
             TimelineStart = TimelineStart,
             IsAudioOnly = IsAudioOnly,
             CanvasScale = CanvasScale,
+            CanvasScaleX = CanvasScaleX,
+            CanvasScaleY = CanvasScaleY,
             CanvasOffsetX = CanvasOffsetX,
             CanvasOffsetY = CanvasOffsetY,
+            CanvasCropLeft = CanvasCropLeft,
+            CanvasCropTop = CanvasCropTop,
+            CanvasCropRight = CanvasCropRight,
+            CanvasCropBottom = CanvasCropBottom,
             AccentColor = AccentColor,
         };
     }
@@ -5405,7 +8277,7 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
                 var a = Clips[i]; var b = other.Clips[i];
                 if (a.SourceFile != b.SourceFile) return false;
                 if (a.IsAudioOnly != b.IsAudioOnly) return false;
-                if (a.RotateDegrees != b.RotateDegrees) return false;
+                if (Math.Abs(a.RotateDegrees - b.RotateDegrees) > 0.001) return false;
                 if (a.FlipH != b.FlipH) return false;
                 if (a.FlipV != b.FlipV) return false;
                 if (a.LoopCount != b.LoopCount) return false;
@@ -5415,8 +8287,14 @@ private void Help_Click(object s, RoutedEventArgs e) => new UserGuideWindow() { 
                 if (Math.Abs(a.Speed - b.Speed) > 0.001) return false;
                 if (Math.Abs(a.Volume - b.Volume) > 0.001) return false;
                 if (Math.Abs(a.CanvasScale - b.CanvasScale) > 0.001) return false;
+                if (Math.Abs(a.CanvasScaleX - b.CanvasScaleX) > 0.001) return false;
+                if (Math.Abs(a.CanvasScaleY - b.CanvasScaleY) > 0.001) return false;
                 if (Math.Abs(a.CanvasOffsetX - b.CanvasOffsetX) > 0.001) return false;
                 if (Math.Abs(a.CanvasOffsetY - b.CanvasOffsetY) > 0.001) return false;
+                if (Math.Abs(a.CanvasCropLeft - b.CanvasCropLeft) > 0.001) return false;
+                if (Math.Abs(a.CanvasCropTop - b.CanvasCropTop) > 0.001) return false;
+                if (Math.Abs(a.CanvasCropRight - b.CanvasCropRight) > 0.001) return false;
+                if (Math.Abs(a.CanvasCropBottom - b.CanvasCropBottom) > 0.001) return false;
             }
             return true;
         }

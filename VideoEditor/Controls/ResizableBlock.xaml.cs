@@ -13,9 +13,14 @@ public partial class ResizableBlock : UserControl
     public VideoBlock Model { get; }
     public event Action<ResizableBlock>? Selected;
     public event Action<ResizableBlock>? Changed;
+    public event Func<ResizableBlock, double, double, bool>? MoveRequested;
+    public event Action<ResizableBlock>? MoveCompleted;
+    public event Action<ResizableBlock, bool>? ClickedWithoutDrag;
 
     private bool _selected;
     private bool _livePreviewEnabled;
+    private bool _mouseDownWasSelected;
+    private bool _dragMoved;
 
     public ResizableBlock(VideoBlock model)
     {
@@ -24,20 +29,26 @@ public partial class ResizableBlock : UserControl
         ApplyModel();
 
         dragThumb.DragDelta += OnDrag;
-        dragThumb.DragStarted += (_, _) => RaiseSelected();
-        dragThumb.PreviewMouseLeftButtonDown += (_, _) => RaiseSelected();
+        dragThumb.DragStarted += (_, _) => { _dragMoved = false; RaiseSelected(); };
+        dragThumb.DragCompleted += (_, _) => MoveCompleted?.Invoke(this);
 
         tlThumb.DragDelta += (s, e) => Resize(e.HorizontalChange, e.VerticalChange, true, true);
         trThumb.DragDelta += (s, e) => Resize(e.HorizontalChange, e.VerticalChange, false, true);
         blThumb.DragDelta += (s, e) => Resize(e.HorizontalChange, e.VerticalChange, true, false);
         brThumb.DragDelta += (s, e) => Resize(e.HorizontalChange, e.VerticalChange, false, false);
 
-        tlThumb.DragStarted += (_, _) => RaiseSelected();
-        trThumb.DragStarted += (_, _) => RaiseSelected();
-        blThumb.DragStarted += (_, _) => RaiseSelected();
-        brThumb.DragStarted += (_, _) => RaiseSelected();
+        tlThumb.DragStarted += (_, _) => { _dragMoved = false; RaiseSelected(); };
+        trThumb.DragStarted += (_, _) => { _dragMoved = false; RaiseSelected(); };
+        blThumb.DragStarted += (_, _) => { _dragMoved = false; RaiseSelected(); };
+        brThumb.DragStarted += (_, _) => { _dragMoved = false; RaiseSelected(); };
 
-        PreviewMouseLeftButtonDown += (_, _) => RaiseSelected();
+        PreviewMouseLeftButtonDown += OnPreviewMouseLeftButtonDown;
+        MouseLeftButtonUp += (_, _) =>
+        {
+            if (!_dragMoved)
+                ClickedWithoutDrag?.Invoke(this, _mouseDownWasSelected);
+            _dragMoved = false;
+        };
 
         model.PropertyChanged += (_, _) => ApplyModel();
     }
@@ -156,6 +167,15 @@ public partial class ResizableBlock : UserControl
 
     private void OnDrag(object sender, DragDeltaEventArgs e)
     {
+        if (Math.Abs(e.HorizontalChange) > 0.01 || Math.Abs(e.VerticalChange) > 0.01)
+            _dragMoved = true;
+
+        if (MoveRequested?.Invoke(this, e.HorizontalChange, e.VerticalChange) == true)
+        {
+            Changed?.Invoke(this);
+            return;
+        }
+
         var parent = Parent as Canvas;
         if (parent == null) return;
         var newX = Math.Max(0, Math.Min(parent.ActualWidth - Width, Model.X + e.HorizontalChange));
@@ -167,6 +187,9 @@ public partial class ResizableBlock : UserControl
 
     private void Resize(double dx, double dy, bool fromLeft, bool fromTop)
     {
+        if (Math.Abs(dx) > 0.01 || Math.Abs(dy) > 0.01)
+            _dragMoved = true;
+
         var parent = Parent as Canvas;
         if (parent == null) return;
         double newX = Model.X, newY = Model.Y, newW = Model.Width, newH = Model.Height;
@@ -182,5 +205,12 @@ public partial class ResizableBlock : UserControl
         if (newY + newH > parent.ActualHeight) newH = parent.ActualHeight - newY;
         Model.X = newX; Model.Y = newY; Model.Width = newW; Model.Height = newH;
         Changed?.Invoke(this);
+    }
+
+    private void OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _mouseDownWasSelected = _selected;
+        _dragMoved = false;
+        RaiseSelected();
     }
 }

@@ -80,6 +80,7 @@ public static class AppSettings
     public static string TargetFitMode { get; set; } = "contain";
     /// <summary>boxblur sigma for the "blur" fit mode background.</summary>
     public static int BlurredBgStrength { get; set; } = 20;
+    public static bool PreviewSafeAreas { get; set; } = false;
 
     // ----- Transcription -----
     /// <summary>"tiny" | "base" | "small" | "medium" | "large-v3-turbo" - default whisper model. Turbo is the sweet spot for Hebrew.</summary>
@@ -114,6 +115,10 @@ public static class AppSettings
 
     // ----- Storage -----
     public static string DownloadsFolder { get; set; } = "";
+    public static bool DownloadRememberBrowserLogin { get; set; } = false;
+    public static bool DownloadAutoAddToTimeline { get; set; } = false;
+    /// <summary>0 = best available, otherwise max downloaded video height for yt-dlp.</summary>
+    public static int DownloadMaxHeight { get; set; } = 1080;
     public static string CacheFolder { get; set; } = "";
     /// <summary>"500" | "1g" | "2g" | "5g" | "10g". Max cache size (cosmetic for now).</summary>
     public static string MaxCacheSize { get; set; } = "2g";
@@ -161,6 +166,7 @@ public static class AppSettings
         public int CustomTargetHeight { get; set; } = 1080;
         public string? TargetFitMode { get; set; }
         public int BlurredBgStrength { get; set; } = 20;
+        public bool PreviewSafeAreas { get; set; }
 
         public string? LastTranscribeModel { get; set; }
         public string? LastTranscribeLanguage { get; set; }
@@ -176,6 +182,9 @@ public static class AppSettings
         public string? LlmUsageDate { get; set; }
 
         public string? DownloadsFolder { get; set; }
+        public bool DownloadRememberBrowserLogin { get; set; }
+        public bool DownloadAutoAddToTimeline { get; set; }
+        public int DownloadMaxHeight { get; set; } = 1080;
         public string? CacheFolder { get; set; }
         public string? MaxCacheSize { get; set; }
         public bool AutoCleanCache { get; set; } = true;
@@ -224,6 +233,7 @@ public static class AppSettings
             CustomTargetHeight = Clamp(d.CustomTargetHeight, 16, 4320);
             if (!string.IsNullOrEmpty(d.TargetFitMode)) TargetFitMode = d.TargetFitMode;
             BlurredBgStrength = Clamp(d.BlurredBgStrength, 0, 60);
+            PreviewSafeAreas = d.PreviewSafeAreas;
             if (!string.IsNullOrEmpty(d.LastTranscribeModel)) LastTranscribeModel = d.LastTranscribeModel;
             if (!string.IsNullOrEmpty(d.LastTranscribeLanguage)) LastTranscribeLanguage = d.LastTranscribeLanguage;
             if (!string.IsNullOrEmpty(d.LastTranscribeSource)) LastTranscribeSource = d.LastTranscribeSource;
@@ -236,6 +246,9 @@ public static class AppSettings
             LlmUsageToday = Math.Max(0, d.LlmUsageToday);
             if (!string.IsNullOrEmpty(d.LlmUsageDate)) LlmUsageDate = d.LlmUsageDate;
             if (!string.IsNullOrEmpty(d.DownloadsFolder)) DownloadsFolder = d.DownloadsFolder;
+            DownloadRememberBrowserLogin = d.DownloadRememberBrowserLogin;
+            DownloadAutoAddToTimeline = d.DownloadAutoAddToTimeline;
+            DownloadMaxHeight = Clamp(d.DownloadMaxHeight, 0, 4320);
             if (!string.IsNullOrEmpty(d.CacheFolder)) CacheFolder = d.CacheFolder;
             if (!string.IsNullOrEmpty(d.MaxCacheSize)) MaxCacheSize = d.MaxCacheSize;
             AutoCleanCache = d.AutoCleanCache;
@@ -273,6 +286,7 @@ public static class AppSettings
                 TargetFormatPreset = TargetFormatPreset,
                 CustomTargetWidth = CustomTargetWidth, CustomTargetHeight = CustomTargetHeight,
                 TargetFitMode = TargetFitMode, BlurredBgStrength = BlurredBgStrength,
+                PreviewSafeAreas = PreviewSafeAreas,
                 LastTranscribeModel = LastTranscribeModel,
                 LastTranscribeLanguage = LastTranscribeLanguage,
                 LastTranscribeSource = LastTranscribeSource,
@@ -281,7 +295,11 @@ public static class AppSettings
                 LlmProvider = LlmProvider, LlmApiKey = LlmApiKey, LlmApiKeyFallback = LlmApiKeyFallback,
                 LlmModel = LlmModel,
                 LlmUsageToday = LlmUsageToday, LlmUsageDate = LlmUsageDate,
-                DownloadsFolder = DownloadsFolder, CacheFolder = CacheFolder,
+                DownloadsFolder = DownloadsFolder,
+                DownloadRememberBrowserLogin = DownloadRememberBrowserLogin,
+                DownloadAutoAddToTimeline = DownloadAutoAddToTimeline,
+                DownloadMaxHeight = DownloadMaxHeight,
+                CacheFolder = CacheFolder,
                 MaxCacheSize = MaxCacheSize, AutoCleanCache = AutoCleanCache,
                 CameraDebugDiagnostics = CameraDebugDiagnostics,
             };

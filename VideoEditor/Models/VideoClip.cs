@@ -14,7 +14,7 @@ public class VideoClip : INotifyPropertyChanged
     private double _outPoint;
     private double _speed = 1.0;
     private double _volume = 1.0;
-    private int _rotateDegrees;
+    private double _rotateDegrees;
     private bool _flipH;
     private bool _flipV;
     private Color _accentColor = Colors.MediumPurple;
@@ -24,8 +24,14 @@ public class VideoClip : INotifyPropertyChanged
     private double _timelineStart;
     private bool _isAudioOnly;
     private double _canvasScale = 1.0;
+    private double _canvasScaleX = 1.0;
+    private double _canvasScaleY = 1.0;
     private double _canvasOffsetX;
     private double _canvasOffsetY;
+    private double _canvasCropLeft;
+    private double _canvasCropTop;
+    private double _canvasCropRight;
+    private double _canvasCropBottom;
 
     /// <summary>
     /// When true, this clip carries only audio (no video). Used for "detached" audio that the user
@@ -40,7 +46,7 @@ public class VideoClip : INotifyPropertyChanged
     public double OutPoint { get => _outPoint; set => Set(ref _outPoint, value); }
     public double Speed { get => _speed; set => Set(ref _speed, value); }
     public double Volume { get => _volume; set => Set(ref _volume, value); }
-    public int RotateDegrees { get => _rotateDegrees; set => Set(ref _rotateDegrees, value); }
+    public double RotateDegrees { get => _rotateDegrees; set => Set(ref _rotateDegrees, value); }
     public bool FlipH { get => _flipH; set => Set(ref _flipH, value); }
     public bool FlipV { get => _flipV; set => Set(ref _flipV, value); }
     public Color AccentColor { get => _accentColor; set => Set(ref _accentColor, value); }
@@ -52,18 +58,35 @@ public class VideoClip : INotifyPropertyChanged
     /// project-format behaviour); higher = video grows beyond the canvas (cropped on export);
     /// lower = video shrinks inside the canvas with black bars around it.</summary>
     public double CanvasScale { get => _canvasScale; set => Set(ref _canvasScale, Math.Max(0.05, Math.Min(8.0, value))); }
+    /// <summary>Additional non-uniform canvas stretch used by OBS-style Stretch to Canvas.
+    /// Keep at 1.0 for normal aspect-preserving transforms.</summary>
+    public double CanvasScaleX { get => _canvasScaleX; set => Set(ref _canvasScaleX, Math.Max(0.05, Math.Min(8.0, value))); }
+    public double CanvasScaleY { get => _canvasScaleY; set => Set(ref _canvasScaleY, Math.Max(0.05, Math.Min(8.0, value))); }
     /// <summary>Horizontal offset on the canvas as a fraction of canvas width.
     /// 0 = centered. ±0.5 = shifted by half the canvas width. Can take the video off-canvas.</summary>
     public double CanvasOffsetX { get => _canvasOffsetX; set => Set(ref _canvasOffsetX, Math.Max(-2.0, Math.Min(2.0, value))); }
     /// <summary>Vertical offset as a fraction of canvas height. 0 = centered.</summary>
     public double CanvasOffsetY { get => _canvasOffsetY; set => Set(ref _canvasOffsetY, Math.Max(-2.0, Math.Min(2.0, value))); }
+    public double CanvasCropLeft { get => _canvasCropLeft; set => Set(ref _canvasCropLeft, ClampCrop(value)); }
+    public double CanvasCropTop { get => _canvasCropTop; set => Set(ref _canvasCropTop, ClampCrop(value)); }
+    public double CanvasCropRight { get => _canvasCropRight; set => Set(ref _canvasCropRight, ClampCrop(value)); }
+    public double CanvasCropBottom { get => _canvasCropBottom; set => Set(ref _canvasCropBottom, ClampCrop(value)); }
+
+    public bool HasManualCanvasCrop =>
+        _canvasCropLeft > 0.001 ||
+        _canvasCropTop > 0.001 ||
+        _canvasCropRight > 0.001 ||
+        _canvasCropBottom > 0.001;
 
     /// <summary>True iff the clip uses any non-default canvas transform. Lets the export
     /// pipeline skip the heavier overlay-on-colour filter chain when nothing was touched.</summary>
     public bool HasManualCanvasTransform =>
         Math.Abs(_canvasScale - 1.0) > 0.001 ||
+        Math.Abs(_canvasScaleX - 1.0) > 0.001 ||
+        Math.Abs(_canvasScaleY - 1.0) > 0.001 ||
         Math.Abs(_canvasOffsetX) > 0.001 ||
-        Math.Abs(_canvasOffsetY) > 0.001;
+        Math.Abs(_canvasOffsetY) > 0.001 ||
+        HasManualCanvasCrop;
 
     public double EffectiveDuration => Math.Max(0.1, (OutPoint - InPoint) / Math.Max(0.01, Speed)) * Math.Max(1, LoopCount);
 
@@ -80,6 +103,9 @@ public class VideoClip : INotifyPropertyChanged
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EffectiveDuration)));
         }
     }
+
+    private static double ClampCrop(double value) =>
+        Math.Max(0, Math.Min(100000, value));
 
     private static readonly Color[] _palette = new[]
     {

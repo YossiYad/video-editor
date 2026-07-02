@@ -259,6 +259,24 @@
                                 </StackPanel>
                             </Button>
 
+                            <Button x:Name="toggleRulerBtn" Style="{DynamicResource SidebarToolButton}" Click="ToggleRuler_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <Border Width="22" Height="22" CornerRadius="4" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1">
+                                        <TextBlock Text="↔" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <TextBlock Text="Measurement Ruler" Margin="9,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button x:Name="toggleSafeAreasBtn" Style="{DynamicResource SidebarToolButton}" Click="ToggleSafeAreas_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <Border Width="22" Height="22" CornerRadius="4" Background="{DynamicResource Bg2}" BorderBrush="{DynamicResource Line}" BorderThickness="1">
+                                        <TextBlock Text="□" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <TextBlock Text="Safe Areas" Margin="9,0,0,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+
                             <!-- Capture -->
                             <TextBlock Text="CAPTURE" Style="{DynamicResource GroupLabel}"/>
                             <Button x:Name="btnDownloadUrl" Style="{DynamicResource SidebarToolButton}" Click="DownloadUrl_Click">
@@ -430,43 +448,124 @@
                                  passes through to the layer underneath. -->
                             <Grid x:Name="canvasHandlesLayer" IsHitTestVisible="True"
                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  RenderTransformOrigin="0.5,0.5"
                                   Visibility="Collapsed">
-                                <!-- Dashed purple frame around the (visible) project canvas. -->
-                                <Border BorderBrush="{DynamicResource Accent}" BorderThickness="2"
-                                        IsHitTestVisible="False" Margin="2"/>
-                                <Border x:Name="canvasHandleTL" Width="20" Height="20"
-                                        HorizontalAlignment="Left" VerticalAlignment="Top"
-                                        Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="3"
-                                        CornerRadius="4" Cursor="SizeNWSE"
-                                        MouseLeftButtonDown="CanvasHandle_MouseDown"
-                                        MouseMove="CanvasHandle_MouseMove"
-                                        MouseLeftButtonUp="CanvasHandle_MouseUp"
-                                        Tag="tl"/>
-                                <Border x:Name="canvasHandleTR" Width="20" Height="20"
-                                        HorizontalAlignment="Right" VerticalAlignment="Top"
-                                        Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="3"
-                                        CornerRadius="4" Cursor="SizeNESW"
-                                        MouseLeftButtonDown="CanvasHandle_MouseDown"
-                                        MouseMove="CanvasHandle_MouseMove"
-                                        MouseLeftButtonUp="CanvasHandle_MouseUp"
-                                        Tag="tr"/>
-                                <Border x:Name="canvasHandleBL" Width="20" Height="20"
-                                        HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                                        Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="3"
-                                        CornerRadius="4" Cursor="SizeNESW"
-                                        MouseLeftButtonDown="CanvasHandle_MouseDown"
-                                        MouseMove="CanvasHandle_MouseMove"
-                                        MouseLeftButtonUp="CanvasHandle_MouseUp"
-                                        Tag="bl"/>
-                                <Border x:Name="canvasHandleBR" Width="20" Height="20"
-                                        HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                        Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="3"
-                                        CornerRadius="4" Cursor="SizeNWSE"
-                                        MouseLeftButtonDown="CanvasHandle_MouseDown"
-                                        MouseMove="CanvasHandle_MouseMove"
-                                        MouseLeftButtonUp="CanvasHandle_MouseUp"
-                                        Tag="br"/>
+                                <Border x:Name="canvasSelectionBorder" BorderBrush="{DynamicResource Accent}" BorderThickness="2"
+                                        IsHitTestVisible="False" Margin="1" Opacity="0.95"/>
+                                <Border x:Name="canvasCropLeftLine" Width="5" HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                                        Background="#FF35D07F" IsHitTestVisible="False" Visibility="Collapsed"/>
+                                <Border x:Name="canvasCropTopLine" Height="5" HorizontalAlignment="Stretch" VerticalAlignment="Top"
+                                        Background="#FF35D07F" IsHitTestVisible="False" Visibility="Collapsed"/>
+                                <Border x:Name="canvasCropRightLine" Width="5" HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                                        Background="#FF35D07F" IsHitTestVisible="False" Visibility="Collapsed"/>
+                                <Border x:Name="canvasCropBottomLine" Height="5" HorizontalAlignment="Stretch" VerticalAlignment="Bottom"
+                                        Background="#FF35D07F" IsHitTestVisible="False" Visibility="Collapsed"/>
+                                <Border x:Name="canvasHandleTL" Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                        Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="3" CornerRadius="4" Cursor="SizeNWSE"
+                                        MouseLeftButtonDown="CanvasHandle_MouseDown" MouseMove="CanvasHandle_MouseMove" MouseLeftButtonUp="CanvasHandle_MouseUp" Tag="tl"/>
+                                <Border x:Name="canvasHandleTR" Width="20" Height="20" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                        Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="3" CornerRadius="4" Cursor="SizeNESW"
+                                        MouseLeftButtonDown="CanvasHandle_MouseDown" MouseMove="CanvasHandle_MouseMove" MouseLeftButtonUp="CanvasHandle_MouseUp" Tag="tr"/>
+                                <Border x:Name="canvasHandleTC" Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Top"
+                                        Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="3" CornerRadius="4" Cursor="SizeNS"
+                                        MouseLeftButtonDown="CanvasHandle_MouseDown" MouseMove="CanvasHandle_MouseMove" MouseLeftButtonUp="CanvasHandle_MouseUp" Tag="tc"/>
+                                <Border x:Name="canvasHandleCL" Width="16" Height="16" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                        Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="3" CornerRadius="4" Cursor="SizeWE"
+                                        MouseLeftButtonDown="CanvasHandle_MouseDown" MouseMove="CanvasHandle_MouseMove" MouseLeftButtonUp="CanvasHandle_MouseUp" Tag="cl"/>
+                                <Border x:Name="canvasHandleCR" Width="16" Height="16" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                        Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="3" CornerRadius="4" Cursor="SizeWE"
+                                        MouseLeftButtonDown="CanvasHandle_MouseDown" MouseMove="CanvasHandle_MouseMove" MouseLeftButtonUp="CanvasHandle_MouseUp" Tag="cr"/>
+                                <Border x:Name="canvasHandleBL" Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                        Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="3" CornerRadius="4" Cursor="SizeNESW"
+                                        MouseLeftButtonDown="CanvasHandle_MouseDown" MouseMove="CanvasHandle_MouseMove" MouseLeftButtonUp="CanvasHandle_MouseUp" Tag="bl"/>
+                                <Border x:Name="canvasHandleBR" Width="20" Height="20" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                        Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="3" CornerRadius="4" Cursor="SizeNWSE"
+                                        MouseLeftButtonDown="CanvasHandle_MouseDown" MouseMove="CanvasHandle_MouseMove" MouseLeftButtonUp="CanvasHandle_MouseUp" Tag="br"/>
+                                <Border x:Name="canvasHandleBC" Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                                        Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="3" CornerRadius="4" Cursor="SizeNS"
+                                        MouseLeftButtonDown="CanvasHandle_MouseDown" MouseMove="CanvasHandle_MouseMove" MouseLeftButtonUp="CanvasHandle_MouseUp" Tag="bc"/>
+                                <Border x:Name="canvasHandleRot" Width="24" Height="24" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,-42,0,0"
+                                        Background="{DynamicResource Accent}" BorderBrush="White" BorderThickness="2" CornerRadius="12" Cursor="Hand"
+                                        MouseLeftButtonDown="CanvasHandle_MouseDown" MouseMove="CanvasHandle_MouseMove" MouseLeftButtonUp="CanvasHandle_MouseUp" Tag="rot">
+                                    <TextBlock x:Name="canvasHandleRotText" Text="R" Foreground="White" FontWeight="Bold" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
                             </Grid>
+
+                            <Canvas x:Name="canvasSnapGuideLayer" Background="Transparent" Visibility="Collapsed" IsHitTestVisible="False">
+                                <Line x:Name="canvasSnapGuideV" Stroke="{DynamicResource AccentHover}" StrokeThickness="1" StrokeDashArray="4 4" Visibility="Collapsed"/>
+                                <Line x:Name="canvasSnapGuideH" Stroke="{DynamicResource AccentHover}" StrokeThickness="1" StrokeDashArray="4 4" Visibility="Collapsed"/>
+                            </Canvas>
+
+                            <Canvas x:Name="canvasSpacingHelperLayer" Background="Transparent" Visibility="Collapsed" IsHitTestVisible="False">
+                                <Line x:Name="canvasSpacingLeftLine" Stroke="{DynamicResource AccentHover}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="Collapsed"/>
+                                <Line x:Name="canvasSpacingRightLine" Stroke="{DynamicResource AccentHover}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="Collapsed"/>
+                                <Line x:Name="canvasSpacingTopLine" Stroke="{DynamicResource AccentHover}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="Collapsed"/>
+                                <Line x:Name="canvasSpacingBottomLine" Stroke="{DynamicResource AccentHover}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="Collapsed"/>
+                                <Border x:Name="canvasSpacingLeftLabel" Background="#E60A0C12" BorderBrush="#66FFFFFF" BorderThickness="1" CornerRadius="4" Padding="6,2" Visibility="Collapsed">
+                                    <TextBlock x:Name="canvasSpacingLeftText" FontSize="10.5" FontFamily="Consolas" Foreground="White"/>
+                                </Border>
+                                <Border x:Name="canvasSpacingRightLabel" Background="#E60A0C12" BorderBrush="#66FFFFFF" BorderThickness="1" CornerRadius="4" Padding="6,2" Visibility="Collapsed">
+                                    <TextBlock x:Name="canvasSpacingRightText" FontSize="10.5" FontFamily="Consolas" Foreground="White"/>
+                                </Border>
+                                <Border x:Name="canvasSpacingTopLabel" Background="#E60A0C12" BorderBrush="#66FFFFFF" BorderThickness="1" CornerRadius="4" Padding="6,2" Visibility="Collapsed">
+                                    <TextBlock x:Name="canvasSpacingTopText" FontSize="10.5" FontFamily="Consolas" Foreground="White"/>
+                                </Border>
+                                <Border x:Name="canvasSpacingBottomLabel" Background="#E60A0C12" BorderBrush="#66FFFFFF" BorderThickness="1" CornerRadius="4" Padding="6,2" Visibility="Collapsed">
+                                    <TextBlock x:Name="canvasSpacingBottomText" FontSize="10.5" FontFamily="Consolas" Foreground="White"/>
+                                </Border>
+                            </Canvas>
+
+                            <Canvas x:Name="previewOverlayGroupLayer" Visibility="Collapsed" IsHitTestVisible="True">
+                                <Border x:Name="previewOverlayGroupBox"
+                                        BorderBrush="{DynamicResource AccentHover}"
+                                        BorderThickness="2"
+                                        CornerRadius="2"
+                                        Background="#118B5CFF"
+                                        IsHitTestVisible="False"/>
+                                <Border x:Name="previewGroupHandleTL" Width="14" Height="14" Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="2" CornerRadius="3" Cursor="SizeNWSE" Tag="tl"
+                                        MouseLeftButtonDown="PreviewGroupHandle_MouseDown" MouseMove="PreviewGroupHandle_MouseMove" MouseLeftButtonUp="PreviewGroupHandle_MouseUp"/>
+                                <Border x:Name="previewGroupHandleTR" Width="14" Height="14" Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="2" CornerRadius="3" Cursor="SizeNESW" Tag="tr"
+                                        MouseLeftButtonDown="PreviewGroupHandle_MouseDown" MouseMove="PreviewGroupHandle_MouseMove" MouseLeftButtonUp="PreviewGroupHandle_MouseUp"/>
+                                <Border x:Name="previewGroupHandleBL" Width="14" Height="14" Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="2" CornerRadius="3" Cursor="SizeNESW" Tag="bl"
+                                        MouseLeftButtonDown="PreviewGroupHandle_MouseDown" MouseMove="PreviewGroupHandle_MouseMove" MouseLeftButtonUp="PreviewGroupHandle_MouseUp"/>
+                                <Border x:Name="previewGroupHandleBR" Width="14" Height="14" Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="2" CornerRadius="3" Cursor="SizeNWSE" Tag="br"
+                                        MouseLeftButtonDown="PreviewGroupHandle_MouseDown" MouseMove="PreviewGroupHandle_MouseMove" MouseLeftButtonUp="PreviewGroupHandle_MouseUp"/>
+                                <Border x:Name="previewGroupHandleTC" Width="12" Height="12" Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="2" CornerRadius="3" Cursor="SizeNS" Tag="tc"
+                                        MouseLeftButtonDown="PreviewGroupHandle_MouseDown" MouseMove="PreviewGroupHandle_MouseMove" MouseLeftButtonUp="PreviewGroupHandle_MouseUp"/>
+                                <Border x:Name="previewGroupHandleBC" Width="12" Height="12" Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="2" CornerRadius="3" Cursor="SizeNS" Tag="bc"
+                                        MouseLeftButtonDown="PreviewGroupHandle_MouseDown" MouseMove="PreviewGroupHandle_MouseMove" MouseLeftButtonUp="PreviewGroupHandle_MouseUp"/>
+                                <Border x:Name="previewGroupHandleCL" Width="12" Height="12" Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="2" CornerRadius="3" Cursor="SizeWE" Tag="cl"
+                                        MouseLeftButtonDown="PreviewGroupHandle_MouseDown" MouseMove="PreviewGroupHandle_MouseMove" MouseLeftButtonUp="PreviewGroupHandle_MouseUp"/>
+                                <Border x:Name="previewGroupHandleCR" Width="12" Height="12" Background="White" BorderBrush="{DynamicResource Accent}" BorderThickness="2" CornerRadius="3" Cursor="SizeWE" Tag="cr"
+                                        MouseLeftButtonDown="PreviewGroupHandle_MouseDown" MouseMove="PreviewGroupHandle_MouseMove" MouseLeftButtonUp="PreviewGroupHandle_MouseUp"/>
+                            </Canvas>
+
+                            <Canvas x:Name="previewSelectionLayer" Background="Transparent" Visibility="Collapsed" IsHitTestVisible="False">
+                                <Border x:Name="previewSelectionBox" Background="#80B3B3B3" BorderBrush="White" BorderThickness="1"/>
+                            </Canvas>
+
+                            <Canvas x:Name="safeAreasLayer" Background="Transparent" Visibility="Collapsed" IsHitTestVisible="False">
+                                <Rectangle x:Name="safeAreaActionRect" Stroke="#AAFFD43B" StrokeThickness="1" StrokeDashArray="4 4" Fill="Transparent"/>
+                                <Rectangle x:Name="safeAreaGraphicsRect" Stroke="#AA35D07F" StrokeThickness="1" StrokeDashArray="4 4" Fill="Transparent"/>
+                                <Rectangle x:Name="safeAreaFourByThreeRect" Stroke="#AA8B5CFF" StrokeThickness="1" StrokeDashArray="4 4" Fill="Transparent"/>
+                                <Line x:Name="safeAreaCenterV" Stroke="#55FFFFFF" StrokeThickness="1" StrokeDashArray="3 5"/>
+                                <Line x:Name="safeAreaCenterH" Stroke="#55FFFFFF" StrokeThickness="1" StrokeDashArray="3 5"/>
+                            </Canvas>
+
+                            <Canvas x:Name="measurementRulerLayer" Background="Transparent" Visibility="Collapsed" IsHitTestVisible="True">
+                                <Line x:Name="measurementRulerShadow" Stroke="#99000000" StrokeThickness="7" StrokeStartLineCap="Round" StrokeEndLineCap="Round" IsHitTestVisible="False"/>
+                                <Line x:Name="measurementRulerLine" Stroke="#FFD43B" StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Cursor="SizeAll"
+                                      MouseLeftButtonDown="MeasurementRuler_MouseDown" MouseMove="MeasurementRuler_MouseMove" MouseLeftButtonUp="MeasurementRuler_MouseUp" Tag="move"/>
+                                <Border x:Name="measurementRulerMoveHandle" Width="28" Height="28" CornerRadius="14" Background="#CCFFD43B" BorderBrush="#FFFFFFFF" BorderThickness="2" Cursor="SizeAll"
+                                        MouseLeftButtonDown="MeasurementRuler_MouseDown" MouseMove="MeasurementRuler_MouseMove" MouseLeftButtonUp="MeasurementRuler_MouseUp" Tag="move"/>
+                                <Border x:Name="measurementRulerStartHandle" Width="20" Height="20" CornerRadius="10" Background="#FF8B5CFF" BorderBrush="White" BorderThickness="2" Cursor="SizeAll"
+                                        MouseLeftButtonDown="MeasurementRuler_MouseDown" MouseMove="MeasurementRuler_MouseMove" MouseLeftButtonUp="MeasurementRuler_MouseUp" Tag="start"/>
+                                <Border x:Name="measurementRulerEndHandle" Width="20" Height="20" CornerRadius="10" Background="#FF8B5CFF" BorderBrush="White" BorderThickness="2" Cursor="SizeAll"
+                                        MouseLeftButtonDown="MeasurementRuler_MouseDown" MouseMove="MeasurementRuler_MouseMove" MouseLeftButtonUp="MeasurementRuler_MouseUp" Tag="end"/>
+                                <Border x:Name="measurementRulerLabel" Background="#E60A0C12" BorderBrush="#66FFFFFF" BorderThickness="1" CornerRadius="4" Padding="7,3" IsHitTestVisible="False">
+                                    <TextBlock x:Name="measurementRulerText" Text="0 px @ 0 deg" Foreground="White" FontSize="11" FontFamily="Consolas"/>
+                                </Border>
+                            </Canvas>
 
                             <!-- HUD strip -->
                             <Border VerticalAlignment="Bottom" Background="#CC0A0C12" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="12,7">
@@ -495,6 +594,31 @@
                         </Grid>
                     </Border>
                 </Grid>
+
+                    <Border x:Name="previewViewZoomHud"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Bottom"
+                            Margin="0,0,8,8"
+                            Background="#E60A0C12"
+                            BorderBrush="{DynamicResource LineStrong}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="4"
+                            ToolTip="Preview view zoom. Hold Space and use the wheel to pan/zoom like OBS.">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="-" Style="{DynamicResource ToolButtonSmall}" Width="28" Height="26" Padding="0" Click="PreviewViewZoomOut_Click" ToolTip="Zoom preview view out"/>
+                            <TextBlock x:Name="previewViewZoomText"
+                                       Text="100%"
+                                       Width="54"
+                                       FontFamily="Consolas"
+                                       FontSize="10.5"
+                                       Foreground="{DynamicResource Text}"
+                                       VerticalAlignment="Center"
+                                       TextAlignment="Center"/>
+                            <Button Content="+" Style="{DynamicResource ToolButtonSmall}" Width="28" Height="26" Padding="0" Click="PreviewViewZoomIn_Click" ToolTip="Zoom preview view in"/>
+                            <Button Content="Fit" Style="{DynamicResource ToolButtonSmall}" Height="26" Padding="8,0" Margin="4,0,0,0" Click="PreviewViewZoomFit_Click" ToolTip="Reset preview view pan and zoom"/>
+                        </StackPanel>
+                    </Border>
 
                     <Border x:Name="emptyStartPanel"
                             Background="#E60F121B"
@@ -649,6 +773,13 @@
                                     <Ellipse x:Name="tabDownloadDot" Width="5" Height="5" Fill="{DynamicResource Accent}" Margin="5,0,0,0" Visibility="Collapsed" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </RadioButton>
+                            <RadioButton x:Name="tabRulerBtn" Visibility="Collapsed" Style="{DynamicResource InspectorTab}" GroupName="InspectorTabs" Click="TabRuler_Click" HorizontalAlignment="Stretch">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <TextBlock Text="↔" FontSize="11"/>
+                                    <TextBlock Text="Rulers" Margin="6,0,0,0"/>
+                                    <Ellipse x:Name="tabRulerDot" Width="5" Height="5" Fill="{DynamicResource Accent}" Margin="5,0,0,0" Visibility="Collapsed" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </RadioButton>
                         </Grid>
                     </Border>
 
@@ -768,6 +899,11 @@
                                         <TextBlock Text="Drag preview to move · scroll to zoom · double-click to reset"
                                                    FontSize="10.5" Foreground="{DynamicResource TextDim}"
                                                    TextWrapping="Wrap" Margin="0,2,0,8"/>
+
+                                        <TextBlock Text="Alt+drag a transform handle to crop like OBS." FontSize="10.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                        <TextBlock Text="Drag the R handle to rotate; Shift snaps 15 deg; Ctrl disables snap." FontSize="10.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                        <TextBlock Text="Edges and centers snap to the canvas, hide blocks, and visible text overlays." FontSize="10.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                        <TextBlock Text="Shift+drag empty preview area to box-select overlay items." FontSize="10.5" Foreground="{DynamicResource TextDim}" TextWrapping="Wrap" Margin="0,0,0,8"/>
 
                                         <TextBlock Text="Zoom" FontSize="10.5" Foreground="{DynamicResource TextMute}" Margin="0,0,0,2"/>
                                         <Grid>
@@ -1076,6 +1212,51 @@
                                 </StackPanel>
                             </Border>
 
+                            <!-- =========== MEASUREMENT RULERS PANEL =========== -->
+                            <Border x:Name="rulerInspectorPanel" Visibility="Collapsed">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="16,12,16,14">
+                                        <Border Width="32" Height="32" CornerRadius="8" Background="#33FFD43B" BorderBrush="#66FFD43B" BorderThickness="1">
+                                            <TextBlock Text="↔" FontSize="15" Foreground="#FFFFD43B" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="Measurement Rulers" Foreground="{DynamicResource Text}" FontWeight="Bold" FontSize="13.5"/>
+                                            <TextBlock Text="Measure project canvas sizes" Foreground="{DynamicResource TextDim}" FontSize="11" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <Border Height="1" Background="{DynamicResource Line}" Margin="16,0"/>
+
+                                    <StackPanel Margin="16,12,16,12">
+                                        <TextBlock Text="RULERS" Style="{DynamicResource FieldLabel}"/>
+                                        <ListBox x:Name="rulerListBox" Height="116" SelectionChanged="RulerList_Changed"/>
+                                        <Grid Margin="0,8,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Button Grid.Column="0" Content="+ Add ruler" Style="{DynamicResource ToolButtonSmall}" Click="AddRuler_Click"/>
+                                            <Button Grid.Column="1" Content="Delete" Style="{DynamicResource DangerButton}" Click="DeleteRuler_Click"/>
+                                        </Grid>
+                                    </StackPanel>
+
+                                    <Border Height="1" Background="{DynamicResource Line}" Margin="16,0"/>
+
+                                    <StackPanel Margin="16,12,16,12">
+                                        <TextBlock Text="UNIT" Style="{DynamicResource FieldLabel}"/>
+                                        <ComboBox x:Name="rulerUnitBox" SelectionChanged="RulerUnit_Changed">
+                                            <ComboBoxItem Content="Pixels"/>
+                                            <ComboBoxItem Content="Percent"/>
+                                            <ComboBoxItem Content="Centimeters"/>
+                                            <ComboBoxItem Content="Inches"/>
+                                            <ComboBoxItem Content="Points"/>
+                                        </ComboBox>
+                                        <TextBlock x:Name="rulerDetailsText" Text="No ruler selected" Margin="0,8,0,0" Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap"/>
+                                        <Button Content="Reset selected ruler" Style="{DynamicResource ToolButtonSmall}" Margin="0,10,0,0" Click="ResetRuler_Click"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
                             <!-- =========== PROJECT / EXPORT PANEL =========== -->
                             <Border x:Name="emptyInspector" Visibility="Collapsed">
                                 <StackPanel>
@@ -1368,13 +1549,35 @@
                                         <Button Grid.Column="1" x:Name="downloadBrowseBtn" Content="📁" Style="{DynamicResource ToolButton}" MinWidth="36" Margin="6,0,0,0" Click="DownloadBrowse_Click"/>
                                     </Grid>
 
-                                    <TextBlock Text="yt-dlp ships with the app for streaming sites (YouTube, etc.). Direct file links use plain HTTP." Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,10,0,10"/>
+                                    <TextBlock Text="DOWNLOAD OPTIONS" Style="{DynamicResource FieldLabel}" Margin="0,12,0,0"/>
+                                    <ComboBox x:Name="downloadQualityBox" Margin="0,0,0,8" SelectionChanged="DownloadQuality_Changed">
+                                        <ComboBoxItem Content="Best available"/>
+                                        <ComboBoxItem Content="Up to 4320p"/>
+                                        <ComboBoxItem Content="Up to 2160p"/>
+                                        <ComboBoxItem Content="Up to 1440p"/>
+                                        <ComboBoxItem Content="Up to 1080p"/>
+                                        <ComboBoxItem Content="Up to 720p"/>
+                                        <ComboBoxItem Content="Up to 480p"/>
+                                    </ComboBox>
+                                    <CheckBox x:Name="downloadRememberLoginCheck" Content="Remember browser login" Foreground="{DynamicResource Text}" Checked="DownloadOption_Changed" Unchecked="DownloadOption_Changed" Margin="0,0,0,6"/>
+                                    <CheckBox x:Name="downloadAutoAddCheck" Content="Add to Timeline automatically after download" Foreground="{DynamicResource Text}" Checked="DownloadOption_Changed" Unchecked="DownloadOption_Changed" Margin="0,0,0,8"/>
+                                    <TextBlock x:Name="downloadOptionsSummaryText" Text="" Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,2"/>
+
+                                    <Grid Margin="0,10,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="yt-dlp ships with the app for streaming/social sites. Direct video links use HTTP, with fallback both ways." Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="1" Content="Settings" Style="{DynamicResource ToolButtonSmall}" Height="26" Margin="8,0,0,0" Click="DownloadSettings_Click"/>
+                                    </Grid>
 
                                     <TextBlock x:Name="downloadPhaseText" Text="" Foreground="{DynamicResource TextMute}" FontSize="12" FontWeight="SemiBold" Margin="0,4,0,4"/>
                                     <ProgressBar x:Name="downloadProgress" Height="8" Minimum="0" Maximum="1" Value="0" Margin="0,0,0,8"/>
                                     <TextBlock x:Name="downloadStatusText" Text="" Foreground="{DynamicResource TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12"/>
 
-                                    <Button x:Name="downloadStartBtn" Content="⬇ Download &amp; Add to Timeline" Style="{DynamicResource PrimaryButton}" Height="34" Click="DownloadStart_Click"/>
+                                    <Button x:Name="downloadStartBtn" Content="Download" Style="{DynamicResource PrimaryButton}" Height="34" Click="DownloadStart_Click"/>
+                                    <Button x:Name="downloadAddToTimelineBtn" Content="Add to Timeline" Style="{DynamicResource ToolButton}" Height="34" Click="DownloadAddToTimeline_Click" Margin="0,8,0,0" IsEnabled="False"/>
                                 </StackPanel>
                             </Border>
 

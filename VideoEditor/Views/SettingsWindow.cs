@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -65,6 +66,13 @@ public class SettingsWindow : Window
         public string LlmApiKey = "";
         public string LlmApiKeyFallback = "";
         public string LlmModel = "gemini-2.5-flash";
+        public string DownloadsFolder = "";
+        public bool DownloadRememberBrowserLogin;
+        public bool DownloadAutoAddToTimeline;
+        public int DownloadMaxHeight = 1080;
+        public string CacheFolder = "";
+        public string MaxCacheSize = "2g";
+        public bool AutoCleanCache = true;
 
         public static SettingsDraft FromCurrent() => new()
         {
@@ -98,6 +106,13 @@ public class SettingsWindow : Window
             LlmApiKey = AppSettings.LlmApiKey,
             LlmApiKeyFallback = AppSettings.LlmApiKeyFallback,
             LlmModel = AppSettings.LlmModel,
+            DownloadsFolder = AppSettings.DownloadsFolder,
+            DownloadRememberBrowserLogin = AppSettings.DownloadRememberBrowserLogin,
+            DownloadAutoAddToTimeline = AppSettings.DownloadAutoAddToTimeline,
+            DownloadMaxHeight = AppSettings.DownloadMaxHeight,
+            CacheFolder = AppSettings.CacheFolder,
+            MaxCacheSize = AppSettings.MaxCacheSize,
+            AutoCleanCache = AppSettings.AutoCleanCache,
         };
     }
 
@@ -107,6 +122,7 @@ public class SettingsWindow : Window
         ("player",   "▶",  "Player",             "Playback & seek"),
         ("editor",   "✎",  "Editor",             "Snap, ripple, defaults"),
         ("export",   "💾", "Export",             "Codec & quality"),
+        ("downloads","⬇",  "Downloads",          "URL imports & login"),
         ("storage",  "💿", "Storage",            "Cache & paths"),
         ("ffmpeg",   "🛠", "FFmpeg",             "Binaries & encoders"),
         ("ai",       "✨", "AI Captions",        "Auto-caption with an LLM"),
@@ -322,6 +338,13 @@ public class SettingsWindow : Window
         AppSettings.LlmApiKey = _draft.LlmApiKey;
         AppSettings.LlmApiKeyFallback = _draft.LlmApiKeyFallback;
         AppSettings.LlmModel = _draft.LlmModel;
+        AppSettings.DownloadsFolder = _draft.DownloadsFolder;
+        AppSettings.DownloadRememberBrowserLogin = _draft.DownloadRememberBrowserLogin;
+        AppSettings.DownloadAutoAddToTimeline = _draft.DownloadAutoAddToTimeline;
+        AppSettings.DownloadMaxHeight = _draft.DownloadMaxHeight;
+        AppSettings.CacheFolder = _draft.CacheFolder;
+        AppSettings.MaxCacheSize = _draft.MaxCacheSize;
+        AppSettings.AutoCleanCache = _draft.AutoCleanCache;
         AppSettings.Save();
 
         if (!string.IsNullOrEmpty(AppSettings.LastSaveError))
@@ -406,6 +429,7 @@ public class SettingsWindow : Window
         "player"  => BuildPlayer(),
         "editor"  => BuildEditor(),
         "export"  => BuildExport(),
+        "downloads" => BuildDownloads(),
         "storage" => BuildStorage(),
         "ffmpeg"  => BuildFFmpeg(),
         "ai"      => BuildAi(),
@@ -600,13 +624,40 @@ public class SettingsWindow : Window
     }
     private UIElement BuildStorage()
     {
-        var p = MakePanel("Storage", "Folders for projects, downloads, cache & backup.");
+        var p = MakePanel("Storage", "Folders for projects, cache & backup.");
         p.Children.Add(MakeRow("Projects folder", "Where .veproj files are saved", MakeFolderPath(@"%USERPROFILE%\Videos\VideoEditor")));
-        p.Children.Add(MakeRow("Downloads folder", "For URL-imported videos", MakeFolderPath(@"%USERPROFILE%\Videos\VideoEditorDownloads")));
-        p.Children.Add(MakeRow("Cache folder", "Thumbnails, waveforms, proxies", MakeFolderPath(@"%TEMP%\video_editor")));
-        p.Children.Add(MakeRow("Max cache size", "Auto-clean above this size", MakeCombo(new[] { "500 MB", "1 GB", "2 GB", "5 GB", "10 GB" }, 2)));
-        p.Children.Add(MakeRow("Auto-clean cache", "Delete unused thumbs/waveforms on exit", MakeToggle(true)));
+        p.Children.Add(MakeRow("Cache folder", "Thumbnails, waveforms, proxies",
+            MakeFolderPathBound(ResolveCacheFolder(), v => { _draft.CacheFolder = v; MarkDirty(); })));
+
+        var cacheItems = new[] { "500 MB", "1 GB", "2 GB", "5 GB", "10 GB" };
+        var cacheKeys = new[] { "500", "1g", "2g", "5g", "10g" };
+        var cacheIdx = Array.IndexOf(cacheKeys, _draft.MaxCacheSize);
+        if (cacheIdx < 0) cacheIdx = 2;
+        p.Children.Add(MakeRow("Max cache size", "Auto-clean above this size",
+            MakeComboBound(cacheItems, cacheIdx, idx => { _draft.MaxCacheSize = cacheKeys[idx]; MarkDirty(); })));
+        p.Children.Add(MakeRow("Auto-clean cache", "Delete unused thumbs/waveforms on exit",
+            MakeToggleBound(_draft.AutoCleanCache, v => { _draft.AutoCleanCache = v; MarkDirty(); })));
         p.Children.Add(MakeRow("Backup as ZIP", "Periodic ZIP of the open project", MakeToggle(false)));
+        return WrapSection(p);
+    }
+
+    private UIElement BuildDownloads()
+    {
+        var p = MakePanel("Downloads", "URL import defaults, quality and browser-login behavior.");
+        p.Children.Add(MakeRow("Downloads folder", "Used by Import from URL",
+            MakeFolderPathBound(ResolveDownloadsFolder(), v => { _draft.DownloadsFolder = v; MarkDirty(); })));
+
+        var qualityHeights = new[] { 0, 4320, 2160, 1440, 1080, 720, 480 };
+        var qualityLabels = new[] { "Best available", "Up to 4320p", "Up to 2160p", "Up to 1440p", "Up to 1080p", "Up to 720p", "Up to 480p" };
+        var qualityIdx = Array.IndexOf(qualityHeights, _draft.DownloadMaxHeight);
+        if (qualityIdx < 0) qualityIdx = 4;
+        p.Children.Add(MakeRow("Download quality", "Maximum video height for yt-dlp downloads",
+            MakeComboBound(qualityLabels, qualityIdx, idx => { _draft.DownloadMaxHeight = qualityHeights[idx]; MarkDirty(); })));
+
+        p.Children.Add(MakeRow("Remember browser login", "After you sign in once, retry future restricted downloads with browser cookies",
+            MakeToggleBound(_draft.DownloadRememberBrowserLogin, v => { _draft.DownloadRememberBrowserLogin = v; MarkDirty(); })));
+        p.Children.Add(MakeRow("Auto-add after download", "Keep OFF for separate Download and Add to Timeline buttons",
+            MakeToggleBound(_draft.DownloadAutoAddToTimeline, v => { _draft.DownloadAutoAddToTimeline = v; MarkDirty(); })));
         return WrapSection(p);
     }
     private UIElement BuildFFmpeg()
@@ -1209,6 +1260,77 @@ public class SettingsWindow : Window
         b.Margin = new Thickness(6, 0, 0, 0); b.Height = 26;
         Grid.SetColumn(b, 1); g.Children.Add(b);
         return g;
+    }
+
+    private Grid MakeFolderPathBound(string path, Action<string> onChange)
+    {
+        var g = new Grid { HorizontalAlignment = HorizontalAlignment.Right };
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70) });
+        var tb = new TextBox
+        {
+            Text = path,
+            Background = new SolidColorBrush(Bg2),
+            Foreground = new SolidColorBrush(Text),
+            BorderBrush = new SolidColorBrush(LineStrong),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(6, 5, 6, 5),
+            FontSize = 11,
+            FontFamily = new FontFamily("Consolas")
+        };
+        tb.TextChanged += (_, _) => onChange(tb.Text ?? "");
+        Grid.SetColumn(tb, 0);
+        g.Children.Add(tb);
+
+        var b = MakeButton("Browse", false);
+        b.Margin = new Thickness(6, 0, 0, 0);
+        b.Height = 26;
+        b.Click += (_, _) =>
+        {
+            var selected = PickFolder(tb.Text);
+            if (string.IsNullOrWhiteSpace(selected)) return;
+            tb.Text = selected;
+            onChange(selected);
+        };
+        Grid.SetColumn(b, 1);
+        g.Children.Add(b);
+        return g;
+    }
+
+    private static string ResolveDownloadsFolder()
+    {
+        if (!string.IsNullOrWhiteSpace(AppSettings.DownloadsFolder))
+            return AppSettings.DownloadsFolder;
+
+        return System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyVideos),
+            "VideoEditorDownloads");
+    }
+
+    private static string ResolveCacheFolder()
+    {
+        if (!string.IsNullOrWhiteSpace(AppSettings.CacheFolder))
+            return AppSettings.CacheFolder;
+
+        return System.IO.Path.Combine(System.IO.Path.GetTempPath(), "video_editor");
+    }
+
+    private static string? PickFolder(string current)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Pick any file in the destination folder",
+            CheckFileExists = false,
+            CheckPathExists = true,
+            FileName = "Select folder",
+            Filter = "Folder|*.folder"
+        };
+
+        if (!string.IsNullOrWhiteSpace(current) && Directory.Exists(current))
+            dlg.InitialDirectory = current;
+
+        if (dlg.ShowDialog() != true) return null;
+        return System.IO.Path.GetDirectoryName(dlg.FileName);
     }
     private Border MakeChip(string text, Color color)
     {
