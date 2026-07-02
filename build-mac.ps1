@@ -3,10 +3,13 @@
 # Output:
 #   publish\mac\VideoEditor-osx-arm64.app
 #   publish\mac\VideoEditor-osx-arm64.zip (with -Zip)
+#   publish\mac\VideoEditor-osx-arm64.app.tar.gz (with -TarGz)
+#   publish\mac\VideoEditor-osx-arm64.dmg (with -Dmg, macOS only)
 #
 # Usage:
 #   pwsh build-mac.ps1
-#   pwsh build-mac.ps1 -Runtime osx-x64 -Zip
+#   pwsh build-mac.ps1 -Runtime osx-x64 -Zip -TarGz
+#   pwsh build-mac.ps1 -Dmg
 #
 # Notes:
 #   This is an unsigned MVP bundle. On a Mac, first launch may require:
@@ -18,7 +21,9 @@ param(
     [ValidateSet("osx-arm64", "osx-x64")]
     [string]$Runtime = "osx-arm64",
     [string]$OutputDir = "",
-    [switch]$Zip
+    [switch]$Zip,
+    [switch]$TarGz,
+    [switch]$Dmg
 )
 
 $ErrorActionPreference = "Stop"
@@ -115,4 +120,41 @@ if ($Zip) {
     Write-Host "Packing ZIP ..." -ForegroundColor Cyan
     Compress-Archive -Path $appPath, (Join-Path $OutputDir "first-run-$Runtime.command") -DestinationPath $zipPath
     Write-Host "  ZIP: $zipPath" -ForegroundColor Green
+}
+
+if ($TarGz) {
+    $tarGzPath = Join-Path $OutputDir "VideoEditor-$Runtime.app.tar.gz"
+    if (Test-Path $tarGzPath) { Remove-Item $tarGzPath -Force }
+    Write-Host ""
+    Write-Host "Packing TAR.GZ ..." -ForegroundColor Cyan
+    & tar -czf $tarGzPath -C $OutputDir "VideoEditor-$Runtime.app" "first-run-$Runtime.command"
+    if ($LASTEXITCODE -ne 0) {
+        throw "tar failed with exit code $LASTEXITCODE."
+    }
+    Write-Host "  TAR.GZ: $tarGzPath" -ForegroundColor Green
+}
+
+if ($Dmg) {
+    $hdiutil = Get-Command hdiutil -ErrorAction SilentlyContinue
+    if ($null -eq $hdiutil) {
+        throw "DMG creation requires macOS hdiutil. Run this script with -Dmg on a Mac."
+    }
+
+    $dmgPath = Join-Path $OutputDir "VideoEditor-$Runtime.dmg"
+    if (Test-Path $dmgPath) { Remove-Item $dmgPath -Force }
+
+    $dmgRoot = Join-Path $OutputDir "$Runtime-dmg-root"
+    if (Test-Path $dmgRoot) { Remove-Item $dmgRoot -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $dmgRoot | Out-Null
+    Copy-Item -Path $appPath -Destination $dmgRoot -Recurse -Force
+    New-Item -ItemType SymbolicLink -Path (Join-Path $dmgRoot "Applications") -Target "/Applications" | Out-Null
+
+    Write-Host ""
+    Write-Host "Packing DMG ..." -ForegroundColor Cyan
+    & hdiutil create -volname "VideoEditor" -srcfolder $dmgRoot -ov -format UDZO $dmgPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "hdiutil failed with exit code $LASTEXITCODE."
+    }
+    Remove-Item $dmgRoot -Recurse -Force
+    Write-Host "  DMG: $dmgPath" -ForegroundColor Green
 }

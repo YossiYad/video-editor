@@ -14,7 +14,8 @@ A free, open-source desktop video editor for Windows, with a new macOS Apple Sil
 
 - **Windows installer:** [VideoEditor-v1.9.0-Setup.exe](https://github.com/YossiYad/video-editor/releases/download/v1.9.0/VideoEditor-v1.9.0-Setup.exe)
 - **Windows portable ZIP:** [VideoEditor-win-x64-portable.zip](https://github.com/YossiYad/video-editor/releases/download/v1.9.0/VideoEditor-win-x64-portable.zip) - extract and run `VideoEditor.exe`.
-- **macOS Apple Silicon preview:** [VideoEditor-osx-arm64.zip](https://github.com/YossiYad/video-editor/releases/download/v1.9.0/VideoEditor-osx-arm64.zip) - extract, run `first-run-osx-arm64.command`, then open the app.
+- **macOS Apple Silicon app archive:** [VideoEditor-osx-arm64.app.tar.gz](https://github.com/YossiYad/video-editor/releases/download/v1.9.0/VideoEditor-osx-arm64.app.tar.gz) - extract, run `first-run-osx-arm64.command`, then open the app.
+- **macOS Apple Silicon ZIP fallback:** [VideoEditor-osx-arm64.zip](https://github.com/YossiYad/video-editor/releases/download/v1.9.0/VideoEditor-osx-arm64.zip) - same app bundle, packaged as ZIP.
 
 The Windows build needs no installer/admin rights when using the portable ZIP and **no .NET install** (the runtime is bundled inside the EXE). Everything else (FFmpeg, yt-dlp, whisper.cpp, the AI background model) downloads automatically on first use.
 
@@ -97,10 +98,16 @@ pwsh .\build-release.ps1 -Zip       # also packs it into a redistributable ZIP
 To build the macOS Apple Silicon preview bundle:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\build-mac.ps1 -Zip
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build-mac.ps1 -Zip -TarGz
 ```
 
-That creates `publish\mac\VideoEditor-osx-arm64.app` and `publish\mac\VideoEditor-osx-arm64.zip`. The bundle is unsigned; on a Mac, run `first-run-osx-arm64.command` from the extracted ZIP before opening the app.
+That creates `publish\mac\VideoEditor-osx-arm64.app`, `publish\mac\VideoEditor-osx-arm64.zip`, and `publish\mac\VideoEditor-osx-arm64.app.tar.gz`. The bundle is unsigned; on a Mac, run `first-run-osx-arm64.command` from the extracted archive before opening the app.
+
+On macOS, the same script can also create a DMG:
+
+```powershell
+pwsh ./build-mac.ps1 -Dmg
+```
 
 On first launch the app auto-downloads `ffmpeg.exe` + `ffprobe.exe` into `bin\Debug\net8.0-windows\ffmpeg\`. If the download fails, grab them from <https://www.gyan.dev/ffmpeg/builds/> and drop both binaries in that folder. The Whisper model and the MODNet AI background model download the same way - on first use, inside the app.
 
