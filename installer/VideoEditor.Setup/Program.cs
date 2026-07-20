@@ -9,7 +9,7 @@ namespace VideoEditor.Setup;
 internal static class Program
 {
     private const string AppName = "VideoEditor";
-    private const string Version = "1.9.0";
+    private const string Version = "1.9.1";
 
     [STAThread]
     private static int Main()

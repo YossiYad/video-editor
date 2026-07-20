@@ -17,11 +17,21 @@ using VideoEditor.Controls;
 using VideoEditor.Models;
 using VideoEditor.Services;
 using VideoEditor.Views;
+using FluentWindow = Wpf.Ui.Controls.FluentWindow;
 
 namespace VideoEditor;
 
-public partial class MainWindow : Window
+public partial class MainWindow : FluentWindow
 {
+    private const uint WmNcLButtonDown = 0x00A1;
+    private const int HtCaption = 2;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool ReleaseCapture();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
+
     private readonly FFmpegService _ff = new(App.FFmpegPath);
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromMilliseconds(80) };
 
@@ -225,6 +235,58 @@ public partial class MainWindow : Window
         videoContainerOuter.MouseWheel += PreviewViewPan_MouseWheel;
         videoContainerOuter.MouseLeave += PreviewCanvas_MouseLeave;
         WirePreviewCanvasTransformGestures();
+    }
+
+    private void WindowTitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left || IsTitleBarControl(e.OriginalSource as DependencyObject))
+            return;
+
+        if (e.ClickCount == 2)
+        {
+            WindowState = WindowState == WindowState.Maximized
+                ? WindowState.Normal
+                : WindowState.Maximized;
+            e.Handled = true;
+            return;
+        }
+
+        var windowHandle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (windowHandle != IntPtr.Zero)
+        {
+            ReleaseCapture();
+            SendMessage(windowHandle, WmNcLButtonDown, (IntPtr)HtCaption, IntPtr.Zero);
+            e.Handled = true;
+            return;
+        }
+
+        try
+        {
+            DragMove();
+            e.Handled = true;
+        }
+        catch (InvalidOperationException)
+        {
+            // The fallback is only needed before the window handle is ready.
+        }
+    }
+
+    private static bool IsTitleBarControl(DependencyObject? source)
+    {
+        while (source != null)
+        {
+            if (source is System.Windows.Controls.Primitives.ButtonBase
+                || source is System.Windows.Controls.Primitives.Thumb
+                || source is System.Windows.Controls.Primitives.ScrollBar
+                || source is Slider
+                || source is TextBoxBase
+                || source is ComboBox)
+                return true;
+
+            source = VisualTreeHelper.GetParent(source);
+        }
+
+        return false;
     }
 
     // ===== Direct manipulation of the canvas transform =====

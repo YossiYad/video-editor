@@ -1,6 +1,7 @@
-<Window x:Class="VideoEditor.MainWindow"
+<ui:FluentWindow x:Class="VideoEditor.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         xmlns:ctl="clr-namespace:VideoEditor.Controls"
         Title="VideoEditor - Pro" Height="900" Width="1440"
         MinHeight="640" MinWidth="1280"
@@ -12,6 +13,7 @@
         PreviewMouseDown="Window_PreviewMouseDown">
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="36"/>
             <RowDefinition Height="56"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="332"/>
@@ -21,7 +23,31 @@
         <!-- ========================================================
              TOPBAR
              ======================================================== -->
-        <Border Grid.Row="0" Background="{DynamicResource TopbarBg}" BorderBrush="{DynamicResource LineStrong}" BorderThickness="0,0,0,1">
+        <ui:TitleBar Grid.Row="0"
+                     Height="36"
+                     Title=""
+                     Icon="icon.ico"
+                     ShowMinimize="True"
+                     ShowMaximize="True"
+                     ShowClose="True"
+                     ShowHelp="False"
+                     CanMaximize="True"
+                     Background="{DynamicResource TopbarBg}"
+                     ButtonsForeground="{DynamicResource Text}"
+                     ButtonsBackground="{DynamicResource Bg3}"
+                     MouseLeftButtonDown="WindowTitleBar_MouseLeftButtonDown">
+            <ui:TitleBar.CenterContent>
+                <Border Background="Transparent"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"
+                        PreviewMouseLeftButtonDown="WindowTitleBar_MouseLeftButtonDown" />
+            </ui:TitleBar.CenterContent>
+        </ui:TitleBar>
+
+        <Border Grid.Row="1"
+                Background="{DynamicResource TopbarBg}"
+                BorderBrush="{DynamicResource LineStrong}"
+                BorderThickness="0,0,0,1">
             <!-- Topbar columns are explicit:
                  - Project meta (Auto, capped via MaxWidth on text)
                  - Transport (Auto, never gets squeezed)
@@ -31,7 +57,7 @@
                  hides items behind their neighbours, and a horizontal scrollbar appears only
                  if the user shrinks the window beyond what the controls need. -->
             <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-            <Grid Margin="14,0" MinWidth="1380">
+            <Grid Margin="14,0" MinWidth="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
@@ -170,7 +196,7 @@
         <!-- ========================================================
              WORKSPACE (sidebar / preview / inspector)
              ======================================================== -->
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="232"/>
                 <ColumnDefinition Width="*"/>
@@ -1703,12 +1729,12 @@
         <!-- ========================================================
              TIMELINE
              ======================================================== -->
-        <ctl:Timeline x:Name="timeline" Grid.Row="2"/>
+        <ctl:Timeline x:Name="timeline" Grid.Row="3"/>
 
         <!-- ========================================================
              STATUS BAR
              ======================================================== -->
-        <Border Grid.Row="3" Background="{DynamicResource StatusbarBg}" BorderBrush="{DynamicResource LineStrong}" BorderThickness="0,1,0,0">
+        <Border Grid.Row="4" Background="{DynamicResource StatusbarBg}" BorderBrush="{DynamicResource LineStrong}" BorderThickness="0,1,0,0">
             <Grid Margin="14,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -1747,4 +1773,4 @@
             </Grid>
         </Border>
     </Grid>
-</Window>
+</ui:FluentWindow>

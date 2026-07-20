@@ -5,12 +5,12 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>VideoEditor-v1.9.0-Setup</AssemblyName>
+    <AssemblyName>VideoEditor-v1.9.1-Setup</AssemblyName>
     <RootNamespace>VideoEditor.Setup</RootNamespace>
     <ApplicationIcon>..\..\assets\icon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="..\..\publish\v1.9.0\VideoEditor-win-x64-portable.zip" LogicalName="payload.zip" />
+    <EmbeddedResource Include="..\..\publish\v1.9.1\VideoEditor-win-x64-portable.zip" LogicalName="payload.zip" />
   </ItemGroup>
 </Project>

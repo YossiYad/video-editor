@@ -10,6 +10,15 @@ The latest signed Windows build is always available at
 
 ---
 
+## [v1.9.1] - 2026-07-20
+
+### Added
+- Dedicated title bar row with minimize, maximize, and close controls.
+- Reliable window dragging across the screen.
+
+### Changed
+- The editor toolbar now has its own row and keeps its layout space separate from the window controls.
+
 ## [v1.9.0] - 2026-05-29
 
 ### Changed

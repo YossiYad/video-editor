@@ -10,10 +10,10 @@
     <RootNamespace>VideoEditor</RootNamespace>
     <ApplicationIcon>..\assets\icon.ico</ApplicationIcon>
     <Platforms>AnyCPU;x64</Platforms>
-    <Version>1.9.0</Version>
-    <AssemblyVersion>1.9.0.0</AssemblyVersion>
-    <FileVersion>1.9.0.0</FileVersion>
-    <InformationalVersion>1.9.0</InformationalVersion>
+    <Version>1.9.1</Version>
+    <AssemblyVersion>1.9.1.0</AssemblyVersion>
+    <FileVersion>1.9.1.0</FileVersion>
+    <InformationalVersion>1.9.1</InformationalVersion>
     <UpdateDesktopShortcut Condition="'$(UpdateDesktopShortcut)' == ''">true</UpdateDesktopShortcut>
     <DefaultItemExcludes>$(DefaultItemExcludes);bin\**;obj\**</DefaultItemExcludes>
     <!-- Bundle the native WPF DLLs (D3DCompiler / PresentationNative / wpfgfx /
@@ -32,6 +32,7 @@
     <!-- Local, free GPU/CPU inference for the AI camera background (MODNet matting).
          The model itself auto-downloads on first use, like FFmpeg / Whisper. -->
     <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.20.1" />
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
   </ItemGroup>
 
   <ItemGroup>

@@ -4,18 +4,18 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 [![Open Source](https://img.shields.io/badge/Open%20Source-%E2%9D%A4-red?style=for-the-badge)](https://github.com/YossiYad/video-editor)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-0078d6?style=for-the-badge&logo=windows)](https://github.com/YossiYad/video-editor/releases/latest)
-[![Changelog](https://img.shields.io/badge/%F0%9F%93%9D%20Changelog-v1.9.0-8B5CFF?style=for-the-badge)](CHANGELOG.md)
+[![Changelog](https://img.shields.io/badge/%F0%9F%93%9D%20Changelog-v1.9.1-8B5CFF?style=for-the-badge)](CHANGELOG.md)
 
 A free, open-source desktop video editor for Windows, with a new macOS Apple Silicon preview build. Built on C# with FFmpeg under the hood. Designed to be powerful for creators but approachable for first-time editors.
 
 ## ⬇️ Download
 
-**Latest release: [v1.9.0](https://github.com/YossiYad/video-editor/releases/tag/v1.9.0)**
+**Latest release: [v1.9.1](https://github.com/YossiYad/video-editor/releases/tag/v1.9.1)**
 
-- **Windows installer:** [VideoEditor-v1.9.0-Setup.exe](https://github.com/YossiYad/video-editor/releases/download/v1.9.0/VideoEditor-v1.9.0-Setup.exe)
-- **Windows portable ZIP:** [VideoEditor-win-x64-portable.zip](https://github.com/YossiYad/video-editor/releases/download/v1.9.0/VideoEditor-win-x64-portable.zip) - extract and run `VideoEditor.exe`.
-- **macOS Apple Silicon app archive:** [VideoEditor-osx-arm64.app.tar.gz](https://github.com/YossiYad/video-editor/releases/download/v1.9.0/VideoEditor-osx-arm64.app.tar.gz) - extract, run `first-run-osx-arm64.command`, then open the app.
-- **macOS Apple Silicon ZIP fallback:** [VideoEditor-osx-arm64.zip](https://github.com/YossiYad/video-editor/releases/download/v1.9.0/VideoEditor-osx-arm64.zip) - same app bundle, packaged as ZIP.
+- **Windows installer:** [VideoEditor-v1.9.1-Setup.exe](https://github.com/YossiYad/video-editor/releases/download/v1.9.1/VideoEditor-v1.9.1-Setup.exe)
+- **Windows portable ZIP:** [VideoEditor-win-x64-portable.zip](https://github.com/YossiYad/video-editor/releases/download/v1.9.1/VideoEditor-win-x64-portable.zip) - extract and run `VideoEditor.exe`.
+- **macOS Apple Silicon app archive:** [VideoEditor-osx-arm64.app.tar.gz](https://github.com/YossiYad/video-editor/releases/download/v1.9.1/VideoEditor-osx-arm64.app.tar.gz) - extract, run `first-run-osx-arm64.command`, then open the app.
+- **macOS Apple Silicon ZIP fallback:** [VideoEditor-osx-arm64.zip](https://github.com/YossiYad/video-editor/releases/download/v1.9.1/VideoEditor-osx-arm64.zip) - same app bundle, packaged as ZIP.
 
 The Windows build needs no installer/admin rights when using the portable ZIP and **no .NET install** (the runtime is bundled inside the EXE). Everything else (FFmpeg, yt-dlp, whisper.cpp, the AI background model) downloads automatically on first use.
 
@@ -157,7 +157,7 @@ This is **open source** - contributions are welcome!
 # עורך וידאו - Pro
 
 [![הורדה](https://img.shields.io/github/v/release/YossiYad/video-editor?label=%E2%AC%87%EF%B8%8F%20%D7%94%D7%95%D7%A8%D7%93%D7%94%20%D7%90%D7%97%D7%A8%D7%95%D7%A0%D7%94&style=for-the-badge&color=2ea44f)](https://github.com/YossiYad/video-editor/releases/latest)
-[![Changelog](https://img.shields.io/badge/%F0%9F%93%9D%20%D7%99%D7%95%D7%9E%D7%9F%20%D7%A9%D7%99%D7%A0%D7%95%D7%99%D7%99%D7%9D-v1.9.0-8B5CFF?style=for-the-badge)](CHANGELOG.md)
+[![Changelog](https://img.shields.io/badge/%F0%9F%93%9D%20%D7%99%D7%95%D7%9E%D7%9F%20%D7%A9%D7%99%D7%A0%D7%95%D7%99%D7%99%D7%9D-v1.9.1-8B5CFF?style=for-the-badge)](CHANGELOG.md)
 
 עורך וידאו **חינמי וקוד פתוח** ל-Windows. בנוי על C# / WPF עם FFmpeg מאחורי הקלעים. מתוכנן להיות חזק ליוצרי תוכן וגם נגיש למתחילים שלא ערכו וידאו מימיהם.
 
